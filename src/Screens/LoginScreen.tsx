@@ -11,19 +11,20 @@ import { decodeToken } from "../Services/PermissionsService";
 import PermissionsContext, { usePermissions } from "../Context/PermissionsContext";
 import { useUser } from "../Context/UserContext";
 import { RootStackParamList } from "../Routers/AppRouter";
-import { API_BASE_URL } from "../config/apiConfig";
+import { validateAccountName } from "../config/apiConfig";
+
 interface LoginScreenProps {
   route: RouteProp<RootStackParamList, 'LoginScreen'>;
   navigation: NavigationProp<any>;
-
 }
 
 const LoginScreen: React.FC<LoginScreenProps> = ({ route, navigation }) => {
-
+  const [account, setAccount] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isPasswordVisible, setPasswordVisible] = useState(false);
   const [isChecked, setChecked] = useState(false);
+  const [accountError, setAccountError] = useState("");
   const { setPermissions } = useContext(PermissionsContext);
   const { setUsername, login } = useUser();
 
@@ -46,43 +47,106 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ route, navigation }) => {
     loadKeepLoggedIn();
   }, []); // Empty dependency array means this runs once on mount
 
+  const validateAccount = (accountName: string) => {
+    const validation = validateAccountName(accountName);
+    if (!validation.isValid) {
+      setAccountError(validation.error || "");
+      return false;
+    }
+    setAccountError("");
+    return true;
+  };
+
+  const handleAccountChange = (text: string) => {
+    setAccount(text.toLowerCase());
+    if (text.trim() !== "") {
+      validateAccount(text.toLowerCase());
+    } else {
+      setAccountError("");
+    }
+  };
 
   const handleLogin = async () => {
     console.log('Iniciando login...');
+    
+    // Validar os campos
+    if (!account.trim()) {
+      Alert.alert("Erro", "Por favor, informe a conta.");
+      return;
+    }
+
+    if (!validateAccount(account)) {
+      Alert.alert("Erro", accountError);
+      return;
+    }
+
+    if (!email.trim()) {
+      Alert.alert("Erro", "Por favor, informe o email.");
+      return;
+    }
+
+    if (!password.trim()) {
+      Alert.alert("Erro", "Por favor, informe a senha.");
+      return;
+    }
+
     try {
       const loginRequest = new LoginRequest(email, password);
       console.log('LoginRequest:', loginRequest);
 
-      const response = await AuthService.login(loginRequest.email, loginRequest.password);
+      const response = await AuthService.login(account, loginRequest.email, loginRequest.password);
       console.log('Resposta do login:', response);
 
       // Validar a resposta
-      if (!response.sliding_token) {
-        console.error('Token não encontrado na resposta:', response);
-        throw new Error('Resposta inválida da API: token não encontrado.');
+      if (!response.access || !response.refresh) {
+        console.error('Tokens não encontrados na resposta:', response);
+        throw new Error('Resposta inválida da API: tokens não encontrados.');
       }
 
-      // Usar a função login do UserContext para salvar o token e o estado de "manter logado"
-      await login(response.sliding_token, isChecked);
-      console.log('Login bem-sucedido. Token e preferência de "manter logado" salvos via UserContext.');
+      // Usar a função login do UserContext para salvar os tokens e o estado de "manter logado"
+      await login(response.access, response.refresh, account, isChecked);
+      console.log('Login bem-sucedido. Tokens, conta e preferência de "manter logado" salvos via UserContext.');
 
-      // A navegação para a tela inicial (HomeScreen ou AccountSelectionScreen) será tratada automaticamente pelo AppRouter
+      // Decodificar o access token para obter permissões e dados do usuário
+      try {
+        const decodedToken = decodeToken(response.access);
+        const permissions = decodedToken.permissions || [];
+        const usernameFromToken = decodedToken.user_name || "Usuário";
+        
+        await AsyncStorage.setItem("permissions", JSON.stringify(permissions));
+        setPermissions(permissions);
+        setUsername(usernameFromToken);
+      } catch (tokenError) {
+        console.error('Erro ao decodificar token:', tokenError);
+        // Não bloquear o login por isso, apenas usar valores padrão
+      }
+
+      // A navegação para a tela inicial será tratada automaticamente pelo AppRouter
       // com base no estado de autenticação do UserContext.
     } catch (error: any) {
       console.error("Erro de login:", {
         message: error.message,
         response: error.response?.data,
         status: error.response?.status,
-        url: `${API_BASE_URL}/token`,
       });
+
+      let errorMessage = "Erro inesperado. Tente novamente.";
+
+      if (error.code === 'ENOTFOUND' || error.message.includes('getaddrinfo')) {
+        errorMessage = "Conta inválida. Verifique o nome da conta informado.";
+      } else if (error.response?.status === 401) {
+        errorMessage = "Email ou senha inválidos. Verifique suas credenciais.";
+      } else if (error.response?.data?.detail) {
+        errorMessage = error.response.data.detail;
+      }
+
       Alert.alert(
         "Erro de Login",
-        error.response?.data?.detail || error.message,
+        errorMessage,
         [{ text: "OK" }]
       );
     }
   };
-
 
   return (
     <LinearGradient
@@ -94,12 +158,25 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ route, navigation }) => {
         <Text style={styles.subtitle}>Por favor, insira suas credenciais</Text>
 
         <TextInput
+          style={[styles.input, accountError ? styles.inputError : null]}
+          placeholder="Conta"
+          placeholderTextColor="#999"
+          value={account}
+          onChangeText={handleAccountChange}
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
+        {accountError ? <Text style={styles.errorText}>{accountError}</Text> : null}
+
+        <TextInput
           style={styles.input}
           placeholder="Email"
           keyboardType="email-address"
-          placeholderTextColor="#999" // <--- Adicionado
+          placeholderTextColor="#999"
           value={email}
           onChangeText={setEmail}
+          autoCapitalize="none"
+          autoCorrect={false}
         />
 
         <View style={styles.passwordContainer}>
@@ -136,8 +213,6 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ route, navigation }) => {
         <TouchableOpacity style={styles.loginButton} onPress={handleLogin}>
           <Text style={styles.loginButtonText}>Entrar</Text>
         </TouchableOpacity>
-
-
       </View>
     </LinearGradient>
   );
@@ -174,6 +249,16 @@ const styles = StyleSheet.create({
     borderColor: "#ccc",
     borderRadius: 5,
     backgroundColor: "#fff",
+  },
+  inputError: {
+    borderColor: "#ff4444",
+  },
+  errorText: {
+    color: "#ff4444",
+    fontSize: 12,
+    alignSelf: "flex-start",
+    marginTop: -10,
+    marginBottom: 10,
   },
   passwordContainer: {
     flexDirection: "row",
@@ -219,7 +304,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "bold",
   },
-
 });
 
 export default LoginScreen;

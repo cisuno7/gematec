@@ -15,12 +15,27 @@ const App = () => {
         const checkAuthentication = async () => {
             try {
                 const keepLoggedIn = await AsyncStorage.getItem('keep_logged_in');
-                const token = await AsyncStorage.getItem('sliding_token');
+                const accessToken = await AsyncStorage.getItem('access_token');
+                const refreshToken = await AsyncStorage.getItem('refresh_token');
+                const account = await AsyncStorage.getItem('account');
 
-                if (keepLoggedIn === 'true' && token) {
+                console.log('[App] Verificando autenticação:', {
+                    keepLoggedIn,
+                    hasAccessToken: !!accessToken,
+                    hasRefreshToken: !!refreshToken,
+                    hasAccount: !!account,
+                });
+
+                if (keepLoggedIn === 'true' && accessToken && refreshToken && account) {
+                    console.log('[App] Usuário mantido logado');
                     setIsAuthenticated(true);
                 } else {
-                    await AsyncStorage.removeItem('sliding_token');
+                    console.log('[App] Condições para manter logado não atendidas, limpando dados');
+                    // Limpar tokens se as condições não forem atendidas
+                    await AsyncStorage.removeItem('access_token');
+                    await AsyncStorage.removeItem('refresh_token');
+                    await AsyncStorage.removeItem('account');
+                    await AsyncStorage.removeItem('keep_logged_in');
                     setIsAuthenticated(false);
                 }
             } catch (error) {

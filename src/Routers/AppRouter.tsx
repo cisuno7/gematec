@@ -9,7 +9,6 @@ import CreateEquipmentScreen from '../Screens/Equipaments/CreateEquipmentScreen'
 import EditEquipmentScreen from '../Screens/Equipaments/EditEquipmentScreen';
 import { ClientsAvulsosScreen, ClientsComContratoScreen } from "../Screens/Clients/Client";
 import HomeScreen from '../Screens/HomeScreen';
-import AccountSelectionScreen from "../Screens/AccountSelectionScreen";
 import DrawerNavigator from "./DrawerNavigation";
 import EquipamentScreen from '../Screens/Equipaments/EquipamentScreen';
 import EquipmentQRCodeScreen from '../Screens/Equipaments/EquipmentQRCodeScreen';
@@ -30,6 +29,7 @@ import TechnicalAssistanceDetailsScreen from "../Screens/TechnicalAssistance/Tec
 import ManualDetailsScreen from "../Screens/ManualDetailsScreen";
 import ManualsScreen from "../Screens/ManualsScreen";
 import SubSectorScreen from '../Screens/Clients/SubSectorScreen';
+
 export type RootStackParamList = {
   CondenserTypesScreen: undefined;
   EvaporatorTypesScreen: undefined;
@@ -49,7 +49,6 @@ export type RootStackParamList = {
   ClientsComContratoScreen: undefined;
   ManualsScreen: undefined;
   ClientDetailScreen: { clientId: number };
-  AccountSelectionScreen: undefined;
   HomeScreen: undefined;
   EquipamentScreen: { clientId: number; sectorId: number, subsectorId?: number };
   CreateServiceOrderScreen: { equipmentId: number; equipmentStatus: string };
@@ -95,7 +94,6 @@ const AppRouter: React.FC<AppRouterProps> = ({ isAuthenticated }) => {
       <Stack.Screen name="EquipamentScreen" component={EquipamentScreen} options={{ headerTitle: 'Filtragem de Equipamentos' }} />
       <Stack.Screen name="EquipmentDetailsScreen" component={EquipmentDetailsScreen} options={{ headerTitle: 'Detalhes do Equipamento' }} />
       <Stack.Screen name="EquipmentListScreen" component={EquipmentListScreen} options={{ headerTitle: "Listagem de Equipamentos" }} />
-      <Stack.Screen name="AccountSelectionScreen" component={AccountSelectionScreen} options={{ headerTitle: 'Selecionar Conta' }} />
       <Stack.Screen name="CreateEquipmentScreen" component={CreateEquipmentScreen} options={{ headerTitle: 'Criação de Equipamento' }} />
       <Stack.Screen name="EquipmentQRCodeScreen" component={EquipmentQRCodeScreen} options={{ headerTitle: 'Leitura QR Code' }} />
       <Stack.Screen name="EditEquipmentScreen" component={EditEquipmentScreen} options={{ headerTitle: 'Editar Equipamento' }} />

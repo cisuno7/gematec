@@ -132,19 +132,13 @@ const CustomDrawerContent = (props: any & { extraData: {} }) => {
   };
 
   const handleLogout = async () => {
+    const { logout } = useUser();
     try {
-      const refreshToken = await AsyncStorage.getItem("refresh_token");
-      if (refreshToken) {
-        await AuthService.revoke(refreshToken);
-      }
+      await logout(); // Usa o método logout do UserContext que já faz o revoke
+      props.navigation.navigate("LoginScreen");
     } catch (error) {
-      console.error("Erro ao revogar o token durante o logout:", error);
-    } finally {
-      await AsyncStorage.removeItem("access_token");
-      await AsyncStorage.removeItem("refresh_token");
-      await AsyncStorage.removeItem("permissions");
-      await AsyncStorage.removeItem("sliding_token");
-      await AsyncStorage.removeItem("selectedAccountId");
+      console.error("Erro durante o logout:", error);
+      // Mesmo com erro, navegar para login
       props.navigation.navigate("LoginScreen");
     }
   };
