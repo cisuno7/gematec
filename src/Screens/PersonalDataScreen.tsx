@@ -6,17 +6,17 @@ import { NavigationProp, RouteProp } from '@react-navigation/native';
 import { RootStackParamList } from '../Routers/AppRouter';
 import { usePermissions } from "../Context/PermissionsContext";
 import { DrawerNavigationProp } from '@react-navigation/drawer';
+import { useUser } from '../Context/UserContext';
 
-import { API_BASE_URL } from '../config/apiConfig';
 interface PersonalDataScreenProps {
   route: RouteProp<RootStackParamList, 'PersonalDataScreen'>;
   navigation: DrawerNavigationProp<RootStackParamList, 'PersonalDataScreen'>;
 }
 
-
 const PersonalDataScreen: React.FC<PersonalDataScreenProps> = ({ route }) => {
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const { hasPermission, permissions } = usePermissions();
+  const { account } = useUser();
   const [loading, setLoading] = useState(true);
 
   if (permissions.length === 0 && loading) {
@@ -34,6 +34,7 @@ const PersonalDataScreen: React.FC<PersonalDataScreenProps> = ({ route }) => {
       </View>
     );
   }
+
   // Campos editáveis
   const [name, setName] = useState('');
   const [birthdate, setBirthdate] = useState('');
@@ -52,17 +53,17 @@ const PersonalDataScreen: React.FC<PersonalDataScreenProps> = ({ route }) => {
       try {
         console.log('Buscando dados pessoais do usuário...');
         const token = await AsyncStorage.getItem('access_token');
-
+        const currentAccount = await AsyncStorage.getItem('account');
 
         if (!token) throw new Error('Token de acesso não encontrado.');
-
+        if (!currentAccount) throw new Error('Conta não encontrada.');
 
         setAccessToken(token);
 
-        console.log('Endpoint usado:', `${API_BASE_URL}/me`);
+        console.log('Conta:', currentAccount);
         console.log('Token de acesso:', token);
 
-        const personalData = await AuthService.getPersonalData(token);
+        const personalData = await AuthService.getPersonalData(currentAccount, token);
         console.log('Dados pessoais recebidos:', personalData);
 
         // Atualiza os campos
@@ -86,12 +87,15 @@ const PersonalDataScreen: React.FC<PersonalDataScreenProps> = ({ route }) => {
 
   const handleUpdate = async () => {
     try {
-      if (!accessToken) throw new Error('token de acesso ausente.');
+      if (!accessToken) throw new Error('Token de acesso ausente.');
+      if (!account) throw new Error('Conta não encontrada.');
+      
       const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
       if (!dateRegex.test(birthdate)) {
         Alert.alert("Erro", "Data de nascimento deve estar no formato YYYY-MM-DD");
         return;
       }
+      
       const updatedData = {
         name,
         birthdate,
@@ -100,7 +104,7 @@ const PersonalDataScreen: React.FC<PersonalDataScreenProps> = ({ route }) => {
 
       console.log('Dados a serem enviados:', updatedData);
 
-      const updatedPersonalData = await AuthService.updatePersonalData(accessToken, updatedData);
+      const updatedPersonalData = await AuthService.updatePersonalData(account, accessToken, updatedData);
       Alert.alert('Sucesso', 'Dados atualizados com sucesso.');
       console.log('Dados atualizados:', updatedPersonalData);
     } catch (error: any) {

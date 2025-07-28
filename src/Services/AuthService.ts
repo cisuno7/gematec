@@ -1,21 +1,29 @@
 import axios from "axios";
-import { API_BASE_URL } from "../config/apiConfig";
-import apiClient from "../Context/ApiClient";
+import { getApiBaseUrl } from "../config/apiConfig";
 
+// Cliente axios sem interceptores para login
+const createLoginClient = (account: string) => {
+  return axios.create({
+    baseURL: getApiBaseUrl(account),
+    timeout: 10000,
+  });
+};
 
 export default class AuthService {
-  static async login(email: string, password: string) {
+  static async login(account: string, email: string, password: string) {
     try {
-      // Log do endpoint final
-      const endpoint = `${API_BASE_URL}/token`;
-      console.log('Tentando autenticar no endpoint:', endpoint);
+      const apiClient = createLoginClient(account);
+      const endpoint = `/api/token`;
+      
+      console.log('Tentando autenticar no endpoint:', `${getApiBaseUrl(account)}${endpoint}`);
       console.log('Payload:', { email, password });
 
       const response = await apiClient.post(endpoint, { email, password });
 
       console.log('Resposta bem-sucedida da API:', response.data);
       return {
-        sliding_token: response.data.token,
+        access: response.data.access,
+        refresh: response.data.refresh,
       };
     } catch (error: any) {
       console.error('Erro ao realizar a requisição de login:', error);
@@ -32,7 +40,7 @@ export default class AuthService {
         } else if (error.response.status === 403) {
           throw new Error('Permissão negada. Você não tem autorização para acessar este recurso.');
         } else if (error.response.status === 404) {
-          throw new Error(`Endpoint não encontrado:`);
+          throw new Error('Endpoint não encontrado.');
         } else if (error.response.status === 500) {
           throw new Error('Erro interno do servidor. Tente novamente mais tarde.');
         } else {
@@ -48,90 +56,21 @@ export default class AuthService {
     }
   }
 
-  static async getAccounts(slidingToken: string): Promise<{ accounts: { id: number; name: string }[] }> {
-    try {
-      const endpoint = `${API_BASE_URL}/accounts`;
-      const response = await apiClient.get(endpoint, {
-        headers: { Authorization: `Bearer ${slidingToken}` },
-      });
-
-      // Verificar se a resposta contém a chave 'results'
-      if (!response.data.results || !Array.isArray(response.data.results)) {
-        throw new Error('Formato de resposta inválido: "results" não encontrado ou não é um array.');
-      }
-
-      // Mapear a chave 'results' para 'accounts'
-      return {
-        accounts: response.data.results.map((account: any) => ({
-          id: account.id,
-          name: account.name,
-        })),
-      };
-    } catch (error: any) {
-      if (error.response) {
-        if (error.response.status === 401) {
-          throw new Error('Token inválido ou expirado.');
-        } else if (error.response.status === 403) {
-          throw new Error('Permissão negada.');
-        } else if (error.response.status === 404) {
-          throw new Error('Endpoint não encontrado.');
-        }
-      }
-      throw new Error(`Erro ao buscar contas: ${error.message}`);
-    }
-  }
-
-  static async switchAccount(slidingToken: string, accountId: number): Promise<{ access: string; refresh: string }> {
-    try {
-      const endpoint = `${API_BASE_URL}/accounts/switch`; // Ajustado
-      const response = await apiClient.post(endpoint, { account_id: accountId }, {
-        headers: { Authorization: `Bearer ${slidingToken}` },
-      });
-      return response.data; // Retorna { access, refresh }
-    } catch (error: any) {
-      if (error.response) {
-        if (error.response.status === 401) {
-          throw new Error('Token inválido ou expirado.');
-        } else if (error.response.status === 403) {
-          throw new Error('Permissão negada.');
-        } else if (error.response.status === 404) {
-          throw new Error('Endpoint não encontrado.');
-        }
-      }
-      throw new Error('Erro ao trocar de conta.');
-    }
-  }
-
-  static async revoke(refreshToken: string): Promise<void> {
-    try {
-      const endpoint = `${API_BASE_URL}/revoke`; // Novo endpoint
-      await apiClient.post(endpoint, { refresh_token: refreshToken });
-    } catch (error: any) {
-      console.error('Erro ao revogar o token:', error);
-      if (error.response) {
-        if (error.response.status === 401) {
-          throw new Error('Token inválido ou expirado.');
-        } else if (error.response.status === 403) {
-          throw new Error('Permissão negada.');
-        } else if (error.response.status === 404) {
-          throw new Error('Endpoint não encontrado.');
-        }
-      }
-      throw new Error('Erro ao revogar o token.');
-    }
-  }
-  static async refreshAccessToken(refreshToken: string) {
+  static async refreshAccessToken(account: string, refreshToken: string) {
     try {
       console.log('Iniciando renovação do access token...');
-
       console.log(`Refresh Token: ${refreshToken}`);
 
-      const response = await apiClient.post(`${API_BASE_URL}/token/refresh`, {
+      const apiClient = createLoginClient(account);
+      const response = await apiClient.post(`/api/token/refresh`, {
         refresh: refreshToken,
       });
 
       console.log('Novo access token recebido:', response.data.access);
-      return response.data.access; // Retorna apenas o novo access_token
+      return {
+        access: response.data.access,
+        refresh: response.data.refresh || refreshToken, // Caso não retorne novo refresh token
+      };
     } catch (error: any) {
       console.error('Erro ao renovar o token de acesso:', error);
 
@@ -160,13 +99,40 @@ export default class AuthService {
       }
     }
   }
-  static async updatePersonalData(accessToken: string, updatedData: { name?: string; birthdate?: string; rh_factor?: string }) {
+
+  static async revokeToken(account: string, refreshToken: string): Promise<void> {
     try {
-      const endpoint = `${API_BASE_URL}/me`;
-      console.log('Atualizando dados pessoais no endpoint:', endpoint);
+      console.log('Revogando refresh token...');
+      
+      const apiClient = createLoginClient(account);
+      await apiClient.post(`/api/token/blacklist`, { 
+        refresh: refreshToken 
+      });
+      
+      console.log('Token revogado com sucesso');
+    } catch (error: any) {
+      console.error('Erro ao revogar o token:', error);
+      if (error.response) {
+        if (error.response.status === 401) {
+          throw new Error('Token inválido ou expirado.');
+        } else if (error.response.status === 403) {
+          throw new Error('Permissão negada.');
+        } else if (error.response.status === 404) {
+          throw new Error('Endpoint não encontrado.');
+        }
+      }
+      throw new Error('Erro ao revogar o token.');
+    }
+  }
+
+  static async updatePersonalData(account: string, accessToken: string, updatedData: { name?: string; birthdate?: string; rh_factor?: string }) {
+    try {
+      const apiClient = createLoginClient(account);
+      const endpoint = `/api/me`;
+      console.log('Atualizando dados pessoais no endpoint:', `${getApiBaseUrl(account)}${endpoint}`);
       console.log('Dados enviados:', updatedData);
 
-      const response = await axios.patch(endpoint, updatedData, {
+      const response = await apiClient.patch(endpoint, updatedData, {
         headers: {
           Authorization: `Bearer ${accessToken}`,
         },
@@ -186,13 +152,16 @@ export default class AuthService {
       throw new Error('Erro ao conectar ao servidor.');
     }
   }
-  static async getPersonalData(accessToken: string) {
+
+  static async getPersonalData(account: string, accessToken: string) {
     try {
       console.log('Iniciando requisição para dados pessoais...');
-      console.log('Endpoint usado:', `${API_BASE_URL}}/me`);
+      const apiClient = createLoginClient(account);
+      const endpoint = `/api/me`;
+      console.log('Endpoint usado:', `${getApiBaseUrl(account)}${endpoint}`);
       console.log('Token de acesso:', accessToken);
 
-      const response = await apiClient.get(`${API_BASE_URL}/me`, {
+      const response = await apiClient.get(endpoint, {
         headers: {
           Authorization: `Bearer ${accessToken}`,
         },
@@ -216,9 +185,11 @@ export default class AuthService {
       throw new Error('Erro ao buscar dados do usuário.');
     }
   }
-  static async updatePassword(accessToken: string, password: string, passwordConfirmation: string) {
+
+  static async updatePassword(account: string, accessToken: string, password: string, passwordConfirmation: string) {
     try {
-      const response = await apiClient.patch(`${API_BASE_URL}/me/password`, {
+      const apiClient = createLoginClient(account);
+      const response = await apiClient.patch(`/api/me/password`, {
         password,
         password_confirmation: passwordConfirmation,
       }, {
@@ -242,9 +213,6 @@ export default class AuthService {
       throw new Error('Erro ao atualizar a senha.');
     }
   }
-
-
-
 }
 
 
