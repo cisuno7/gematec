@@ -6,22 +6,51 @@ import apiClient from "../Context/ApiClient";
 export default class AuthService {
   static async login(email: string, password: string) {
     try {
+      // Log detalhado do processo de construção da URL
+      console.log('[AuthService] Iniciando processo de login');
+      console.log('[AuthService] API_BASE_URL from config:', API_BASE_URL);
+      console.log('[AuthService] Email:', email);
+      console.log('[AuthService] Password length:', password.length);
+
       // Log do endpoint final
       const endpoint = `${API_BASE_URL}/token`;
-      console.log('Tentando autenticar no endpoint:', endpoint);
-      console.log('Payload:', { email, password });
+      console.log('[AuthService] Endpoint construído:', endpoint);
+      console.log('[AuthService] Verificando se endpoint contém erro:', endpoint.includes('.https://'));
+      
+      // Verificação adicional da URL
+      if (endpoint.includes('.https://')) {
+        console.error('[AuthService] ERRO DETECTADO: URL malformada!', endpoint);
+        console.error('[AuthService] API_BASE_URL atual:', API_BASE_URL);
+        console.error('[AuthService] Tentando corrigir...');
+        
+        // Tentar corrigir a URL malformada
+        const correctedUrl = endpoint.replace(/.*\.https:\/\//, 'https://');
+        console.log('[AuthService] URL corrigida:', correctedUrl);
+      }
+      
+      console.log('[AuthService] Payload:', { email, password });
 
       const response = await apiClient.post(endpoint, { email, password });
 
-      console.log('Resposta bem-sucedida da API:', response.data);
+      console.log('[AuthService] Resposta bem-sucedida da API:', response.data);
       return {
         sliding_token: response.data.token,
       };
     } catch (error: any) {
-      console.error('Erro ao realizar a requisição de login:', error);
+      console.error('[AuthService] Erro ao realizar a requisição de login:', error);
+      
+      // Log detalhado do erro
+      if (error.config) {
+        console.error('[AuthService] Configuração da requisição que falhou:', {
+          url: error.config.url,
+          baseURL: error.config.baseURL,
+          method: error.config.method,
+          headers: error.config.headers
+        });
+      }
 
       if (error.response) {
-        console.error('Detalhes do erro na resposta da API:', {
+        console.error('[AuthService] Detalhes do erro na resposta da API:', {
           status: error.response.status,
           data: error.response.data,
           headers: error.response.headers,
@@ -39,10 +68,11 @@ export default class AuthService {
           throw new Error(`Erro inesperado: ${error.response.status}.`);
         }
       } else if (error.request) {
-        console.error('Nenhuma resposta recebida do servidor:', error.request);
+        console.error('[AuthService] Nenhuma resposta recebida do servidor:', error.request);
+        console.error('[AuthService] URL que falhou:', error.request._url);
         throw new Error('Erro ao conectar ao servidor. Verifique sua conexão com a internet.');
       } else {
-        console.error('Erro na configuração da requisição:', error.message);
+        console.error('[AuthService] Erro na configuração da requisição:', error.message);
         throw new Error(`Erro inesperado: ${error.message}`);
       }
     }
