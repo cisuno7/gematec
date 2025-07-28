@@ -6,9 +6,9 @@ import apiClient from "../Context/ApiClient";
 export default class AuthService {
   static async login(email: string, password: string) {
     try {
-      // Log do endpoint final
-      const endpoint = `${API_BASE_URL}/token`;
-      console.log('Tentando autenticar no endpoint:', endpoint);
+      // Use relative path since apiClient already has baseURL configured
+      const endpoint = '/token';
+      console.log('Tentando autenticar no endpoint:', `${API_BASE_URL}${endpoint}`);
       console.log('Payload:', { email, password });
 
       const response = await apiClient.post(endpoint, { email, password });
@@ -50,7 +50,7 @@ export default class AuthService {
 
   static async getAccounts(slidingToken: string): Promise<{ accounts: { id: number; name: string }[] }> {
     try {
-      const endpoint = `${API_BASE_URL}/accounts`;
+      const endpoint = '/accounts';
       const response = await apiClient.get(endpoint, {
         headers: { Authorization: `Bearer ${slidingToken}` },
       });
@@ -83,7 +83,7 @@ export default class AuthService {
 
   static async switchAccount(slidingToken: string, accountId: number): Promise<{ access: string; refresh: string }> {
     try {
-      const endpoint = `${API_BASE_URL}/accounts/switch`; // Ajustado
+      const endpoint = '/accounts/switch'; // Ajustado
       const response = await apiClient.post(endpoint, { account_id: accountId }, {
         headers: { Authorization: `Bearer ${slidingToken}` },
       });
@@ -104,7 +104,7 @@ export default class AuthService {
 
   static async revoke(refreshToken: string): Promise<void> {
     try {
-      const endpoint = `${API_BASE_URL}/revoke`; // Novo endpoint
+      const endpoint = '/revoke'; // Novo endpoint
       await apiClient.post(endpoint, { refresh_token: refreshToken });
     } catch (error: any) {
       console.error('Erro ao revogar o token:', error);
@@ -126,7 +126,7 @@ export default class AuthService {
 
       console.log(`Refresh Token: ${refreshToken}`);
 
-      const response = await apiClient.post(`${API_BASE_URL}/token/refresh`, {
+      const response = await apiClient.post('/token/refresh', {
         refresh: refreshToken,
       });
 
@@ -162,11 +162,11 @@ export default class AuthService {
   }
   static async updatePersonalData(accessToken: string, updatedData: { name?: string; birthdate?: string; rh_factor?: string }) {
     try {
-      const endpoint = `${API_BASE_URL}/me`;
-      console.log('Atualizando dados pessoais no endpoint:', endpoint);
+      const endpoint = '/me';
+      console.log('Atualizando dados pessoais no endpoint:', `${API_BASE_URL}${endpoint}`);
       console.log('Dados enviados:', updatedData);
 
-      const response = await axios.patch(endpoint, updatedData, {
+      const response = await apiClient.patch(endpoint, updatedData, {
         headers: {
           Authorization: `Bearer ${accessToken}`,
         },
@@ -189,10 +189,10 @@ export default class AuthService {
   static async getPersonalData(accessToken: string) {
     try {
       console.log('Iniciando requisição para dados pessoais...');
-      console.log('Endpoint usado:', `${API_BASE_URL}}/me`);
+      console.log('Endpoint usado:', `${API_BASE_URL}/me`);
       console.log('Token de acesso:', accessToken);
 
-      const response = await apiClient.get(`${API_BASE_URL}/me`, {
+      const response = await apiClient.get('/me', {
         headers: {
           Authorization: `Bearer ${accessToken}`,
         },
@@ -218,7 +218,7 @@ export default class AuthService {
   }
   static async updatePassword(accessToken: string, password: string, passwordConfirmation: string) {
     try {
-      const response = await apiClient.patch(`${API_BASE_URL}/me/password`, {
+      const response = await apiClient.patch('/me/password', {
         password,
         password_confirmation: passwordConfirmation,
       }, {
