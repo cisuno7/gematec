@@ -19,6 +19,7 @@ import ListOrderServiceScreen from "../Screens/Orders/ListOrderServiceScreen";
 import TechnicalAssistanceScreen from "../Screens/TechnicalAssistance/TechnicalAssistanceScreen";
 import ActivityHistoryScreen from "../Screens/Activity/ActivityHistoryScreen";
 import CreateEquipmentScreen from "../Screens/Equipaments/CreateEquipmentScreen";
+import PreferencesScreen from "../Screens/PreferencesScreen";
 import { RootStackParamList } from "./AppRouter";
 import { useUser } from "../Context/UserContext";
 import { usePermissions } from "../Context/PermissionsContext";
@@ -26,6 +27,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import AuthService from "../Services/AuthService";
 import MenuService from "../Services/MenuService";
 import { MenuItem } from "../Models/MenuItem";
+import { useLanguage } from "../Context/LanguageContext";
 
 const Drawer = createDrawerNavigator<RootStackParamList>();
 
@@ -67,10 +69,11 @@ const SLUG_TO_APP_DATA: { [key: string]: { title: string; route?: keyof RootStac
 
 const CustomDrawerHeader: React.FC = () => {
   const { username } = useUser();
+  const { t } = useLanguage();
   return (
     <View>
       <Text style={styles.userName}>
-        {username ? `Bem-vindo, ${username}` : "Bem-vindo"}
+        {username ? `${t('common.welcome')}, ${username}` : t('common.welcome')}
       </Text>
     </View>
   );
@@ -79,6 +82,7 @@ const CustomDrawerHeader: React.FC = () => {
 const CustomDrawerContent = (props: any & { extraData: {} }) => {
   const { hasPermission } = usePermissions();
   const { clientId, sectorId, equipmentId } = useUser();
+  const { t } = useLanguage();
   const [dynamicMenu, setDynamicMenu] = useState<MenuItem[]>([]);
   const [loadingMenu, setLoadingMenu] = useState(true);
   const [submenuStates, setSubmenuStates] = useState<{ [key: string]: boolean }>({});
@@ -118,7 +122,7 @@ const CustomDrawerContent = (props: any & { extraData: {} }) => {
         const processedData = processMenuItems(menuData);
         setDynamicMenu(processedData);
       } catch (error: any) {
-        Alert.alert("Erro", error.message || "Não foi possível carregar o menu.");
+        Alert.alert(t('common.error'), error.message || "Não foi possível carregar o menu.");
         console.error("Erro ao carregar menu:", error);
       } finally {
         setLoadingMenu(false);
@@ -191,14 +195,14 @@ const CustomDrawerContent = (props: any & { extraData: {} }) => {
           // Lógica específica para rotas que precisam de parâmetros
           if (item.route === "EquipamentScreen") {
             if (!clientId || !sectorId) {
-              Alert.alert("Erro", "Por favor, selecione um cliente e setor primeiro.");
+              Alert.alert(t('common.error'), "Por favor, selecione um cliente e setor primeiro.");
               props.navigation.navigate("ClientsAvulsosScreen" as any, {}); // Redireciona para seleção de cliente
             } else {
               props.navigation.navigate(item.route as any, { clientId, sectorId });
             }
           } else if (item.route === "ActivityHistoryScreen") {
             if (!equipmentId) {
-              Alert.alert("Erro", "Por favor, selecione um equipamento primeiro.");
+              Alert.alert(t('common.error'), "Por favor, selecione um equipamento primeiro.");
               // Poderia navegar para uma tela de seleção de equipamento
             } else {
               props.navigation.navigate(item.route as any, { equipmentId });
@@ -231,7 +235,7 @@ const CustomDrawerContent = (props: any & { extraData: {} }) => {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#007BFF" />
-        <Text style={styles.loadingText}>Carregando menu...</Text>
+        <Text style={styles.loadingText}>{t('common.loading')}</Text>
       </View>
     );
   }
@@ -246,9 +250,18 @@ const CustomDrawerContent = (props: any & { extraData: {} }) => {
           onPress={() => props.navigation.navigate("PersonalDataScreen" as any, {})}
         >
           <Ionicons name="person" size={20} color="#333" style={styles.icon} />
-          <Text style={styles.menuText}>Meus Dados</Text>
+          <Text style={styles.menuText}>{t('menu.personalData')}</Text>
         </TouchableOpacity>
       )}
+      
+      {/* Item Fixo: Preferências */}
+      <TouchableOpacity
+        style={[styles.menuItem, { paddingLeft: 16 }]} // Padding fixo para item de nível superior
+        onPress={() => props.navigation.navigate("PreferencesScreen" as any, {})}
+      >
+        <Ionicons name="settings" size={20} color="#333" style={styles.icon} />
+        <Text style={styles.menuText}>{t('menu.preferences')}</Text>
+      </TouchableOpacity>
       {dynamicMenu.map((item) => renderMenuItem(item))}
       {/* Item Fixo: Sair (sempre por último) */}
       <TouchableOpacity
@@ -256,7 +269,7 @@ const CustomDrawerContent = (props: any & { extraData: {} }) => {
         onPress={handleLogout}
       >
         <Ionicons name="arrow-forward" size={20} color="#333" style={styles.icon} />
-        <Text style={styles.menuText}>Sair</Text>
+        <Text style={styles.menuText}>{t('menu.logout')}</Text>
       </TouchableOpacity>
     </DrawerContentScrollView>
   );
@@ -288,6 +301,11 @@ const DrawerNavigator: React.FC = () => {
         name="PersonalDataScreen"
         component={PersonalDataScreen}
         options={{ title: "Meus Dados" }}
+      />
+      <Drawer.Screen
+        name="PreferencesScreen"
+        component={PreferencesScreen}
+        options={{ title: "Preferências" }}
       />
     </Drawer.Navigator>
   );

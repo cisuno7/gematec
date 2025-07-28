@@ -8,6 +8,7 @@ import { RootStackParamList } from "../Routers/AppRouter";
 import AuthService from "../Services/AuthService";
 import { useUser } from "../Context/UserContext";
 import { usePermissions } from "../Context/PermissionsContext";
+import { useLanguage } from "../Context/LanguageContext";
 import { decodeToken } from "../Services/PermissionsService";
 
 interface AccountSelectionScreenProps {
@@ -26,6 +27,7 @@ const AccountSelectionScreen: React.FC<AccountSelectionScreenProps> = ({ navigat
     const [loading, setLoading] = useState(true);
     const { setAccountId, setUsername } = useUser();
     const { setPermissions } = usePermissions();
+    const { loadUserPreferences } = useLanguage();
 
     useEffect(() => {
         const fetchAccounts = async () => {
@@ -89,6 +91,13 @@ const AccountSelectionScreen: React.FC<AccountSelectionScreenProps> = ({ navigat
             setUsername(usernameFromToken);
             // Armazenar o accountId no contexto
             setAccountId(parseInt(selectedAccount));
+
+            // Carregar preferências do usuário (incluindo idioma)
+            try {
+                await loadUserPreferences(response.access);
+            } catch (error) {
+                console.log('Erro ao carregar preferências do usuário, usando padrão:', error);
+            }
 
             // Redirecionar para a tela inicial
             navigation.navigate("HomeScreen");

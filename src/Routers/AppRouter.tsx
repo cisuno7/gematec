@@ -30,6 +30,7 @@ import TechnicalAssistanceDetailsScreen from "../Screens/TechnicalAssistance/Tec
 import ManualDetailsScreen from "../Screens/ManualDetailsScreen";
 import ManualsScreen from "../Screens/ManualsScreen";
 import SubSectorScreen from '../Screens/Clients/SubSectorScreen';
+import PreferencesScreen from '../Screens/PreferencesScreen';
 export type RootStackParamList = {
   CondenserTypesScreen: undefined;
   EvaporatorTypesScreen: undefined;
@@ -73,6 +74,7 @@ export type RootStackParamList = {
   SubSectorScreen: { clientId: number; parentSector: { id: number; name: string; level: number; complete_name: string } };
   ViewResponseActivityScreen: { serviceOrderId: number; equipmentStatus: string };
   RespondOrderScreen: { serviceOrderId: number; questions: string; equipmentId?: number };
+  PreferencesScreen: undefined;
 };
 
 const Stack = createStackNavigator<RootStackParamList>();
@@ -108,6 +110,7 @@ const AppRouter: React.FC = () => {
       <Stack.Screen name="CreateServiceOrderScreen" component={CreateServiceOrderScreen} options={{ title: "Criar Nova Ordem de Serviço" }} />
       <Stack.Screen name="ManualDetailsScreen" component={ManualDetailsScreen} options={{ headerTitle: '' }} />
       <Stack.Screen name="RespondOrderScreen" component={RespondOrderScreen} options={{ title: "Responder Plano de Atividade de uma Ordem de Serviço" }} />
+      <Stack.Screen name="PreferencesScreen" component={PreferencesScreen} options={{ headerTitle: 'Preferências' }} />
       <Stack.Screen name="HomeScreen" component={DrawerNavigator} options={{ headerShown: false }} />
       <Stack.Screen name="SubSectorScreen" component={SubSectorScreen} options={{ headerTitle: 'Sub-setores' }} />
     </Stack.Navigator>
