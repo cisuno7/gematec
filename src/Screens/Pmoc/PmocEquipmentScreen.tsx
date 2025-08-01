@@ -19,6 +19,8 @@ import { DrawerNavigationProp } from "@react-navigation/drawer";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as ImagePicker from "expo-image-picker";
 import { UploadedImage } from "../../Models/ServiceOrder";
+import NetInfo from '@react-native-community/netinfo';
+import { OfflineService } from '../../Services/OfflineService';
 
 interface PmocEquipmentScreenProps {
   route: RouteProp<RootStackParamList, "PmocEquipmentScreen">;

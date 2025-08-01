@@ -8,6 +8,7 @@ import {
     TextInput,
     TouchableOpacity,
     FlatList,
+    Alert,
 } from "react-native";
 import { RouteProp } from "@react-navigation/native";
 import { StackNavigationProp } from "@react-navigation/stack";
@@ -18,6 +19,11 @@ import { Picker } from "@react-native-picker/picker";
 import { RadioButton } from "react-native-paper";
 import { usePermissions } from "../../Context/PermissionsContext";
 import { TechnicalAssistance, Question } from "../../Models/TechnicalAssistance";
+import NetInfo from '@react-native-community/netinfo';
+import { OfflineService } from '../../Services/OfflineService';
+import { useLanguage } from "../../Context/LanguageContext";
+
+const TECHNICAL_ASSISTANCE_CACHE_KEY_PREFIX = 'technical_assistance_';
 
 type TechnicalAssistanceDetailsScreenRouteProp = RouteProp<RootStackParamList, "TechnicalAssistanceDetails">;
 type TechnicalAssistanceDetailsScreenNavigationProp = StackNavigationProp<RootStackParamList, "TechnicalAssistanceDetails">;
@@ -28,6 +34,7 @@ interface TechnicalAssistanceDetailsScreenProps {
 }
 
 const TechnicalAssistanceDetailsScreen: React.FC<TechnicalAssistanceDetailsScreenProps> = ({ route, navigation }) => {
+    const { t } = useLanguage();
     const { id } = route.params;
     const { hasPermission, permissions } = usePermissions();
     const [data, setData] = useState<TechnicalAssistance | null>(null);
@@ -42,10 +49,24 @@ const TechnicalAssistanceDetailsScreen: React.FC<TechnicalAssistanceDetailsScree
                 setLoading(true);
                 const token = await AsyncStorage.getItem("access_token");
                 if (!token) throw new Error("Token não encontrado");
-                const response = await service.fetchTechnicalAssistanceDetails(token, id);
-                setData(response);
+
+                const isConnected = await NetInfo.fetch().then(state => state.isConnected);
+                let responseData;
+
+                if (isConnected) {
+                    responseData = await service.fetchTechnicalAssistanceDetails(token, id);
+                    await OfflineService.cacheData(`${TECHNICAL_ASSISTANCE_CACHE_KEY_PREFIX}${id}`, responseData);
+                } else {
+                    responseData = await OfflineService.getCachedData<TechnicalAssistance>(`${TECHNICAL_ASSISTANCE_CACHE_KEY_PREFIX}${id}`);
+                    if (!responseData) {
+                        Alert.alert("Offline", "Dados não disponíveis offline. Conecte-se à internet para carregar.");
+                        return;
+                    }
+                }
+                setData(responseData);
             } catch (error) {
                 console.error("Erro ao buscar assistência técnica:", error);
+                Alert.alert("Erro", "Não foi possível carregar a assistência técnica.");
             } finally {
                 setLoading(false);
             }
@@ -58,6 +79,45 @@ const TechnicalAssistanceDetailsScreen: React.FC<TechnicalAssistanceDetailsScree
             ...prev,
             [questionId]: { value, justification },
         }));
+    };
+
+
+
+    const handleSave = async (status: "pending" | "closed") => {
+        try {
+            setLoading(true);
+            const token = await AsyncStorage.getItem("access_token");
+            if (!token) throw new Error("Token não encontrado");
+
+            const formattedAnswers = Object.keys(answers).map((key) => ({
+                question_id: parseInt(key),
+                value: answers[parseInt(key)].value,
+                justification: answers[parseInt(key)].justification || undefined,
+            }));
+
+            const isConnected = await NetInfo.fetch().then(state => state.isConnected);
+
+            if (isConnected) {
+                await service.submitAnswers(token, id, { status, answers: formattedAnswers });
+                Alert.alert("Sucesso", "Respostas salvas com sucesso!");
+            } else {
+                await OfflineService.addRequestToQueue({
+                    type: 'answer',
+                    payload: {
+                        context: { technicalAssistanceId: id },
+                        status,
+                        answers: formattedAnswers,
+                    },
+                });
+                Alert.alert("Modo Offline", "As respostas foram salvas e serão enviadas quando houver conexão.");
+            }
+            navigation.goBack();
+        } catch (error: any) {
+            console.error("Erro ao salvar respostas:", error.message || error);
+            Alert.alert("Erro", "Falha ao salvar respostas.");
+        } finally {
+            setLoading(false);
+        }
     };
 
     const renderQuestion = ({ item }: { item: Question }) => {
@@ -73,7 +133,7 @@ const TechnicalAssistanceDetailsScreen: React.FC<TechnicalAssistanceDetailsScree
                             onValueChange={(value) => handleAnswerChange(item.id, value)}
                             style={styles.input}
                         >
-                            <Picker.Item label="Selecione uma opção" value="" />
+                            <Picker.Item label={t('technicalAssistance.selectOption')} value="" />
                             {item.meta.options?.map((option) => (
                                 <Picker.Item key={option} label={option} value={option} />
                             ))}
@@ -166,32 +226,32 @@ const TechnicalAssistanceDetailsScreen: React.FC<TechnicalAssistanceDetailsScree
     return (
         <ScrollView style={styles.container}>
             <View style={styles.header}>
-                <Text style={styles.headerTitle}>Informações do Equipamento</Text>
-                <Text style={styles.headerText}>Cliente: {data.equipment.client?.name || "N/A"}</Text>
-                <Text style={styles.headerText}>Setor: {data.equipment.sector?.name || "N/A"}</Text>
-                <Text style={styles.headerText}>Tag: {data.equipment.tag}</Text>
-                <Text style={styles.headerText}>Patrimônio: {data.equipment.patrimony}</Text>
-                <Text style={styles.headerText}>Número de Série: {data.equipment.serial_number || "N/A"}</Text>
-                <Text style={styles.headerText}>Fabricante: {data.equipment.brand?.name || "N/A"}</Text>
+                <Text style={styles.headerTitle}>{t('technicalAssistance.equipmentInfo')}</Text>
+                <Text style={styles.headerText}>{t('technicalAssistance.client')}: {data.equipment.client?.name || "N/A"}</Text>
+                <Text style={styles.headerText}>{t('technicalAssistance.sector')}: {data.equipment.sector?.name || "N/A"}</Text>
+                <Text style={styles.headerText}>{t('technicalAssistance.tag')}: {data.equipment.tag}</Text>
+                <Text style={styles.headerText}>{t('technicalAssistance.patrimony')}: {data.equipment.patrimony}</Text>
+                <Text style={styles.headerText}>{t('technicalAssistance.serialNumber')}: {data.equipment.serial_number || "N/A"}</Text>
+                <Text style={styles.headerText}>{t('technicalAssistance.manufacturer')}: {data.equipment.brand?.name || "N/A"}</Text>
                 <Text style={styles.headerText}>
-                    Tecnologia: {data.equipment.technology ? data.equipment.technology.name : "N/A"}
+                    {t('technicalAssistance.technology')}: {data.equipment.technology ? data.equipment.technology.name : "N/A"}
                 </Text>
-                <Text style={styles.headerText}>Tipo de Equipamento: {data.equipment.equipment_type?.name || "N/A"}</Text>
-                <Text style={styles.headerText}>Tipo de Evaporadora: {data.equipment.evaporator_type?.name || "N/A"}</Text>
-                <Text style={styles.headerText}>Tipo de Serpentina: {data.equipment.coil_type?.name || "N/A"}</Text>
-                <Text style={styles.headerText}>Tipo de Coifa: {data.equipment.condenser_type?.name || "N/A"}</Text>
-                <Text style={styles.headerText}>Capacidade: {data.equipment.capacity || "N/A"}</Text>
-                <Text style={styles.headerText}>Voltagem: {data.equipment.voltage || "N/A"}</Text>
-                <Text style={styles.headerText}>Corrente Elétrica: {data.equipment.electric_current || "N/A"}</Text>
+                <Text style={styles.headerText}>{t('technicalAssistance.equipmentType')}: {data.equipment.equipment_type?.name || "N/A"}</Text>
+                <Text style={styles.headerText}>{t('technicalAssistance.evaporatorType')}: {data.equipment.evaporator_type?.name || "N/A"}</Text>
+                <Text style={styles.headerText}>{t('technicalAssistance.coilType')}: {data.equipment.coil_type?.name || "N/A"}</Text>
+                <Text style={styles.headerText}>{t('technicalAssistance.condenserType')}: {data.equipment.condenser_type?.name || "N/A"}</Text>
+                <Text style={styles.headerText}>{t('technicalAssistance.capacity')}: {data.equipment.capacity || "N/A"}</Text>
+                <Text style={styles.headerText}>{t('technicalAssistance.voltage')}: {data.equipment.voltage || "N/A"}</Text>
+                <Text style={styles.headerText}>{t('technicalAssistance.electricCurrent')}: {data.equipment.electric_current || "N/A"}</Text>
                 <Text style={styles.headerText}>
-                    Status: {data.status === "open" ? "Aberto" : data.status === "closed" ? "Fechado" : "Pendente"}
+                    {t('technicalAssistance.status')}: {data.status === "open" ? t('technicalAssistance.open') : data.status === "closed" ? t('technicalAssistance.closed') : t('technicalAssistance.pending')}
                 </Text>
                 <Text style={styles.noteText}>
-                    Esses dados do equipamento são de quando a assistência técnica foi criada e não refletem mudanças posteriores.
+                    {t('technicalAssistance.offlineData')}
                 </Text>
             </View>
             <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Plano de Atividade</Text>
+                <Text style={styles.sectionTitle}>{t('technicalAssistance.activityPlan')}</Text>
                 <FlatList
                     data={data.questions.sort((a, b) => a.order - b.order)}
                     renderItem={renderQuestion}
@@ -199,20 +259,20 @@ const TechnicalAssistanceDetailsScreen: React.FC<TechnicalAssistanceDetailsScree
                 />
             </View>
             <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Seção de Uploads</Text>
+                <Text style={styles.sectionTitle}>{t('technicalAssistance.uploadSection')}</Text>
                 <Text style={styles.placeholderText}>
-                    Em desenvolvimento. Esses dados do equipamento são de quando a assistência técnica foi criada e não refletem mudanças posteriores.
+                    {t('technicalAssistance.offlineData')}
                 </Text>
             </View>
             <View style={styles.buttonContainer}>
-                <TouchableOpacity style={styles.button} onPress={() => console.log("Salvar como Rascunho")}>
-                    <Text style={styles.buttonText}>Salvar como Rascunho</Text>
+                <TouchableOpacity style={styles.button} onPress={() => handleSave("pending")}>
+                    <Text style={styles.buttonText}>{t('technicalAssistance.saveAsDraft')}</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.button} onPress={() => console.log("Salvar")}>
-                    <Text style={styles.buttonText}>Salvar</Text>
+                <TouchableOpacity style={styles.button} onPress={() => handleSave("closed")}>
+                    <Text style={styles.buttonText}>{t('technicalAssistance.save')}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.cancelButton} onPress={() => navigation.goBack()}>
-                    <Text style={styles.buttonText}>Cancelar</Text>
+                    <Text style={styles.buttonText}>{t('technicalAssistance.cancel')}</Text>
                 </TouchableOpacity>
             </View>
         </ScrollView>

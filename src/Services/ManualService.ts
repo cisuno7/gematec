@@ -1,7 +1,8 @@
+// src/Services/ManualService.ts
 import apiClient from "../Context/ApiClient";
 import { setDynamicApiUrl } from "../config/apiConfig";
 import { Category, Manual } from "../Models/Manual";
-import jwtDecode from "jwt-decode";
+import { jwtDecode } from "jwt-decode";
 import * as FileSystem from "expo-file-system";
 
 interface FetchManualsParams {
@@ -13,10 +14,10 @@ interface FetchManualsParams {
 }
 
 export default class ManualService {
-    private static getDynamicBaseUrl(accessToken: string): string {
+    private static async getDynamicBaseUrl(accessToken: string): Promise<string> {
         const decodedToken: any = jwtDecode(accessToken);
         const accountName = decodedToken?.account_name || "default";
-        return setDynamicApiUrl(accountName);
+        return await setDynamicApiUrl(accountName); // Corrigido para setDynamicApiUrl e usa await
     }
 
     static async fetchManuals({
@@ -27,7 +28,8 @@ export default class ManualService {
         categoryId,
     }: FetchManualsParams): Promise<{ results: Manual[]; count: number }> {
         try {
-            const dynamicBaseUrl = ManualService.getDynamicBaseUrl(accessToken);
+            const dynamicBaseUrl = await ManualService.getDynamicBaseUrl(accessToken); // Usa await
+            console.log("[ManualService] Fazendo requisição para:", `${dynamicBaseUrl}/manuals`);
             const params = new URLSearchParams({
                 per_page: perPage.toString(),
                 page: page.toString(),
@@ -51,7 +53,11 @@ export default class ManualService {
                 count: data.count || data.length || 0,
             };
         } catch (error: any) {
-            console.error("[ManualService] Erro ao buscar manuais:", error);
+            console.error("[ManualService] Erro ao buscar manuais:", {
+                message: error.message,
+                status: error.response?.status,
+                data: error.response?.data,
+            });
             if (error.response?.status === 403) {
                 throw new Error("Você não tem permissão para visualizar manuais.");
             }
@@ -61,7 +67,8 @@ export default class ManualService {
 
     static async fetchManualDetails(accessToken: string, manualId: number): Promise<Manual> {
         try {
-            const dynamicBaseUrl = ManualService.getDynamicBaseUrl(accessToken);
+            const dynamicBaseUrl = await ManualService.getDynamicBaseUrl(accessToken); // Usa await
+            console.log("[ManualService] Fazendo requisição para:", `${dynamicBaseUrl}/manuals/${manualId}`);
             const url = `/manuals/${manualId}`;
             const response = await apiClient.get(url, {
                 baseURL: dynamicBaseUrl,
@@ -69,7 +76,11 @@ export default class ManualService {
             });
             return response.data;
         } catch (error: any) {
-            console.error("[ManualService] Erro ao buscar detalhes do manual:", error);
+            console.error("[ManualService] Erro ao buscar detalhes do manual:", {
+                message: error.message,
+                status: error.response?.status,
+                data: error.response?.data,
+            });
             if (error.response?.status === 403) {
                 throw new Error("Você não tem permissão para visualizar detalhes do manual.");
             }
@@ -79,7 +90,8 @@ export default class ManualService {
 
     static async fetchCategories(accessToken: string): Promise<Category[]> {
         try {
-            const dynamicBaseUrl = ManualService.getDynamicBaseUrl(accessToken);
+            const dynamicBaseUrl = await ManualService.getDynamicBaseUrl(accessToken); // Usa await
+            console.log("[ManualService] Fazendo requisição para:", `${dynamicBaseUrl}/manual_categories`);
             const url = `/manual_categories`;
             const response = await apiClient.get(url, {
                 baseURL: dynamicBaseUrl,
@@ -87,7 +99,11 @@ export default class ManualService {
             });
             return Array.isArray(response.data) ? response.data : response.data.results || [];
         } catch (error: any) {
-            console.error("[ManualService] Erro ao buscar categorias:", error);
+            console.error("[ManualService] Erro ao buscar categorias:", {
+                message: error.message,
+                status: error.response?.status,
+                data: error.response?.data,
+            });
             if (error.response?.status === 403) {
                 throw new Error("Você não tem permissão para visualizar categorias de manuais.");
             }
@@ -112,10 +128,14 @@ export default class ManualService {
             if (!downloadResult || !downloadResult.uri) {
                 throw new Error("Download do manual falhou ou foi cancelado.");
             }
-            console.log('Finished downloading to ', downloadResult.uri);
+            console.log("[ManualService] Download concluído em:", downloadResult.uri);
             return downloadResult.uri as string;
         } catch (error: any) {
-            console.error("[ManualService] Erro ao baixar manual:", error);
+            console.error("[ManualService] Erro ao baixar manual:", {
+                message: error.message,
+                status: error.response?.status,
+                data: error.response?.data,
+            });
             throw new Error(`Erro ao baixar manual: ${error.message || 'Erro desconhecido'}`);
         }
     }

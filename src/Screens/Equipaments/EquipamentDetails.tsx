@@ -7,6 +7,9 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
+  Modal,
+  TextInput,
+  Picker,
 } from "react-native";
 import { RouteProp } from "@react-navigation/native";
 import { DrawerNavigationProp } from "@react-navigation/drawer";
@@ -15,6 +18,7 @@ import TechnicalAssistanceService from "../../Services/TechnicalAssistanceServic
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { usePermissions } from "../../Context/PermissionsContext";
 import apiClient from "../../Context/ApiClient";
+import ActivityService from "../../Services/ActivityService";
 
 import { API_BASE_URL } from "../../config/apiConfig";
 interface EquipmentDetailsScreenProps {
@@ -29,9 +33,15 @@ const EquipmentDetailsScreen: React.FC<EquipmentDetailsScreenProps> = ({ route, 
   const [loading, setLoading] = useState(true);
   const parsedEquipmentId = parseInt(equipmentId as unknown as string);
   const [loadingCreate, setLoadingCreate] = useState(false);
-
-
-
+  const [showCreateActivity, setShowCreateActivity] = useState(false);
+  const [activityTypes, setActivityTypes] = useState<any[]>([]);
+  const [activityForm, setActivityForm] = useState({
+    name: "",
+    activity_type_id: undefined,
+    start_date: new Date().toISOString().slice(0, 10),
+    end_date: "",
+  });
+  const [creatingActivity, setCreatingActivity] = useState(false);
 
 
   useEffect(() => {
@@ -75,6 +85,42 @@ const EquipmentDetailsScreen: React.FC<EquipmentDetailsScreenProps> = ({ route, 
     }
   };
 
+  const openCreateActivityModal = async () => {
+    setShowCreateActivity(true);
+    try {
+      const token = await AsyncStorage.getItem("access_token");
+      if (!token) throw new Error("Token não encontrado");
+      const types = await ActivityService.fetchActivityTypes(token);
+      setActivityTypes(types);
+    } catch (err) {
+      Alert.alert("Erro", "Não foi possível carregar tipos de atividade.");
+    }
+  };
+
+  const handleCreateActivity = async () => {
+    try {
+      setCreatingActivity(true);
+      const token = await AsyncStorage.getItem("access_token");
+      if (!token) throw new Error("Token não encontrado");
+      // 1. Criar atividade
+      const activity = await ActivityService.createActivity({
+        name: activityForm.name,
+        activity_type_id: activityForm.activity_type_id,
+        start_date: activityForm.start_date,
+        end_date: activityForm.end_date,
+      }, token);
+      // 2. Vincular equipamento
+      await ActivityService.linkEquipmentToActivity(activity.id, { equipment_id: parsedEquipmentId }, token);
+      setShowCreateActivity(false);
+      Alert.alert("Sucesso", "Atividade criada e equipamento vinculado!");
+      navigation.navigate("ActivityHistoryScreen", { equipmentId: parsedEquipmentId });
+    } catch (err) {
+      Alert.alert("Erro", "Não foi possível criar a atividade.");
+    } finally {
+      setCreatingActivity(false);
+    }
+  };
+
   if (loading) {
     return <ActivityIndicator size="large" color="#007BFF" />;
   }
@@ -108,12 +154,7 @@ const EquipmentDetailsScreen: React.FC<EquipmentDetailsScreenProps> = ({ route, 
       <View style={styles.buttonContainer}>
         <TouchableOpacity
           style={styles.button}
-          onPress={() =>
-            navigation.navigate("ActivityHistoryScreen", {
-              equipmentId: parsedEquipmentId,
-
-            })
-          }
+          onPress={() => navigation.navigate("ActivityHistoryScreen", { equipmentId: parsedEquipmentId })}
         >
           <Text style={styles.buttonText}>Visualizar Atividades</Text>
         </TouchableOpacity>
@@ -128,7 +169,74 @@ const EquipmentDetailsScreen: React.FC<EquipmentDetailsScreenProps> = ({ route, 
             <Text style={styles.buttonText}>Criar Assistência Técnica</Text>
           )}
         </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.button}
+          onPress={openCreateActivityModal}
+        >
+          <Text style={styles.buttonText}>Criar Atividade</Text>
+        </TouchableOpacity>
       </View>
+      {/* Modal de criação de atividade */}
+      <Modal
+        visible={showCreateActivity}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowCreateActivity(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'center', alignItems: 'center' }}>
+          <View style={{ backgroundColor: '#fff', padding: 20, borderRadius: 10, width: '90%' }}>
+            <Text style={{ fontWeight: 'bold', fontSize: 18, marginBottom: 10 }}>Criar Atividade</Text>
+            <TextInput
+              style={{ borderWidth: 1, borderColor: '#ccc', borderRadius: 5, padding: 8, marginBottom: 10 }}
+              placeholder="Nome da atividade"
+              value={activityForm.name}
+              onChangeText={text => setActivityForm(f => ({ ...f, name: text }))}
+            />
+            <Text>Tipo de Atividade:</Text>
+            <View style={{ borderWidth: 1, borderColor: '#ccc', borderRadius: 5, marginBottom: 10 }}>
+              <Picker
+                selectedValue={activityForm.activity_type_id}
+                onValueChange={v => setActivityForm(f => ({ ...f, activity_type_id: v }))}
+              >
+                <Picker.Item label="Selecione..." value={undefined} />
+                {activityTypes.map((t: any) => (
+                  <Picker.Item key={t.id} label={t.name} value={t.id} />
+                ))}
+              </Picker>
+            </View>
+            <Text>Data de início:</Text>
+            <TextInput
+              style={{ borderWidth: 1, borderColor: '#ccc', borderRadius: 5, padding: 8, marginBottom: 10 }}
+              placeholder="AAAA-MM-DD"
+              value={activityForm.start_date}
+              onChangeText={text => setActivityForm(f => ({ ...f, start_date: text }))}
+            />
+            <Text>Data final:</Text>
+            <TextInput
+              style={{ borderWidth: 1, borderColor: '#ccc', borderRadius: 5, padding: 8, marginBottom: 10 }}
+              placeholder="AAAA-MM-DD"
+              value={activityForm.end_date}
+              onChangeText={text => setActivityForm(f => ({ ...f, end_date: text }))}
+            />
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
+              <TouchableOpacity
+                style={[styles.button, { marginRight: 10 }]}
+                onPress={() => setShowCreateActivity(false)}
+                disabled={creatingActivity}
+              >
+                <Text style={styles.buttonText}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.button}
+                onPress={handleCreateActivity}
+                disabled={creatingActivity}
+              >
+                {creatingActivity ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.buttonText}>Criar</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 };

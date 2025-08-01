@@ -15,18 +15,26 @@ import { DrawerNavigationProp } from "@react-navigation/drawer";
 import ActivityService from "../../Services/ActivityService";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { usePermissions } from "../../Context/PermissionsContext";
-import { API_BASE_URL } from "../../config/apiConfig"; // Adicione esta importação no topo
+
 interface ActivityHistoryScreenProps {
     navigation: DrawerNavigationProp<RootStackParamList, "ActivityHistoryScreen">;
     route: RouteProp<RootStackParamList, "ActivityHistoryScreen">;
 }
 
+const STATUS_OPTIONS = [
+    { label: "Todos", value: "all" },
+    { label: "Aberto", value: "open" },
+    { label: "Pendente", value: "pending" },
+    { label: "Fechado", value: "closed" },
+];
+
 const ActivityHistoryScreen: React.FC<ActivityHistoryScreenProps> = ({ route, navigation }) => {
-    const { equipmentId } = route.params;
+    const { equipmentId, activityTypeSlug, status } = route.params || {};
     const [activities, setActivities] = useState<any[]>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [selectedType, setSelectedType] = useState<string>("pmoc"); // Padrão é PMOC
+    const [selectedType, setSelectedType] = useState<string>(activityTypeSlug || "pmoc");
+    const [selectedStatus, setSelectedStatus] = useState<string[]>(status || ["open", "pending"]);
     const [currentPage, setCurrentPage] = useState(1);
     const [perPage] = useState(10);
     const [totalPages, setTotalPages] = useState(1);
@@ -48,7 +56,7 @@ const ActivityHistoryScreen: React.FC<ActivityHistoryScreenProps> = ({ route, na
 
     useEffect(() => {
         fetchActivities();
-    }, [currentPage, selectedType]);
+    }, [currentPage, selectedType, selectedStatus]);
 
     const fetchActivities = async () => {
         try {
@@ -57,22 +65,35 @@ const ActivityHistoryScreen: React.FC<ActivityHistoryScreenProps> = ({ route, na
             const token = await AsyncStorage.getItem("access_token");
             if (!token) throw new Error("Token não encontrado");
 
-            const params = {
-                page: currentPage,
-                per_page: perPage,
-                activity_type: selectedType !== "all" ? selectedType : undefined,
-                token: token,
-            };
-
-            const response = await activityService.fetchActivities(equipmentId, params);
-            setActivities(response.results || []);
-            setTotalPages(Math.ceil(response.count / perPage) || 1);
+            if (equipmentId) {
+                // Histórico de atividades de um equipamento específico
+                const params = {
+                    page: currentPage,
+                    per_page: perPage,
+                    activity_type: selectedType !== "all" ? selectedType : undefined,
+                    token: token,
+                };
+                const response = await activityService.fetchActivities(equipmentId, params);
+                setActivities(response.results || []);
+                setTotalPages(Math.ceil(response.count / perPage) || 1);
+            } else {
+                // Listagem geral de atividades
+                const params = {
+                    page: currentPage,
+                    per_page: perPage,
+                    activity_type_slug: selectedType !== "all" ? selectedType : undefined,
+                    status: selectedStatus.includes("all") ? undefined : selectedStatus,
+                    token: token,
+                };
+                const response = await ActivityService.fetchAllActivities(params);
+                setActivities(response.results || []);
+                setTotalPages(Math.ceil(response.count / perPage) || 1);
+            }
         } catch (error: any) {
             const errorMessage = error.response?.status === 500
                 ? "Erro interno no servidor ao buscar atividades. Tente novamente ou contate o suporte."
                 : error.message || "Falha ao buscar atividades.";
             setError(errorMessage);
-            console.error("[ActivityHistoryScreen] Erro ao buscar atividades:", errorMessage);
             setActivities([]);
         } finally {
             setLoading(false);
@@ -95,8 +116,9 @@ const ActivityHistoryScreen: React.FC<ActivityHistoryScreenProps> = ({ route, na
         const isPmoc = item.type === "pmoc" && canViewPmoc;
         const isServiceOrder = item.type === "service_order" && canViewServiceOrder;
         const isTechnicalAssistance = item.type === "technical_assistance" && canViewTechnicalAssistance;
+        const isInstalation = item.type === "instalation"; // Novo tipo
 
-        if (!isPmoc && !isServiceOrder && !isTechnicalAssistance) {
+        if (!isPmoc && !isServiceOrder && !isTechnicalAssistance && !isInstalation) {
             return null;
         }
 
@@ -110,6 +132,8 @@ const ActivityHistoryScreen: React.FC<ActivityHistoryScreenProps> = ({ route, na
                 });
             } else if (isTechnicalAssistance) {
                 navigation.navigate("TechnicalAssistanceDetails", { id: item.id });
+            } else if (isInstalation) {
+                // Adapte para tela de instalação se necessário
             }
         };
 
@@ -125,64 +149,91 @@ const ActivityHistoryScreen: React.FC<ActivityHistoryScreenProps> = ({ route, na
         );
     };
 
+    // Filtro de status (múltipla seleção)
+    const handleStatusChange = (value: string) => {
+        if (value === "all") {
+            setSelectedStatus(["all"]);
+        } else {
+            setSelectedStatus((prev) => {
+                const newStatus = prev.includes(value)
+                    ? prev.filter((s) => s !== value)
+                    : [...prev.filter((s) => s !== "all"), value];
+                return newStatus.length === 0 ? ["all"] : newStatus;
+            });
+        }
+        setCurrentPage(1);
+    };
+
     return (
         <View style={styles.container}>
-            <Text style={styles.title}>Histórico de Atividades do Equipamento</Text>
+            <Text style={styles.title}>{equipmentId ? "Histórico de Atividades do Equipamento" : "Atividades"}</Text>
 
             {/* Filtro de Tipo de Atividade */}
             <Picker
                 selectedValue={selectedType}
                 onValueChange={(itemValue) => {
                     setSelectedType(itemValue);
-                    setCurrentPage(1); // Reseta para a primeira página ao mudar o filtro
+                    setCurrentPage(1);
                 }}
                 style={styles.picker}
             >
-                {(canViewPmoc || canViewServiceOrder || canViewTechnicalAssistance) && (
-                    <Picker.Item label="Todos" value="all" />
-                )}
-                {canViewPmoc && <Picker.Item label="PMOC" value="pmoc" />}
-                {canViewServiceOrder && <Picker.Item label="Ordem de Serviço" value="service_order" />}
-                {canViewTechnicalAssistance && <Picker.Item label="Assistência Técnica" value="technical_assistance" />}
-                {/* "Todos" será adicionado no futuro */}
+                <Picker.Item label="Todos" value="all" />
+                <Picker.Item label="PMOC" value="pmoc" />
+                <Picker.Item label="Ordem de Serviço" value="service_order" />
+                <Picker.Item label="Assistência Técnica" value="technical_assistance" />
+                <Picker.Item label="Instalação" value="instalation" />
             </Picker>
+
+            {/* Filtro de Status */}
+            <View style={styles.statusFilterContainer}>
+                {STATUS_OPTIONS.map((opt) => (
+                    <TouchableOpacity
+                        key={opt.value}
+                        style={[
+                            styles.statusOption,
+                            selectedStatus.includes(opt.value) && styles.statusOptionSelected,
+                        ]}
+                        onPress={() => handleStatusChange(opt.value)}
+                    >
+                        <Text
+                            style={[
+                                styles.statusOptionText,
+                                selectedStatus.includes(opt.value) && styles.statusOptionTextSelected,
+                            ]}
+                        >
+                            {opt.label}
+                        </Text>
+                    </TouchableOpacity>
+                ))}
+            </View>
 
             {loading ? (
                 <ActivityIndicator size="large" color="#007BFF" />
             ) : error ? (
-                <View>
-                    <Text style={styles.errorText}>{error}</Text>
-                    <Button title="Tentar Novamente" onPress={fetchActivities} />
-                </View>
+                <Text style={styles.errorText}>{error}</Text>
             ) : (
-                <View style={styles.table}>
-                    <View style={styles.tableHeader}>
-                        <Text style={styles.headerText}>Cliente</Text>
-                        <Text style={styles.headerText}>Data de Abertura</Text>
-                        <Text style={styles.headerText}>Status</Text>
-                        <Text style={styles.headerText}>Deadline</Text>
-                    </View>
-                    <FlatList
-                        data={activities}
-                        renderItem={renderActivityItem}
-                        keyExtractor={(item) => item.id.toString()}
-                        ListEmptyComponent={<Text style={styles.emptyText}>Nenhuma atividade encontrada.</Text>}
-                    />
-                    <View style={styles.pagination}>
-                        <Button
-                            title="Anterior"
-                            onPress={() => setCurrentPage((p) => Math.max(p - 1, 1))}
-                            disabled={currentPage === 1}
-                        />
-                        <Text style={styles.pageText}>Página {currentPage} de {totalPages}</Text>
-                        <Button
-                            title="Próximo"
-                            onPress={() => setCurrentPage((p) => (p < totalPages ? p + 1 : p))}
-                            disabled={currentPage === totalPages}
-                        />
-                    </View>
-                </View>
+                <FlatList
+                    data={activities}
+                    keyExtractor={(item) => `${item.id}`}
+                    renderItem={renderActivityItem}
+                    ListEmptyComponent={<Text style={styles.emptyText}>Nenhuma atividade encontrada.</Text>}
+                />
             )}
+
+            {/* Paginação */}
+            <View style={styles.paginationContainer}>
+                <Button
+                    title="Anterior"
+                    onPress={() => setCurrentPage((p) => Math.max(p - 1, 1))}
+                    disabled={currentPage === 1}
+                />
+                <Text style={styles.pageText}>Página {currentPage} de {totalPages}</Text>
+                <Button
+                    title="Próxima"
+                    onPress={() => setCurrentPage((p) => (p < totalPages ? p + 1 : p))}
+                    disabled={currentPage === totalPages}
+                />
+            </View>
         </View>
     );
 };
@@ -196,62 +247,67 @@ const styles = StyleSheet.create({
     title: {
         fontSize: 20,
         fontWeight: "bold",
-        marginBottom: 10,
+        marginBottom: 15,
         textAlign: "center",
     },
     picker: {
-        backgroundColor: "#fff",
-        marginBottom: 16,
-        borderWidth: 1,
-        borderColor: "#ddd",
-        borderRadius: 4,
+        marginBottom: 10,
     },
-    errorText: {
-        fontSize: 16,
-        color: "red",
-        textAlign: "center",
-        marginVertical: 20,
-    },
-    table: {
-        flex: 1,
-        borderWidth: 1,
-        borderColor: "#ddd",
-        borderRadius: 4,
-    },
-    tableHeader: {
+    statusFilterContainer: {
         flexDirection: "row",
-        backgroundColor: "#f5f5f5",
-        paddingVertical: 8,
-        borderBottomWidth: 1,
-        borderBottomColor: "#ddd",
+        justifyContent: "center",
+        marginBottom: 10,
+        flexWrap: "wrap",
+    },
+    statusOption: {
+        borderWidth: 1,
+        borderColor: "#007BFF",
+        borderRadius: 16,
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        marginHorizontal: 4,
+        marginBottom: 4,
+    },
+    statusOptionSelected: {
+        backgroundColor: "#007BFF",
+    },
+    statusOptionText: {
+        color: "#007BFF",
+    },
+    statusOptionTextSelected: {
+        color: "#fff",
     },
     tableRow: {
-        flexDirection: "row",
-        paddingVertical: 8,
-        borderBottomWidth: 1,
-        borderBottomColor: "#eee",
-    },
-    headerText: {
-        flex: 1,
-        fontWeight: "bold",
-        textAlign: "center",
-    },
-    cellText: {
-        flex: 1,
-        textAlign: "center",
-        fontSize: 14,
-    },
-    emptyText: {
-        textAlign: "center",
-        fontSize: 16,
-        color: "#666",
-        marginTop: 20,
-    },
-    pagination: {
         flexDirection: "row",
         justifyContent: "space-between",
         alignItems: "center",
         paddingVertical: 10,
+        borderBottomWidth: 1,
+        borderColor: "#ccc",
+    },
+    cellText: {
+        flex: 1,
+        fontSize: 14,
+        color: "#333",
+        textAlign: "center",
+    },
+    errorText: {
+        color: "#dc3545",
+        textAlign: "center",
+        marginVertical: 20,
+    },
+    emptyText: {
+        fontSize: 14,
+        color: "#666",
+        textAlign: "center",
+        marginVertical: 20,
+    },
+    paginationContainer: {
+        flexDirection: "row",
+        justifyContent: "space-between",
+        alignItems: "center",
+        marginTop: 16,
+        paddingHorizontal: 16,
     },
     pageText: {
         fontSize: 14,

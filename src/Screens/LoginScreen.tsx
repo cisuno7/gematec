@@ -7,8 +7,7 @@ import { NavigationProp, RouteProp } from "@react-navigation/native";
 import AuthService from '../Services/AuthService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import LoginRequest from '../Models/LoginRequest';
-import { decodeToken } from "../Services/PermissionsService";
-import PermissionsContext, { usePermissions } from "../Context/PermissionsContext";
+import { jwtDecode } from "jwt-decode";
 import { useUser } from "../Context/UserContext";
 import { RootStackParamList } from "../Routers/AppRouter";
 import { useAppNavigation } from "../Context/NavigationContext";
@@ -25,7 +24,6 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ route, navigation }) => {
   const [isPasswordVisible, setPasswordVisible] = useState(false);
   const [isChecked, setChecked] = useState(false);
   const [accountError, setAccountError] = useState("");
-  const { setPermissions } = useContext(PermissionsContext);
   const { setUsername, login } = useUser();
   const appNavigation = useAppNavigation();
   useEffect(() => {
@@ -47,9 +45,26 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ route, navigation }) => {
     loadKeepLoggedIn();
   }, []); // Empty dependency array means this runs once on mount
 
+  const RESERVED_ACCOUNT_NAMES = [
+    'admin', 'api', 'www', 'mail', 'ftp', 'localhost', 'public', 'default', 'postgres', 'root', 'test'
+  ];
+
   const validateAccount = (accountName: string) => {
     if (!accountName.trim()) {
       setAccountError("Por favor, informe a conta.");
+      return false;
+    }
+    const regex = /^[a-z0-9_]+$/;
+    if (!regex.test(accountName)) {
+      setAccountError("A conta deve conter apenas letras minúsculas, números e underline.");
+      return false;
+    }
+    if (accountName.length > 64) {
+      setAccountError("A conta não pode ter mais de 64 caracteres.");
+      return false;
+    }
+    if (RESERVED_ACCOUNT_NAMES.includes(accountName)) {
+      setAccountError(`"${accountName}" é uma palavra reservada e não pode ser usada como conta.`);
       return false;
     }
     setAccountError("");
@@ -106,24 +121,17 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ route, navigation }) => {
       await login(response.access, response.refresh, account || '', isChecked);
       console.log('Login bem-sucedido. Tokens, conta e preferência de "manter logado" salvos via UserContext.');
 
-      // Decodificar o access token para obter permissões e dados do usuário
+      // Decodificar o access token para obter dados do usuário
       try {
-        const decodedToken = decodeToken(response.access);
-        const permissions = decodedToken.permissions || [];
+        const decodedToken: any = jwtDecode(response.access);
         const usernameFromToken = decodedToken.user_name || "Usuário";
-
-        await AsyncStorage.setItem("permissions", JSON.stringify(permissions));
-        setPermissions(permissions);
         setUsername(usernameFromToken);
       } catch (tokenError) {
         console.error('Erro ao decodificar token:', tokenError);
         // Não bloquear o login por isso, apenas usar valores padrão
       }
       // Navegar explicitamente para a HomeScreen após o login
-      appNavigation.reset({
-        index: 0,
-        routes: [{ name: 'HomeScreen' }],
-      });
+      navigation.navigate('AuthenticatedFlow');
       // A navegação para a tela inicial será tratada automaticamente pelo AppRouter
       // com base no estado de autenticação do UserContext.
     } catch (error: any) {

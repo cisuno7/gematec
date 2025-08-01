@@ -29,7 +29,7 @@ const ClientList: React.FC<ClientListProps> = ({ hasContract, navigation }) => {
   const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(false);
 
-  if (!hasPermission("list_clients")) {
+  if (!hasPermission("clients.list_clients")) {
     return (
       <View style={styles.container}>
         <Text style={styles.errorText}>Você não tem permissão para visualizar clientes.</Text>
@@ -71,29 +71,33 @@ const ClientList: React.FC<ClientListProps> = ({ hasContract, navigation }) => {
   };
 
   const renderClientItem = ({ item }: { item: Client }) => (
-    <TouchableOpacity
-      style={styles.itemContainer}
-      onPress={() => navigation.navigate("ClientDetailScreen", { clientId: item.id })}
-    >
-      <Text style={styles.itemText}>Nome: {item.name}</Text>
-      <Text style={styles.itemText}>Email: {item.email}</Text>
-      {hasContract ? (
-        <Text style={styles.itemText}>Telefone: {item.phone || "N/A"}</Text>
-      ) : (
-        <>
-          <Text style={styles.itemText}>Documento: {item.document || "N/A"}</Text>
-          <Text style={styles.itemText}>Telefone: {item.phone || "N/A"}</Text>
-          <Text style={styles.itemText}>Contrato Ativo: {item.hasContract ? "Sim" : "Não"}</Text>
-        </>
-      )}
-      {/* Adicionando sectors e addresses */}
-      <Text style={styles.itemText}>
-        Setores: {item.sectors?.map(s => s.name).join(", ") || "Nenhum"}
-      </Text>
-      <Text style={styles.itemText}>
-        Endereços: {item.addresses?.length || 0} cadastrado(s)
-      </Text>
-    </TouchableOpacity>
+    <View style={styles.itemContainer}>
+      <View style={styles.clientInfo}>
+        <Text style={styles.itemText}>Nome: {item.name}</Text>
+        <Text style={styles.itemText}>Email: {item.email}</Text>
+        <Text style={styles.itemText}>Documento: {item.document || "N/A"}</Text>
+      </View>
+
+      <View style={styles.actionButtons}>
+        {hasPermission("clients.view_client") && (
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => navigation.navigate("ClientDetailScreen", { clientId: item.id })}
+          >
+            <Text style={styles.actionButtonText}>👁️ Visualizar</Text>
+          </TouchableOpacity>
+        )}
+
+        {hasPermission("clients.list_sectors") && (
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => navigation.navigate("ClientSectorsScreen", { clientId: item.id })}
+          >
+            <Text style={styles.actionButtonText}>📁 Setores</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    </View>
   );
   return (
     <View style={styles.container}>
@@ -165,10 +169,34 @@ const styles = StyleSheet.create({
     padding: 15,
     borderBottomWidth: 1,
     borderColor: "#ccc",
+    backgroundColor: "#fff",
+    marginBottom: 5,
+    borderRadius: 5,
+  },
+  clientInfo: {
+    marginBottom: 10,
   },
   itemText: {
     fontSize: 14,
     color: "#333",
+    marginBottom: 2,
+  },
+  actionButtons: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    marginTop: 10,
+  },
+  actionButton: {
+    backgroundColor: "#007BFF",
+    padding: 8,
+    borderRadius: 5,
+    minWidth: 100,
+    alignItems: "center",
+  },
+  actionButtonText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "bold",
   },
   emptyText: {
     textAlign: "center",

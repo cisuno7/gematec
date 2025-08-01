@@ -7,7 +7,9 @@ import { DrawerNavigationProp } from "@react-navigation/drawer";
 import { RootStackParamList } from "../Routers/AppRouter";
 import ManualService from "../Services/ManualService";
 import { usePermissions } from "../Context/PermissionsContext";
+import { useLanguage } from "../Context/LanguageContext";
 import { Manual, Category } from "../Models/Manual";
+import { MaterialIcons } from '@expo/vector-icons';
 
 interface ManualsScreenProps {
   route: RouteProp<RootStackParamList, "ManualsScreen">;
@@ -16,6 +18,7 @@ interface ManualsScreenProps {
 
 const ManualsScreen: React.FC<ManualsScreenProps> = ({ navigation }) => {
   const { hasPermission } = usePermissions();
+  const { t } = useLanguage();
   const [manuals, setManuals] = useState<Manual[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [search, setSearch] = useState("");
@@ -26,13 +29,7 @@ const ManualsScreen: React.FC<ManualsScreenProps> = ({ navigation }) => {
   const [loading, setLoading] = useState(false);
   const [loadingCategories, setLoadingCategories] = useState(false);
 
-  if (!hasPermission("view_manual")) {
-    return (
-      <View style={styles.container}>
-        <Text style={styles.errorText}>Você não tem permissão para visualizar manuais.</Text>
-      </View>
-    );
-  }
+
 
   const fetchManuals = async () => {
     try {
@@ -52,7 +49,7 @@ const ManualsScreen: React.FC<ManualsScreenProps> = ({ navigation }) => {
       setTotalPages(Math.ceil(response.count / perPage) || 1);
     } catch (error: any) {
       console.error("[ManualsScreen] Erro ao buscar manuais:", error);
-      Alert.alert("Erro", error.message || "Não foi possível carregar os manuais.");
+      Alert.alert(t('common.error'), error.message || t('manuals.loadError'));
     } finally {
       setLoading(false);
     }
@@ -67,7 +64,7 @@ const ManualsScreen: React.FC<ManualsScreenProps> = ({ navigation }) => {
       setCategories(response);
     } catch (error: any) {
       console.error("[ManualsScreen] Erro ao buscar categorias:", error);
-      Alert.alert("Erro", error.message || "Não foi possível carregar as categorias.");
+      Alert.alert(t('common.error'), error.message || t('manuals.categoriesLoadError'));
     } finally {
       setLoadingCategories(false);
     }
@@ -77,12 +74,12 @@ const ManualsScreen: React.FC<ManualsScreenProps> = ({ navigation }) => {
     try {
       const token = await AsyncStorage.getItem("access_token");
       if (!token) throw new Error("Token de acesso não encontrado.");
-      if (!manual.file_url) throw new Error("URL do arquivo não disponível.");
+      if (!manual.file_url) throw new Error(t('manuals.fileUrlNotAvailable'));
       const fileUri = await ManualService.downloadManual(manual.file_url, token);
-      Alert.alert("Sucesso", `Manual baixado em: ${fileUri}`);
+      Alert.alert(t('common.success'), t('manuals.downloadSuccess'));
     } catch (error: any) {
       console.error("[ManualsScreen] Erro ao baixar manual:", error);
-      Alert.alert("Erro", error.message || "Não foi possível baixar o manual.");
+      Alert.alert(t('common.error'), error.message || t('manuals.downloadError'));
     }
   };
 
@@ -104,17 +101,17 @@ const ManualsScreen: React.FC<ManualsScreenProps> = ({ navigation }) => {
       style={styles.itemContainer}
       onPress={() => handleDownload(item)}
     >
-      <Text style={styles.itemText}>Manual: {item.name}</Text>
-      <Text style={styles.itemText}>Categoria: {item.category.name}</Text>
+      <Text style={styles.itemText}>{t('manuals.manual')}: {item.name}</Text>
+      <Text style={styles.itemText}>{t('manuals.category')}: {item.category.name}</Text>
     </TouchableOpacity>
   );
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Manuais</Text>
+      <Text style={styles.title}>{t('menu.manuals')}</Text>
       <TextInput
         style={styles.input}
-        placeholder="Pesquisar manual (mín. 3 caracteres)"
+        placeholder={t('manuals.searchPlaceholder')}
         placeholderTextColor="#666"
         value={search}
         onChangeText={setSearch}
@@ -123,19 +120,27 @@ const ManualsScreen: React.FC<ManualsScreenProps> = ({ navigation }) => {
       {loadingCategories ? (
         <ActivityIndicator size="small" color="#007BFF" />
       ) : (
-        <Picker
-          selectedValue={selectedCategory}
-          onValueChange={(value) => {
-            setSelectedCategory(value);
-            setPage(1);
-          }}
-          style={[styles.picker, { backgroundColor: '#fff' }]}
-        >
-          <Picker.Item label="Todas as Categorias" value="" />
-          {categories.map((category) => (
-            <Picker.Item key={category.id} label={category.name} value={category.id.toString()} />
-          ))}
-        </Picker>
+        <View style={{ position: 'relative' }}>
+          <Picker
+            selectedValue={selectedCategory}
+            onValueChange={(value) => {
+              setSelectedCategory(value);
+              setPage(1);
+            }}
+            style={[styles.picker, { backgroundColor: '#fff', color: '#222' }]}
+          >
+            <Picker.Item label={t('manuals.allCategories')} value="" color="#888" />
+            {categories.map((category) => (
+              <Picker.Item key={category.id} label={category.name} value={category.id.toString()} color="#CCCCCC" />
+            ))}
+          </Picker>
+          <MaterialIcons
+            name="arrow-drop-down"
+            size={24}
+            color="#888"
+            style={{ position: 'absolute', right: 10, top: 13, pointerEvents: 'none' }}
+          />
+        </View>
       )}
       {loading ? (
         <ActivityIndicator size="large" color="#007BFF" />
@@ -145,7 +150,7 @@ const ManualsScreen: React.FC<ManualsScreenProps> = ({ navigation }) => {
             data={manuals}
             keyExtractor={(item) => item.id.toString()}
             renderItem={renderManualItem}
-            ListEmptyComponent={<Text style={styles.emptyText}>Nenhum manual encontrado.</Text>}
+            ListEmptyComponent={<Text style={styles.emptyText}>{t('manuals.noManualsFound')}</Text>}
           />
           <View style={styles.paginationContainer}>
             <TouchableOpacity
@@ -153,15 +158,15 @@ const ManualsScreen: React.FC<ManualsScreenProps> = ({ navigation }) => {
               onPress={() => setPage(page - 1)}
               style={[styles.pageButton, page === 1 && styles.disabledButton]}
             >
-              <Text style={styles.pageButtonText}>Anterior</Text>
+              <Text style={styles.pageButtonText}>{t('common.previous')}</Text>
             </TouchableOpacity>
-            <Text style={styles.pageText}>Página {page} de {totalPages}</Text>
+            <Text style={styles.pageText}>{t('common.page')} {page} {t('common.of')} {totalPages}</Text>
             <TouchableOpacity
               disabled={page === totalPages}
               onPress={() => setPage(page + 1)}
               style={[styles.pageButton, page === totalPages && styles.disabledButton]}
             >
-              <Text style={styles.pageButtonText}>Próxima</Text>
+              <Text style={styles.pageButtonText}>{t('common.next')}</Text>
             </TouchableOpacity>
           </View>
         </>

@@ -22,6 +22,20 @@ export interface Address {
   zip_code?: string; //
 }
 
+export interface Contract {
+  id: number;
+  start_date: string;
+  end_date: string;
+  activity_frequency: string;
+}
+
+export interface Contact {
+  id: number;
+  name: string;
+  email: string;
+  phone: string;
+}
+
 export interface IClient {
   id: number;
   name: string;
@@ -31,6 +45,14 @@ export interface IClient {
   hasContract: boolean;
   sectors: Sector[] | null;
   addresses: Address[] | null;
+  // Novos campos
+  fantasy_name?: string;
+  state_registration?: string;
+  opening_date?: string;
+  total_sectors?: number;
+  total_equipments?: number;
+  contracts?: Contract[];
+  contacts?: Contact[];
 }
 
 export default class Client implements IClient {
@@ -42,6 +64,14 @@ export default class Client implements IClient {
   hasContract: boolean;
   sectors: Sector[] | null;
   addresses: Address[] | null;
+  // Novos campos
+  fantasy_name?: string;
+  state_registration?: string;
+  opening_date?: string;
+  total_sectors?: number;
+  total_equipments?: number;
+  contracts?: Contract[];
+  contacts?: Contact[];
 
   constructor(data: any) {
     this.id = data.id;
@@ -52,5 +82,13 @@ export default class Client implements IClient {
     this.hasContract = data.has_contract || false;
     this.sectors = data.sectors || null;
     this.addresses = data.addresses || null;
+    // Novos campos
+    this.fantasy_name = data.fantasy_name;
+    this.state_registration = data.state_registration;
+    this.opening_date = data.opening_date;
+    this.total_sectors = data.total_sectors;
+    this.total_equipments = data.total_equipments;
+    this.contracts = data.contracts;
+    this.contacts = data.contacts;
   }
 }

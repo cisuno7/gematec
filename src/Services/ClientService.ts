@@ -1,7 +1,8 @@
 import axios from 'axios';
 import apiClient from "../Context/ApiClient";
 import Client from '../Models/Clientes';
-import { API_BASE_URL } from "../config/apiConfig"; // Adicione esta importação no topo
+import { setDynamicApiUrl } from "../config/apiConfig";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 export default class ClientService {
 
   static async getClients(
@@ -17,12 +18,16 @@ export default class ClientService {
         throw new Error("Token de acesso ausente.");
       }
 
-      const endpoint = `${API_BASE_URL}/clients`;
+      const accountName = await AsyncStorage.getItem("account") || "default";
+      const dynamicBaseUrl = await setDynamicApiUrl(accountName);
+      const endpoint = `${dynamicBaseUrl}/clients`;
       console.log("[ClientService] Endpoint completo:", endpoint);
+      console.log("[ClientService] Account name:", accountName);
+      console.log("[ClientService] Dynamic base URL:", dynamicBaseUrl);
 
       const params = {
         has_contract: hasContract.toString(),
-        page,
+        page: page.toString(),
         search: searchQuery,
         include: "sectors,addresses",
       };
@@ -33,6 +38,8 @@ export default class ClientService {
       console.log("[ClientService] Iniciando requisição com os seguintes parâmetros:");
       console.log("Parâmetros:", params);
       console.log("Headers:", headers);
+      console.log("[ClientService] URL completa:", `${endpoint}?${new URLSearchParams(params).toString()}`);
+
       const response = await apiClient.get(endpoint, { params, headers });
       console.log("[ClientService] Dados recebidos:", response.data);
       const clientList = response.data.results.map((data: any) => new Client(data));
@@ -43,8 +50,11 @@ export default class ClientService {
       };
     } catch (error: any) {
       console.error("[ClientService] Erro ao buscar clientes:", error.message || error);
+      console.error("[ClientService] Status do erro:", error.response?.status);
+      console.error("[ClientService] Status text:", error.response?.statusText);
       if (error.response) {
         console.error("[ClientService] Resposta do servidor:", error.response.data);
+        console.error("[ClientService] Headers da resposta:", error.response.headers);
       } else if (error.request) {
         console.error("[ClientService] Nenhuma resposta recebida do servidor.", error.request);
       } else {
@@ -56,7 +66,9 @@ export default class ClientService {
 
   static async getClientDetails(clientId: number, accessToken: string) {
     try {
-      const endpoint = `${API_BASE_URL}/clients/${clientId}`;
+      const accountName = await AsyncStorage.getItem("account") || "default";
+      const dynamicBaseUrl = await setDynamicApiUrl(accountName);
+      const endpoint = `${dynamicBaseUrl}/clients/${clientId}`;
       console.log("[ClientService] Buscando detalhes do cliente...");
       console.log("[ClientService] Endpoint:", endpoint);
       console.log("[ClientService] Token de Acesso:", accessToken ? "Token recebido" : "Token não fornecido");
@@ -93,7 +105,9 @@ export default class ClientService {
 
   static async getClientContracts(clientId: string, accessToken: string) {
     try {
-      const endpoint = `${API_BASE_URL}/clients/${clientId}/contracts`;
+      const accountName = await AsyncStorage.getItem("account") || "default";
+      const dynamicBaseUrl = await setDynamicApiUrl(accountName);
+      const endpoint = `${dynamicBaseUrl}/clients/${clientId}/contracts`;
       console.log("[ClientService] Obtendo contratos do cliente...");
       console.log("[ClientService] Endpoint:", endpoint);
 
@@ -108,13 +122,24 @@ export default class ClientService {
     }
   }
 
-  static async getClientSectors(clientId: string, accessToken: string) {
+  static async getClientSectors(clientId: string, accessToken: string, level?: number, parentId?: number) {
     try {
-      const endpoint = `${API_BASE_URL}/clients/${clientId}/sectors`;
+      const accountName = await AsyncStorage.getItem("account") || "default";
+      const dynamicBaseUrl = await setDynamicApiUrl(accountName);
+      const endpoint = `${dynamicBaseUrl}/clients/${clientId}/sectors`;
       console.log("[ClientService] Obtendo setores do cliente...");
       console.log("[ClientService] Endpoint:", endpoint);
 
+      const params: any = {};
+      if (level !== undefined) {
+        params.level = level;
+      }
+      if (parentId !== undefined) {
+        params.parent_id = parentId;
+      }
+
       const response = await apiClient.get(endpoint, {
+        params,
         headers: { Authorization: `Bearer ${accessToken}` },
       });
       console.log("[ClientService] Resposta completa dos setores:", response.data);
@@ -125,9 +150,30 @@ export default class ClientService {
     }
   }
 
+  static async getSectorDetails(clientId: string, sectorId: number, accessToken: string) {
+    try {
+      const accountName = await AsyncStorage.getItem("account") || "default";
+      const dynamicBaseUrl = await setDynamicApiUrl(accountName);
+      const endpoint = `${dynamicBaseUrl}/clients/${clientId}/sectors/${sectorId}`;
+      console.log("[ClientService] Obtendo detalhes do setor...");
+      console.log("[ClientService] Endpoint:", endpoint);
+
+      const response = await apiClient.get(endpoint, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      console.log("[ClientService] Detalhes do setor recebidos:", response.data);
+      return response.data;
+    } catch (error: any) {
+      console.error("[ClientService] Erro ao buscar detalhes do setor:", error);
+      throw new Error("Erro ao obter os detalhes do setor.");
+    }
+  }
+
   static async getClientContacts(clientId: string, accessToken: string) {
     try {
-      const endpoint = `${API_BASE_URL}/clients/${clientId}/contacts`;
+      const accountName = await AsyncStorage.getItem("account") || "default";
+      const dynamicBaseUrl = await setDynamicApiUrl(accountName);
+      const endpoint = `${dynamicBaseUrl}/clients/${clientId}/contacts`;
       console.log("[ClientService] Obtendo contatos do cliente...");
       console.log("[ClientService] Endpoint:", endpoint);
 
@@ -144,7 +190,9 @@ export default class ClientService {
 
   static async getClientAddresses(clientId: string, accessToken: string) {
     try {
-      const endpoint = `${API_BASE_URL}/clients/${clientId}/addresses`;
+      const accountName = await AsyncStorage.getItem("account") || "default";
+      const dynamicBaseUrl = await setDynamicApiUrl(accountName);
+      const endpoint = `${dynamicBaseUrl}/clients/${clientId}/addresses`;
       console.log("[ClientService] Obtendo endereços do cliente...");
       console.log("[ClientService] Endpoint:", endpoint);
 

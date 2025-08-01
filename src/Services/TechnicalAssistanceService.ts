@@ -2,7 +2,8 @@ import apiClient from "../Context/ApiClient";
 import { TechnicalAssistance } from "../Models/TechnicalAssistance";
 import { Equipment } from "../Models/Equipament"; // Importar Equipment para fetchEquipments
 import { Answer } from "../Models/ServiceOrder"; // Importar Answer para fetchAnswers e submitAnswers
-import { API_BASE_URL } from "../config/apiConfig"; // Adicione esta importação no topo
+import { setDynamicApiUrl } from "../config/apiConfig";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 export default class TechnicalAssistanceService {
 
 
@@ -16,13 +17,16 @@ export default class TechnicalAssistanceService {
             status?: string;
         }
     ): Promise<{ results: TechnicalAssistance[]; count: number }> {
-        const endpoint = `${API_BASE_URL}/technical_assistances`; // Corrigido para /technical_assistances
-        console.log('Endpoint:', endpoint);
+        const accountName = await AsyncStorage.getItem("account") || "default";
+        const dynamicBaseUrl = await setDynamicApiUrl(accountName);
+        const endpoint = `${dynamicBaseUrl}/activities`; // Corrigido para /activities
+        console.log('[TechnicalAssistanceService] Endpoint:', endpoint);
 
         // Construir parâmetros apenas com valores válidos
         const params: { [key: string]: any } = {
             page: pagination.page,
             per_page: pagination.per_page,
+            activity_type: "technical_assistance", // Filtro para Technical Assistance
         };
         if (filters?.search) params.search = filters.search;
         if (filters?.equipment_type) params.equipment_type = filters.equipment_type;
@@ -36,20 +40,32 @@ export default class TechnicalAssistanceService {
                 },
                 params,
             });
-            console.log('Parâmetros enviados:', params); // Log para depuração
-            console.log('Resposta do backend:', response.data); // Log para verificar resposta
+            console.log('[TechnicalAssistanceService] Parâmetros enviados:', params);
+            console.log('[TechnicalAssistanceService] Resposta do backend:', response.data);
             return response.data;
         } catch (error: any) {
-            console.error('Erro ao buscar assistências técnicas:', error);
+            console.error('[TechnicalAssistanceService] Erro ao buscar assistências técnicas:', error);
+
             if (error.response) {
-                console.error('Detalhes do erro:', error.response.data); // Log detalhado do erro
+                console.error('[TechnicalAssistanceService] Erro no servidor:');
+                console.error('Status:', error.response.status);
+                console.error('Dados:', error.response.data);
+                console.error('URL:', error.config?.url);
+            } else if (error.request) {
+                console.error('[TechnicalAssistanceService] Nenhuma resposta recebida do servidor.');
+                console.error('Detalhes da requisição:', error.request);
+            } else {
+                console.error('[TechnicalAssistanceService] Erro ao configurar a requisição:', error.message);
             }
+
             throw new Error('Erro ao carregar assistências técnicas. Tente novamente mais tarde.');
         }
     }
 
     async fetchClients(token: string, search: string): Promise<any> {
-        const endpoint = `${API_BASE_URL}/clients`; // fetchClients
+        const accountName = await AsyncStorage.getItem("account") || "default";
+        const dynamicBaseUrl = await setDynamicApiUrl(accountName);
+        const endpoint = `${dynamicBaseUrl}/clients`; // fetchClients
         try {
             const response = await apiClient.get(endpoint, {
                 headers: { Authorization: `Bearer ${token}` },
@@ -65,9 +81,11 @@ export default class TechnicalAssistanceService {
     async submitAnswers(
         token: string,
         technicalAssistanceId: number,
-        data: { answers: { question_id: number; value: string; meta?: any }[] }
+        data: { status?: string; answers: { question_id: number; value: string; meta?: any }[] }
     ): Promise<TechnicalAssistance> {
-        const endpoint = `${API_BASE_URL}/technical_assistances/${technicalAssistanceId}/answers`; // submitAnswers
+        const accountName = await AsyncStorage.getItem("account") || "default";
+        const dynamicBaseUrl = await setDynamicApiUrl(accountName);
+        const endpoint = `${dynamicBaseUrl}/technical_assistances/${technicalAssistanceId}/answers`; // submitAnswers
         try {
             const response = await apiClient.post(endpoint, data, {
                 headers: { Authorization: `Bearer ${token}` },
@@ -80,7 +98,9 @@ export default class TechnicalAssistanceService {
     }
 
     async fetchTechnicalAssistanceDetails(token: string, technicalAssistanceId: number): Promise<TechnicalAssistance> {
-        const endpoint = `${API_BASE_URL}/technical_assistances/${technicalAssistanceId}`;
+        const accountName = await AsyncStorage.getItem("account") || "default";
+        const dynamicBaseUrl = await setDynamicApiUrl(accountName);
+        const endpoint = `${dynamicBaseUrl}/technical_assistances/${technicalAssistanceId}`;
         try {
             const response = await apiClient.get(endpoint, {
                 headers: { Authorization: `Bearer ${token}` },
@@ -93,7 +113,9 @@ export default class TechnicalAssistanceService {
     }
 
     async fetchSectors(token: string, clientId: number, search: string): Promise<any> {
-        const endpoint = `${API_BASE_URL}/clients/${clientId}/sectors`; // fetchSectors
+        const accountName = await AsyncStorage.getItem("account") || "default";
+        const dynamicBaseUrl = await setDynamicApiUrl(accountName);
+        const endpoint = `${dynamicBaseUrl}/clients/${clientId}/sectors`; // fetchSectors
         try {
             const response = await apiClient.get(endpoint, {
                 headers: { Authorization: `Bearer ${token}` },
@@ -107,7 +129,9 @@ export default class TechnicalAssistanceService {
     }
 
     async fetchEquipments(token: string, sectorId: number, search: string): Promise<{ results: Equipment[]; count: number }> {
-        const endpoint = `${API_BASE_URL}/sectors/${sectorId}/equipments`;
+        const accountName = await AsyncStorage.getItem("account") || "default";
+        const dynamicBaseUrl = await setDynamicApiUrl(accountName);
+        const endpoint = `${dynamicBaseUrl}/sectors/${sectorId}/equipments`;
         try {
             const response = await apiClient.get(endpoint, {
                 headers: { Authorization: `Bearer ${token}` },
@@ -121,7 +145,9 @@ export default class TechnicalAssistanceService {
     }
 
     async fetchAnswers(token: string, technicalAssistanceId: number): Promise<Answer[]> {
-        const endpoint = `${API_BASE_URL}/technical_assistances/${technicalAssistanceId}/answers`; // fetchAnswers
+        const accountName = await AsyncStorage.getItem("account") || "default";
+        const dynamicBaseUrl = await setDynamicApiUrl(accountName);
+        const endpoint = `${dynamicBaseUrl}/technical_assistances/${technicalAssistanceId}/answers`; // fetchAnswers
         try {
             const response = await apiClient.get(endpoint, {
                 headers: { Authorization: `Bearer ${token}` },
@@ -134,7 +160,9 @@ export default class TechnicalAssistanceService {
     }
 
     async createTechnicalAssistance(token: string, data: { equipment_id: number }): Promise<TechnicalAssistance> {
-        const endpoint = `${API_BASE_URL}/technical_assistances`;
+        const accountName = await AsyncStorage.getItem("account") || "default";
+        const dynamicBaseUrl = await setDynamicApiUrl(accountName);
+        const endpoint = `${dynamicBaseUrl}/technical_assistances`;
         try {
             const response = await apiClient.post(endpoint, data, {
                 headers: { Authorization: `Bearer ${token}` },

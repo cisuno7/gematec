@@ -2,8 +2,10 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { createContext, useContext, useEffect, useState } from "react";
 import AuthService from "../Services/AuthService";
-import jwtDecode from "jwt-decode";
-import { useLanguage } from "./LanguageContext"; // Importe o useLanguage
+import { jwtDecode } from "jwt-decode";
+import { useLanguage } from "./LanguageContext";
+import { usePermissions } from "./PermissionsContext";
+import PermissionsService from "../Services/PermissionsService";
 
 interface UserContextType {
   username: string;
@@ -40,7 +42,10 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [account, setAccount] = useState<string | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  const { loadUserPreferences } = useLanguage(); // Use o hook useLanguage
+  const { loadUserPreferences } = useLanguage();
+  console.log("[UserContext] Obtendo loadPermissions do contexto...");
+  const { loadPermissions } = usePermissions();
+  console.log("[UserContext] loadPermissions obtido:", typeof loadPermissions);
 
   const isTokenExpired = (token: string): boolean => {
     try {
@@ -79,6 +84,8 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
               console.log("[UserContext] Token renovado com sucesso.");
               setIsAuthenticated(true);
               await loadUserPreferences(newAccessToken); // Carrega preferências após renovar
+              console.log("[UserContext] Chamando loadPermissions após renovar token...");
+              await loadPermissions(newAccessToken); // Carrega permissões após renovar
             } catch (error) {
               console.error("[UserContext] Falha ao renovar token:", error);
               await AsyncStorage.multiRemove(["access_token", "refresh_token", "account", "keep_logged_in"]);
@@ -88,6 +95,8 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
             console.log("[UserContext] Usuário logado encontrado.");
             setIsAuthenticated(true);
             await loadUserPreferences(accessToken); // Carrega preferências se o token for válido
+            console.log("[UserContext] Chamando loadPermissions com token válido...");
+            await loadPermissions(accessToken); // Carrega permissões se o token for válido
           }
         } else {
           console.log("[UserContext] Nenhum usuário logado encontrado. Limpando dados.");
@@ -107,6 +116,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const login = async (accessToken: string, refreshToken: string, accountName: string, keepLoggedIn: boolean) => {
+    console.log("[UserContext] === INÍCIO login ===");
     if (!accessToken || typeof accessToken !== "string" || !refreshToken || typeof refreshToken !== "string") {
       const errorMessage = `[UserContext] Tentativa de login com tokens inválidos. accessToken: ${accessToken}, refreshToken: ${refreshToken}`;
       console.error(errorMessage);
@@ -129,6 +139,14 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // await AsyncStorage.setItem("permissions", decoded.permissions?.join(",") || "");
 
       await loadUserPreferences(accessToken); // Carrega preferências após o login bem-sucedido
+      console.log("[UserContext] Chamando loadPermissions após login...");
+      try {
+        console.log("[UserContext] Executando loadPermissions...");
+        await loadPermissions(accessToken); // Carrega permissões após o login bem-sucedido
+        console.log("[UserContext] loadPermissions executado com sucesso");
+      } catch (error) {
+        console.error("[UserContext] Erro ao executar loadPermissions:", error);
+      }
 
       console.log("[UserContext] Login realizado com sucesso:", {
         account: accountName,
@@ -136,8 +154,10 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
         hasAccessToken: !!accessToken,
         hasRefreshToken: !!refreshToken,
       });
+      console.log("[UserContext] === FIM login ===");
     } catch (error) {
       console.error("[UserContext] Erro ao salvar dados de login:", error);
+      console.log("[UserContext] === FIM login com erro ===");
       throw error;
     }
   };
@@ -145,21 +165,24 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logout = async () => {
     try {
       const refreshToken = await AsyncStorage.getItem("refresh_token");
-      if (refreshToken) {
+      if (refreshToken && account) {
         try {
-          await AuthService.revoke(refreshToken);
+          await AuthService.revoke(refreshToken, account);
           console.log("[UserContext] Token revogado com sucesso no logout");
         } catch (revokeError) {
           console.error("[UserContext] Erro ao revogar token no logout:", revokeError);
         }
       }
 
+      // Limpar permissões do storage
+      await PermissionsService.clearPermissionsFromStorage();
+
       await AsyncStorage.multiRemove([
         "access_token",
         "refresh_token",
         "account",
         "keep_logged_in",
-        "permissions",
+        "user_permissions",
         "selectedClientId",
         "selectedSectorId",
         "selectedEquipmentId",

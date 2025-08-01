@@ -8,6 +8,9 @@ import ServiceOrderService from "../../Services/ServiceOrderService";
 import { usePermissions } from "../../Context/PermissionsContext";
 import { Answer, UploadedImage, Question, ServiceOrder } from "../../Models/ServiceOrder";
 import { Picker } from "@react-native-picker/picker";
+import * as ImagePicker from 'expo-image-picker';
+import NetInfo from '@react-native-community/netinfo';
+import { OfflineService } from '../../Services/OfflineService';
 
 interface RespondOrderScreenProps {
     route: RouteProp<RootStackParamList, "RespondOrderScreen">;
@@ -21,6 +24,7 @@ const RespondOrderScreen: React.FC<RespondOrderScreenProps> = ({ route, navigati
     const { hasPermission, permissions } = usePermissions();
     const [serviceOrder, setServiceOrder] = useState<ServiceOrder | null>(null);
     const [images, setImages] = useState<UploadedImage[]>([]);
+    const [newImages, setNewImages] = useState<ImagePicker.ImagePickerAsset[]>([]); // State for newly captured images
     const { serviceOrderId } = route.params;
 
     useEffect(() => {
@@ -60,8 +64,9 @@ const RespondOrderScreen: React.FC<RespondOrderScreenProps> = ({ route, navigati
     };
 
     const submitAnswers = async (status: "open" | "pending") => {
+        setLoading(true);
         try {
-            setLoading(true);
+            const isConnected = await NetInfo.fetch().then(state => state.isConnected);
             const token = await AsyncStorage.getItem("access_token");
             if (!token) throw new Error("Token não encontrado");
 
@@ -74,13 +79,87 @@ const RespondOrderScreen: React.FC<RespondOrderScreenProps> = ({ route, navigati
                 })),
             };
 
-            await ServiceOrderService.submitAnswers(token, serviceOrderId, payload);
-            Alert.alert("Sucesso", "Respostas salvas com sucesso!");
+            if (isConnected) {
+                await ServiceOrderService.submitAnswers(token, serviceOrderId, payload);
+                // If online, also upload new images immediately
+                if (newImages.length > 0) {
+                    const formData = new FormData();
+                    newImages.forEach((image, index) => {
+                        formData.append('images', {
+                            uri: image.uri,
+                            name: image.fileName || `photo_${Date.now()}_${index}.jpg`,
+                            type: image.mimeType || 'image/jpeg',
+                        } as any);
+                    });
+                    await ServiceOrderService.uploadServiceOrderImages(token, serviceOrderId, formData);
+                }
+                Alert.alert("Sucesso", "Respostas e imagens salvas com sucesso!");
+            } else {
+                await OfflineService.addRequestToQueue({
+                    type: 'answer',
+                    payload: {
+                        context: { serviceOrderId: serviceOrderId, equipmentId: serviceOrder?.equipment.id },
+                        answers: payload.answers,
+                        status: status,
+                    },
+                });
+                // Add new images to offline queue
+                for (const image of newImages) {
+                    await OfflineService.addRequestToQueue({
+                        type: 'upload',
+                        payload: {
+                            context: { serviceOrderId: serviceOrderId, equipmentId: serviceOrder?.equipment.id },
+                            image: {
+                                uri: image.uri,
+                                name: image.fileName || `photo_${Date.now()}.jpg`,
+                                type: image.mimeType || 'image/jpeg',
+                            },
+                        },
+                    });
+                }
+                Alert.alert("Modo Offline", "As respostas e imagens foram salvas e serão enviadas quando houver conexão.");
+            }
             navigation.goBack();
         } catch (error: any) {
             Alert.alert("Erro", error.message || "Falha ao salvar respostas.");
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleChoosePhoto = async () => {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') {
+            Alert.alert('Permissão Necessária', 'É preciso permitir o acesso à galeria para escolher fotos.');
+            return;
+        }
+
+        let result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            allowsEditing: false,
+            quality: 0.7,
+        });
+
+        if (!result.canceled && result.assets && result.assets.length > 0) {
+            setNewImages(prev => [...prev, result.assets[0]]);
+        }
+    };
+
+    const handleTakePhoto = async () => {
+        const { status } = await ImagePicker.requestCameraPermissionsAsync();
+        if (status !== 'granted') {
+            Alert.alert('Permissão Necessária', 'É preciso permitir o acesso à câmera para tirar fotos.');
+            return;
+        }
+
+        let result = await ImagePicker.launchCameraAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            allowsEditing: false,
+            quality: 0.7,
+        });
+
+        if (!result.canceled && result.assets && result.assets.length > 0) {
+            setNewImages(prev => [...prev, result.assets[0]]);
         }
     };
 
@@ -189,11 +268,32 @@ const RespondOrderScreen: React.FC<RespondOrderScreenProps> = ({ route, navigati
                         <Text>Nenhuma pergunta disponível.</Text>
                     )}
                     <View style={styles.section}>
-                        <Text style={styles.sectionTitle}>Imagens</Text>
+                        <Text style={styles.sectionTitle}>Imagens Existentes</Text>
                         {images.length > 0 ? (
-                            images.map((img, index) => <RNImage key={index} source={{ uri: img.url }} style={styles.image} />)
+                            <View style={styles.imageGrid}>
+                                {images.map((img, index) => (
+                                    <RNImage key={index} source={{ uri: img.url }} style={styles.image} />
+                                ))}
+                            </View>
                         ) : (
-                            <Text>Nenhuma imagem disponível.</Text>
+                            <Text style={styles.emptyText}>Nenhuma imagem existente.</Text>
+                        )}
+                    </View>
+
+                    <View style={styles.section}>
+                        <Text style={styles.sectionTitle}>Novas Imagens</Text>
+                        <View style={styles.buttonRow}>
+                            <Button title="Tirar Foto" onPress={handleTakePhoto} disabled={loading} />
+                            <Button title="Escolher da Galeria" onPress={handleChoosePhoto} disabled={loading} />
+                        </View>
+                        {newImages.length > 0 ? (
+                            <View style={styles.imageGrid}>
+                                {newImages.map((img, index) => (
+                                    <RNImage key={index} source={{ uri: img.uri }} style={styles.image} />
+                                ))}
+                            </View>
+                        ) : (
+                            <Text style={styles.emptyText}>Nenhuma nova imagem adicionada.</Text>
                         )}
                     </View>
                 </>
@@ -218,9 +318,11 @@ const styles = StyleSheet.create({
     row: { flexDirection: "row", alignItems: "center", marginBottom: 10 },
     section: { marginBottom: 20 },
     sectionTitle: { fontSize: 18, fontWeight: "bold", marginBottom: 10 },
-    image: { width: 100, height: 100, marginBottom: 10 },
+    image: { width: 100, height: 100, marginBottom: 10, marginRight: 10 },
+    imageGrid: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 10 },
     emptyText: { fontSize: 14, color: "#666", textAlign: "center", marginVertical: 10 },
     errorText: { fontSize: 16, color: "#FF0000", textAlign: "center", marginTop: 20 },
+    buttonRow: { flexDirection: 'row', justifyContent: 'space-around', marginBottom: 15 },
 });
 
 export default RespondOrderScreen;

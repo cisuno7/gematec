@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { RootStackParamList } from "../Routers/AppRouter";
+import { useLanguage } from "../Context/LanguageContext";
 
 // Obter a altura da tela para um modal responsivo
 const screenHeight = Dimensions.get("window").height;
@@ -19,6 +20,7 @@ interface HomeScreenProps {
 }
 
 const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
+  const { t } = useLanguage();
   const [isMenuVisible, setMenuVisible] = useState(false);
 
   const toggleMenu = () => {
@@ -27,14 +29,15 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
 
   // Definir os itens do menu com seus nomes de tela e ícones
   const menuItems = [
-    { label: "Roteiro", icon: "map", screen: null, implemented: false },
-    { label: "PMOC", icon: "document-text", screen: "PmocListScreen", implemented: true },
-    { label: "Ordem de Serviço", icon: "hammer", screen: "ListOrderServiceScreen", implemented: true },
-    { label: "Assistência Técnica", icon: "headset", screen: "TechnicalAssistanceScreen", implemented: true },
-    { label: "Instalação", icon: "cube", screen: null, implemented: false },
-    { label: "Suporte ao Técnico", icon: "help-circle", screen: null, implemented: false },
-    { label: "Leitor de QR Code", icon: "qr-code", screen: "EquipmentQRCodeScreen", implemented: true },
-    { label: "Manual do Usuário", icon: "book", screen: "ManualsScreen", implemented: true },
+    { label: t('menu.roadmaps'), icon: "map", screen: null, implemented: false },
+    { label: t('menu.pmocs'), icon: "document-text", screen: "PmocListScreen", implemented: true },
+    { label: t('menu.serviceOrders'), icon: "hammer", screen: "ListOrderServiceScreen", implemented: true },
+    { label: "Roteiro", icon: "map", screen: "RoadmapScreen", implemented: true },
+    { label: t('menu.technicalAssistance'), icon: "headset", screen: "TechnicalAssistanceScreen", implemented: true },
+    { label: t('menu.installation'), icon: "cube", screen: null, implemented: false },
+    { label: t('menu.technicalSupport'), icon: "help-circle", screen: null, implemented: false },
+    { label: t('menu.equipmentQrCode'), icon: "qr-code", screen: "EquipmentQRCodeScreen", implemented: true },
+    { label: t('menu.manuals'), icon: "book", screen: "ManualsScreen", implemented: true },
   ];
 
   const navigateTo = (screenName: keyof RootStackParamList) => {
@@ -44,7 +47,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Bem-vindo ao Sistema</Text>
+      <Text style={styles.title}>{t('home.welcomeToSystem')}</Text>
 
       {/* Floating Action Button (FAB) */}
       <TouchableOpacity style={styles.fab} onPress={toggleMenu}>
@@ -62,7 +65,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
         <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPressOut={toggleMenu}>
           {/* Conteúdo do modal, impede que o clique no conteúdo feche o modal */}
           <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
-            <Text style={styles.modalTitle}>Ações Rápidas</Text>
+            <Text style={styles.modalTitle}>{t('home.quickActions')}</Text>
 
             <ScrollView contentContainerStyle={styles.menuGrid}>
               {menuItems.map((item, index) => (
@@ -81,7 +84,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
                     {item.label}
                   </Text>
                   {!item.implemented && (
-                    <Text style={styles.comingSoonText}>Em Breve</Text>
+                    <Text style={styles.comingSoonText}>{t('home.comingSoon')}</Text>
                   )}
                 </TouchableOpacity>
               ))}
@@ -89,7 +92,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
 
             {/* Botão Fechar */}
             <TouchableOpacity style={styles.closeButton} onPress={toggleMenu}>
-              <Text style={styles.closeButtonText}>Fechar</Text>
+              <Text style={styles.closeButtonText}>{t('common.close')}</Text>
             </TouchableOpacity>
           </View>
         </TouchableOpacity>

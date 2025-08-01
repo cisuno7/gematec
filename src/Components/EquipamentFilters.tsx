@@ -313,9 +313,3 @@ const styles = StyleSheet.create({
 
 export default EquipmentFilters;
 
-function setLoadingClients(arg0: boolean) {
-  throw new Error("Function not implemented.");
-}
-function setLoadingSectors(arg0: boolean) {
-  throw new Error("Function not implemented.");
-}

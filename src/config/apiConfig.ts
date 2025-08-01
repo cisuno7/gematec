@@ -23,12 +23,12 @@ export const buildApiUrlForAccount = async (accountName?: string): Promise<strin
 
     if (!accountName) {
         console.warn("[apiConfig] Nenhuma conta fornecida ou encontrada no AsyncStorage. Usando URL base padrão.");
-        return `https://${BASE_DOMAIN}`;
+        return `http://${BASE_DOMAIN}`;
     }
 
     // Remove caracteres especiais e espaços do nome da conta
-    const cleanAccountName = accountName.toLowerCase().replace(/[^a-z0-9]/g, '');
-    return `https://${cleanAccountName}.keosstg001.xyz/api`; // Usa HTTPS
+    const cleanAccountName = accountName.toLowerCase().replace(/[^a-z0-9_]/g, '');
+    return `http://${cleanAccountName}.keosstg001.xyz/api`; // Usa HTTPS
 };
 
 // URL base padrão (usada apenas se a conta não estiver disponível)

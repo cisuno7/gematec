@@ -8,9 +8,12 @@ import {
   Alert,
   ActivityIndicator,
   Button,
+  TextInput,
+  Switch,
 } from "react-native";
 import { FontAwesome } from "@expo/vector-icons";
 import EquipmentService from "../../Services/EquipamentService";
+import ActivityService from "../../Services/ActivityService";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { RouteProp } from "@react-navigation/native";
 import { DrawerNavigationProp } from "@react-navigation/drawer";
@@ -28,7 +31,7 @@ const EquipmentListScreen: React.FC<EquipmentListScreenProps> = ({
   route,
   navigation,
 }) => {
-  const { clientId, sectorId } = route.params;
+  const { clientId, sectorId, activityId } = route.params as any;
 
   const [equipmentList, setEquipmentList] = useState<Equipment[]>([]);
   const [loading, setLoading] = useState(false);
@@ -37,14 +40,13 @@ const EquipmentListScreen: React.FC<EquipmentListScreenProps> = ({
   const [totalPages, setTotalPages] = useState(1);
   const [clientName, setClientName] = useState("");
   const [sectorName, setSectorName] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
+  const [subsectorFilter, setSubsectorFilter] = useState<number | undefined>(undefined);
+  const [onlyMine, setOnlyMine] = useState(false);
 
-  if (!hasPermission("list_equipments")) {
-    return (
-      <View style={styles.container}>
-        <Text style={styles.errorText}>Você não tem permissão para visualizar equipamentos.</Text>
-      </View>
-    );
-  }
+  // Filtros extras para setor/subsetor/status
+  // ... (pode expandir para buscar setores/subsetores se necessário)
 
   const fetchClientAndSectorNames = async () => {
     try {
@@ -72,21 +74,32 @@ const EquipmentListScreen: React.FC<EquipmentListScreenProps> = ({
       const token = await AsyncStorage.getItem("access_token");
       if (!token) throw new Error("Token de acesso não encontrado.");
 
-      const filters: { client_id?: number; sector_id?: number; page: number; per_page: number } = {
-        page: page,
-        per_page: 10,
-      };
-
-      if (clientId) {
-        filters.client_id = clientId;
+      if (activityId) {
+        // Buscar equipamentos vinculados à atividade
+        const response = await ActivityService.fetchActivityEquipments(activityId, { token });
+        let filtered = response.results || response.equipments || [];
+        // Filtros locais
+        if (statusFilter) filtered = filtered.filter((eq: any) => eq.status === statusFilter);
+        if (subsectorFilter) filtered = filtered.filter((eq: any) => eq.subsector_id === subsectorFilter);
+        if (searchTerm) filtered = filtered.filter((eq: any) =>
+          (eq.tag || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+          (eq.patrimony || "").toLowerCase().includes(searchTerm.toLowerCase())
+        );
+        if (onlyMine) filtered = filtered.filter((eq: any) => eq.started_by_me);
+        setEquipmentList(filtered);
+        setTotalPages(1); // Paginação local, ajuste se backend suportar
+      } else {
+        // Listagem normal
+        const filters: { client_id?: number; sector_id?: number; page: number; per_page: number } = {
+          page: page,
+          per_page: 10,
+        };
+        if (clientId) filters.client_id = clientId;
+        if (sectorId) filters.sector_id = sectorId;
+        const response = await EquipmentService.fetchEquipments(token, filters);
+        setEquipmentList(response.results || []);
+        setTotalPages(Math.ceil(response.count / 10) || 1);
       }
-      if (sectorId) {
-        filters.sector_id = sectorId;
-      }
-
-      const response = await EquipmentService.fetchEquipments(token, filters);
-      setEquipmentList(response.results || []);
-      setTotalPages(Math.ceil(response.count / 10) || 1);
     } catch (error: any) {
       Alert.alert("Erro", error.message || "Falha ao carregar os equipamentos.");
     } finally {
@@ -97,13 +110,12 @@ const EquipmentListScreen: React.FC<EquipmentListScreenProps> = ({
   useEffect(() => {
     fetchClientAndSectorNames();
     fetchEquipments();
-  }, [clientId, sectorId, page]);
+  }, [clientId, sectorId, page, activityId, statusFilter, subsectorFilter, searchTerm, onlyMine]);
 
   const handleRemoveEquipment = async (equipmentId: number) => {
     try {
       const token = await AsyncStorage.getItem("access_token");
       if (!token) throw new Error("Token de acesso não encontrado.");
-
       await EquipmentService.removeEquipment(token, equipmentId);
       Alert.alert("Sucesso", "Equipamento removido com sucesso!");
       fetchEquipments();
@@ -114,21 +126,20 @@ const EquipmentListScreen: React.FC<EquipmentListScreenProps> = ({
 
   const renderEquipmentItem = ({ item }: { item: any }) => (
     <View style={styles.itemContainer}>
-      <Text style={styles.itemText}>ID: {item.id}</Text>
-      <Text style={styles.itemText}>Tag: {item.patrimony}</Text>
-
+      <View style={{ flex: 1 }}>
+        <Text style={styles.itemText}>Status: {item.status || "N/A"}</Text>
+        <Text style={styles.itemText}>Tag: {item.tag || item.patrimony || "N/A"}</Text>
+        <Text style={styles.itemText}>Fabricante: {item.brand?.name || "N/A"}</Text>
+        <Text style={styles.itemText}>Setor: {item.sector?.name || "N/A"}</Text>
+        <Text style={styles.itemText}>Tipo: {item.equipment_type?.name || "N/A"}</Text>
+      </View>
       <TouchableOpacity
         style={styles.editButton}
-        onPress={() =>
-          navigation.navigate("EditEquipmentScreen", {
-            equipmentId: String(item.id),
-          })
-        }
+        onPress={() => navigation.navigate("EditEquipmentScreen", { equipmentId: String(item.id) })}
       >
         <FontAwesome name="pencil" size={20} color="#007BFF" />
         <Text style={styles.editButtonText}>Editar</Text>
       </TouchableOpacity>
-
       <TouchableOpacity
         style={styles.removeButton}
         onPress={() =>
@@ -137,10 +148,7 @@ const EquipmentListScreen: React.FC<EquipmentListScreenProps> = ({
             "Tem certeza de que deseja remover este equipamento?",
             [
               { text: "Cancelar", style: "cancel" },
-              {
-                text: "Confirmar",
-                onPress: () => handleRemoveEquipment(item.id),
-              },
+              { text: "Confirmar", onPress: () => handleRemoveEquipment(item.id) },
             ]
           )
         }
@@ -148,23 +156,43 @@ const EquipmentListScreen: React.FC<EquipmentListScreenProps> = ({
         <FontAwesome name="times" size={20} color="red" />
         <Text style={styles.removeButtonText}>Remover</Text>
       </TouchableOpacity>
+      <TouchableOpacity
+        style={styles.editButton}
+        onPress={() => navigation.navigate("ViewOrderActivityScreen", { equipmentId: item.id })}
+      >
+        <FontAwesome name="eye" size={20} color="#007BFF" />
+        <Text style={styles.editButtonText}>Ver Detalhes</Text>
+      </TouchableOpacity>
     </View>
   );
 
   return (
     <View style={styles.container}>
-      {clientId && sectorId && (
-        <Text style={styles.headerText}>
-          Equipamentos para: {clientName} {'>'} {sectorName}
-        </Text>
+      {clientId && (
+        <Text style={styles.headerText}>Cliente: {clientName}</Text>
       )}
-      <View style={styles.opContainer}>
-        <TouchableOpacity
-          style={styles.qrButton}
-          onPress={() => navigation.navigate("EquipmentQRCodeScreen", {})}
-        >
-          <FontAwesome name="qrcode" size={24} color="#fff" />
-        </TouchableOpacity>
+      {sectorId && (
+        <Text style={styles.headerText}>Setor: {sectorName}</Text>
+      )}
+      {/* Filtros */}
+      <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 10 }}>
+        <TextInput
+          style={{ flex: 1, borderWidth: 1, borderColor: "#ccc", borderRadius: 5, padding: 8, marginRight: 8 }}
+          placeholder="Buscar por termo (tag, patrimônio...)"
+          value={searchTerm}
+          onChangeText={setSearchTerm}
+        />
+        <Text>Status:</Text>
+        <TextInput
+          style={{ width: 80, borderWidth: 1, borderColor: "#ccc", borderRadius: 5, padding: 8, marginLeft: 4 }}
+          placeholder="Status"
+          value={statusFilter || ""}
+          onChangeText={setStatusFilter}
+        />
+      </View>
+      <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 10 }}>
+        <Text>Somente meus:</Text>
+        <Switch value={onlyMine} onValueChange={setOnlyMine} />
       </View>
       {loading ? (
         <ActivityIndicator size="large" color="#007BFF" />

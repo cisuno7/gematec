@@ -62,7 +62,7 @@ const PersonalDataScreen: React.FC<PersonalDataScreenProps> = ({ route, navigati
         console.log('Conta:', currentAccount);
         console.log('Token de acesso:', token);
 
-        const fetchedData = await AuthService.getPersonalData(currentAccount, token);
+        const fetchedData = await AuthService.getPersonalData(token, currentAccount);
         const personalDataInstance = new PersonalDataModel(fetchedData); // Create instance
         setPersonalData(personalDataInstance); // Store the instance
 
@@ -148,8 +148,15 @@ const PersonalDataScreen: React.FC<PersonalDataScreenProps> = ({ route, navigati
       setPasswordError('As senhas não coincidem.');
       return;
     }
-    if (newPassword.length < 6) { // Example: minimum password length
-      setPasswordError('A senha deve ter no mínimo 6 caracteres.');
+    if (newPassword.length < 8) {
+      setPasswordError('A senha deve ter no mínimo 8 caracteres.');
+      return;
+    }
+
+    // Validação adicional de senha forte
+    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/;
+    if (!passwordRegex.test(newPassword)) {
+      setPasswordError('A senha deve conter pelo menos uma letra maiúscula, uma minúscula e um número.');
       return;
     }
 
@@ -184,7 +191,7 @@ const PersonalDataScreen: React.FC<PersonalDataScreenProps> = ({ route, navigati
     );
   }
 
-  if (!hasPermission("view_user")) {
+  if (!hasPermission("users.view_user")) {
     return (
       <View style={styles.container}>
         <Text style={styles.errorText}>Você não tem permissão para visualizar seus dados.</Text>

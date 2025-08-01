@@ -4,7 +4,8 @@ import { PmocEquipment } from "../Models/Pmoc_Model/PmocEqupment";
 import { EquipmentDetails, Question } from "../Models/Pmoc_Model/EquipmentDetails";
 import apiClient from "../Context/ApiClient"
 import { ServiceOrder, Answer, UploadedImage } from "../Models/ServiceOrder"; // Ajuste o caminho
-import { API_BASE_URL } from "../config/apiConfig"; // Adicione esta importação no topo
+import { setDynamicApiUrl } from "../config/apiConfig";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 export default class PmocService {
 
 
@@ -18,14 +19,13 @@ export default class PmocService {
     try {
       console.log("[PmocService] Iniciando busca por PMOCs...");
 
-      console.log("[PmocService] Token:", token ? "Token recebido" : "Token não fornecido");
-
       // Validar o valor de status
       const validStatuses = ["open", "pending", "closed"];
       const params = new URLSearchParams({
         page: page.toString(),
         per_page: perPage.toString(),
         search,
+        activity_type: "pmoc", // Filtro para PMOC
       });
 
       // Adicionar status apenas se for válido
@@ -33,7 +33,9 @@ export default class PmocService {
         params.append("status", status);
       }
 
-      const url = `${API_BASE_URL}/pmocs?${params.toString()}`;
+      const accountName = await AsyncStorage.getItem("account") || "default";
+      const dynamicBaseUrl = await setDynamicApiUrl(accountName);
+      const url = `${dynamicBaseUrl}/activities?${params.toString()}`;
       console.log("[PmocService] URL do endpoint com filtros:", url);
 
       const response = await apiClient.get(url, {
@@ -45,10 +47,13 @@ export default class PmocService {
       console.log("[PmocService] Resposta do servidor:", response.data);
       return response.data;
     } catch (error: any) {
+      console.error("[PmocService] Erro ao buscar PMOCs:", error);
+
       if (error.response) {
         console.error("[PmocService] Erro no servidor:");
         console.error("Status:", error.response.status);
         console.error("Dados:", error.response.data);
+        console.error("URL:", error.config?.url);
       } else if (error.request) {
         console.error("[PmocService] Nenhuma resposta recebida do servidor.");
         console.error("Detalhes da requisição:", error.request);
@@ -66,7 +71,9 @@ export default class PmocService {
 
       console.log("[PmocService] Dados do PMOC:", pmocData);
 
-      const response = await apiClient.post(`${API_BASE_URL}/pmocs`, pmocData, {
+      const accountName = await AsyncStorage.getItem("account") || "default";
+      const dynamicBaseUrl = await setDynamicApiUrl(accountName);
+      const response = await apiClient.post(`${dynamicBaseUrl}/pmocs`, pmocData, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
@@ -115,7 +122,9 @@ export default class PmocService {
         client_id: clientId?.toString() || '', // Adicionado
       }).toString();
 
-      const url = `${API_BASE_URL}/pmocs/${pmocId}/equipments?${params}`;
+      const accountName = await AsyncStorage.getItem("account") || "default";
+      const dynamicBaseUrl = await setDynamicApiUrl(accountName);
+      const url = `${dynamicBaseUrl}/pmocs/${pmocId}/equipments?${params}`;
       console.log("[PmocService] URL do endpoint com filtros:", url);
 
       const response = await apiClient.get(url, {
@@ -133,7 +142,9 @@ export default class PmocService {
 
   static async uploadImages(token: string, pmocId: number, equipmentId: number, formData: FormData): Promise<UploadedImage[]> {
     try {
-      const response = await apiClient.post(`${API_BASE_URL}/pmocs/${pmocId}/equipments/${equipmentId}/images`, formData, {
+      const accountName = await AsyncStorage.getItem("account") || "default";
+      const dynamicBaseUrl = await setDynamicApiUrl(accountName);
+      const response = await apiClient.post(`${dynamicBaseUrl}/pmocs/${pmocId}/equipments/${equipmentId}/images`, formData, {
         headers: {
           Authorization: `Bearer ${token}`,
           "Content-Type": "multipart/form-data",
@@ -157,7 +168,9 @@ export default class PmocService {
   }> {
     try {
       console.log("[PmocService] Buscando detalhes do equipamento...");
-      const url = `${API_BASE_URL}/pmocs/${pmocId}/equipments/${equipmentId}`;
+      const accountName = await AsyncStorage.getItem("account") || "default";
+      const dynamicBaseUrl = await setDynamicApiUrl(accountName);
+      const url = `${dynamicBaseUrl}/pmocs/${pmocId}/equipments/${equipmentId}`;
       const response = await apiClient.get(url, {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -188,7 +201,9 @@ export default class PmocService {
       console.log("[PmocService] Equipment ID:", equipmentId);
       console.log("[PmocService] Dados a serem enviados:", data);
 
-      const url = `${API_BASE_URL}/pmocs/${pmocId}/equipments/${equipmentId}/answers`;
+      const accountName = await AsyncStorage.getItem("account") || "default";
+      const dynamicBaseUrl = await setDynamicApiUrl(accountName);
+      const url = `${dynamicBaseUrl}/pmocs/${pmocId}/equipments/${equipmentId}/answers`;
       console.log("[PmocService] URL do endpoint (envio de respostas):", url);
 
       const response = await apiClient.post(url, data, {
@@ -232,7 +247,9 @@ export default class PmocService {
       console.log("[PmocService] PMOC ID:", pmocId);
       console.log("[PmocService] Equipment ID:", equipmentId);
 
-      const url = `${API_BASE_URL}/pmocs/${pmocId}/equipments/${equipmentId}/answers`;
+      const accountName = await AsyncStorage.getItem("account") || "default";
+      const dynamicBaseUrl = await setDynamicApiUrl(accountName);
+      const url = `${dynamicBaseUrl}/pmocs/${pmocId}/equipments/${equipmentId}/answers`;
       console.log("[PmocService] URL do endpoint (respostas salvas):", url);
 
       const response = await apiClient.get(url, {

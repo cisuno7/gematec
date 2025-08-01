@@ -12,6 +12,7 @@ import { Picker } from '@react-native-picker/picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useLanguage } from '../Context/LanguageContext';
 import { useNavigation } from '@react-navigation/native';
+import { MaterialIcons } from '@expo/vector-icons';
 
 const PreferencesScreen: React.FC = () => {
     const navigation = useNavigation();
@@ -29,9 +30,19 @@ const PreferencesScreen: React.FC = () => {
         { label: t('language.english'), value: 'en' },
     ];
 
+    // Validação para garantir que o idioma selecionado é válido
+    const isValidLanguage = (language: string): boolean => {
+        return languageOptions.some(option => option.value === language);
+    };
+
     const handleSave = async () => {
         if (selectedLanguage === currentLanguage) {
             navigation.goBack();
+            return;
+        }
+
+        if (!isValidLanguage(selectedLanguage)) {
+            Alert.alert(t('common.error'), 'Idioma selecionado não é válido');
             return;
         }
 
@@ -75,21 +86,29 @@ const PreferencesScreen: React.FC = () => {
 
                 <View style={styles.section}>
                     <Text style={styles.sectionTitle}>{t('preferences.language')}</Text>
-                    <View style={styles.pickerContainer}>
+                    <View style={{ position: 'relative' }}>
                         <Picker
                             selectedValue={selectedLanguage}
                             onValueChange={(itemValue) => setSelectedLanguage(itemValue)}
-                            style={styles.picker}
+                            style={[styles.picker, { color: '#222' }]}
                             enabled={!saving}
                         >
+                            <Picker.Item label="Selecione o idioma..." value="" color="#888" enabled={false} />
                             {languageOptions.map((option) => (
                                 <Picker.Item
                                     key={option.value}
                                     label={option.label}
                                     value={option.value}
+                                    color="#CCCCCC" // cor escura e visível para as opções
                                 />
                             ))}
                         </Picker>
+                        <MaterialIcons
+                            name="arrow-drop-down"
+                            size={24}
+                            color="#888"
+                            style={{ position: 'absolute', right: 10, top: 13, pointerEvents: 'none' }}
+                        />
                     </View>
                 </View>
 

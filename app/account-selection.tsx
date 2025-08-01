@@ -63,12 +63,12 @@ export default function AccountSelectionScreen() {
             await AsyncStorage.setItem("access_token", response.access);
             await AsyncStorage.setItem("refresh_token", response.refresh);
 
-            const decodedToken = decodeToken(response.access);
+            const decodedToken: any = jwtDecode(response.access);
             const permissions = decodedToken.permissions || [];
             await AsyncStorage.setItem("permissions", JSON.stringify(permissions));
             setPermissions(permissions);
 
-            setAccountId(parseInt(selectedAccount)); 
+            setAccountId(parseInt(selectedAccount));
 
             router.push('/(tabs)');
         } catch (error: any) {

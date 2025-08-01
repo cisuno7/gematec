@@ -22,6 +22,7 @@ import CreateEquipmentScreen from "../Screens/Equipaments/CreateEquipmentScreen"
 import { RootStackParamList } from "./AppRouter";
 import { useUser } from "../Context/UserContext";
 import { usePermissions } from "../Context/PermissionsContext"; // Certifique-se de que esta importação está correta
+import { useLanguage } from "../Context/LanguageContext";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import AuthService from "../Services/AuthService";
 import MenuService from "../Services/MenuService";
@@ -31,54 +32,56 @@ import PreferencesScreen from "../Screens/PreferencesScreen";
 const Drawer = createDrawerNavigator<RootStackParamList>();
 
 // Mapeamento de slugs para dados do aplicativo
-const SLUG_TO_APP_DATA: { [key: string]: { title: string; route?: keyof RootStackParamList; icon?: string; action?: 'logout' } } = {
-  "operational": { title: "Operacional", icon: "briefcase" },
-  "clients_with_contract": { title: "Clientes com Contrato", route: "ClientsComContratoScreen" },
-  "clients_without_contract": { title: "Clientes Avulsos", route: "ClientsAvulsosScreen" },
-  "equipments": { title: "Equipamentos", route: "EquipmentListScreen" },
-  "activities": { title: "Atividades", route: "ActivityHistoryScreen" },
-  "home": { title: "Início", route: "HomeScreen", icon: "home" },
-  "manuals": { title: "Manuais", route: "ManualsScreen", icon: "book" },
-  "personal_data": { title: "Meus Dados", route: "PersonalDataScreen", icon: "person" },
-  "basic_registrations": { title: "Cadastros Básicos", icon: "folder-open" },
-  "functions": { title: "Funções", route: "FunctionsScreen" },
-  "manufacturers": { title: "Fabricantes", route: "ManufacturersScreen" },
-  "coil_types": { title: "Tipos de Serpentina", route: "CoilTypesScreen" },
-  "equipment_types": { title: "Tipos de Equipamento", route: "EquipmentTypesScreen" },
-  "compressor_types": { title: "Tipo de Compressor", route: "CompressorTypesScreen" },
-  "cooling_fluid_types": { title: "Tipo de Fluido Refrigerante", route: "CoolingFluidTypesScreen" },
-  "condenser_types": { title: "Tipo de Condensadora", route: "CondenserTypesScreen" },
-  "evaporator_types": { title: "Tipo de Evaporadora", route: "EvaporatorTypesScreen" },
-  "phases": { title: "Fases", route: "PhasesScreen" },
-  "technologies": { title: "Tecnologias", route: "TechnologiesScreen" },
-  "capacity_units": { title: "Unidades de Capacidade", route: "CapacityUnitsScreen" },
-  "administrative": { title: "Administrativo", icon: "shield" },
-  "support": { title: "Suporte", icon: "help-circle" },
-  "pmocs": { title: "PMOCs", route: "PmocListScreen" },
-  "service_orders": { title: "Ordens de Serviço", route: "ListOrderServiceScreen" },
-  "technical_assistance": { title: "Assistência Técnica", route: "TechnicalAssistanceScreen" },
-  "equipment_qr_code": { title: "Leitura QR Code", route: "EquipmentQRCodeScreen" },
-  "create_equipment": { title: "Criação de Equipamento", route: "CreateEquipmentScreen" },
-  "filter_equipment": { title: "Filtragem de Equipamentos", route: "EquipamentScreen" },
-  "view_activities": { title: "Visualizar Atividades", route: "ActivityHistoryScreen" },
-  "roadmaps": { title: "Roteiros", icon: "map" },
-  "documentation": { title: "Documentação", icon: "document" },
+const SLUG_TO_APP_DATA: { [key: string]: { titleKey: string; route?: keyof RootStackParamList; icon?: string; action?: 'logout' } } = {
+  "operational": { titleKey: "menu.operacional", icon: "briefcase" },
+  "clients_with_contract": { titleKey: "menu.clientsWithContract", route: "ClientsComContratoScreen" },
+  "clients_without_contract": { titleKey: "menu.clientsWithoutContract", route: "ClientsAvulsosScreen" },
+  "equipments": { titleKey: "menu.equipments", route: "GeneralEquipmentListScreen" },
+  "activities": { titleKey: "menu.activities", route: "ActivityHistoryScreen" },
+  "home": { titleKey: "menu.home", route: "HomeScreen", icon: "home" },
+  "manuals": { titleKey: "menu.manuals", route: "ManualsScreen", icon: "book" },
+  "personal_data": { titleKey: "menu.personalData", route: "PersonalDataScreen", icon: "person" },
+  "basic_registrations": { titleKey: "menu.basicRegistrations", icon: "folder-open" },
+  "functions": { titleKey: "menu.functions", route: "FunctionsScreen" },
+  "manufacturers": { titleKey: "menu.manufacturers", route: "ManufacturersScreen" },
+  "coil_types": { titleKey: "menu.coilTypes", route: "CoilTypesScreen" },
+  "equipment_types": { titleKey: "menu.equipmentTypes", route: "EquipmentTypesScreen" },
+  "compressor_types": { titleKey: "menu.compressorTypes", route: "CompressorTypesScreen" },
+  "cooling_fluid_types": { titleKey: "menu.coolingFluidTypes", route: "CoolingFluidTypesScreen" },
+  "condenser_types": { titleKey: "menu.condenserTypes", route: "CondenserTypesScreen" },
+  "evaporator_types": { titleKey: "menu.evaporatorTypes", route: "EvaporatorTypesScreen" },
+  "phases": { titleKey: "menu.phases", route: "PhasesScreen" },
+  "technologies": { titleKey: "menu.technologies", route: "TechnologiesScreen" },
+  "capacity_units": { titleKey: "menu.capacityUnits", route: "CapacityUnitsScreen" },
+  "administrative": { titleKey: "menu.administrative", icon: "shield" },
+  "support": { titleKey: "menu.support", icon: "help-circle" },
+  "pmocs": { titleKey: "menu.pmocs", route: "PmocListScreen" },
+  "service_orders": { titleKey: "menu.serviceOrders", route: "ListOrderServiceScreen" },
+  "technical_assistance": { titleKey: "menu.technicalAssistance", route: "TechnicalAssistanceScreen" },
+  "equipment_qr_code": { titleKey: "menu.equipmentQrCode", route: "EquipmentQRCodeScreen" },
+  "create_equipment": { titleKey: "menu.createEquipment", route: "CreateEquipmentScreen" },
+  "filter_equipment": { titleKey: "menu.filterEquipment", route: "EquipamentScreen" },
+  "view_activities": { titleKey: "menu.viewActivities", route: "ActivityHistoryScreen" },
+  "roadmaps": { titleKey: "menu.roadmaps", route: "RoadmapScreen", icon: "map" },
+  "documentation": { titleKey: "menu.documentation", icon: "document" },
 };
 
 const CustomDrawerHeader: React.FC = () => {
   const { username } = useUser();
+  const { t } = useLanguage();
   return (
     <View>
       <Text style={styles.userName}>
-        {username ? `Bem-vindo, ${username}` : "Bem-vindo"}
+        {username ? `${t('common.welcome')}, ${username}` : t('common.welcome')}
       </Text>
     </View>
   );
 };
 
 const CustomDrawerContent = (props: any & { extraData: {} }) => {
-  const { hasPermission, setPermissions } = usePermissions(); // <--- OBTENHA setPermissions AQUI
+  const { hasPermission, isLoading: permissionsLoading } = usePermissions();
   const { clientId, sectorId, equipmentId, logout } = useUser();
+  const { t } = useLanguage();
   const [dynamicMenu, setDynamicMenu] = useState<MenuItem[]>([]);
   const [loadingMenu, setLoadingMenu] = useState(true);
   const [submenuStates, setSubmenuStates] = useState<{ [key: string]: boolean }>({});
@@ -88,24 +91,36 @@ const CustomDrawerContent = (props: any & { extraData: {} }) => {
 
   // Função para processar e mapear os itens do menu do backend
   const processMenuItems = (items: MenuItem[]): MenuItem[] => {
+    console.log("[DrawerNavigation] Itens antes do filtro:", items.map(item => ({ slug: item.slug, required_apps: item.required_apps })));
 
+    const filteredItems = items.filter(item => {
+      const shouldInclude = item.required_apps ? item.required_apps.includes("mobile") : true;
+      console.log(`[DrawerNavigation] Item ${item.slug} - required_apps: ${item.required_apps}, incluído: ${shouldInclude}`);
+      return shouldInclude;
+    });
 
-    return items
-      .filter(item => item.required_apps ? item.required_apps.includes("mobile") : true)
+    console.log("[DrawerNavigation] Itens após filtro:", filteredItems.map(item => item.slug));
+
+    return filteredItems
       .map(item => {
+        console.log(`[DrawerNavigation] Processando item: ${item.slug}`);
         const appData = SLUG_TO_APP_DATA[item.slug];
         if (!appData) {
           console.warn(`Mapeamento não encontrado para o slug: ${item.slug}`);
           return null;
         }
 
+        console.log(`[DrawerNavigation] Mapeamento encontrado para ${item.slug}:`, appData);
+
         const processedItem: MenuItem = {
           ...item,
-          title: appData.title,
+          title: t(appData.titleKey), // Usa a função de tradução
           route: appData.route,
           icon: appData.icon,
           action: appData.action,
         };
+
+        console.log(`[DrawerNavigation] Item processado: ${item.slug}, rota: ${processedItem.route}`);
 
         if (item.items && item.items.length > 0) {
           processedItem.items = processMenuItems(item.items); // Processa recursivamente os sub-itens
@@ -120,7 +135,9 @@ const CustomDrawerContent = (props: any & { extraData: {} }) => {
       try {
         setLoadingMenu(true);
         const menuData = await MenuService.fetchDynamicMenu();
+        console.log("[DrawerNavigation] Menu recebido do backend:", JSON.stringify(menuData, null, 2));
         const processedData = processMenuItems(menuData); // Esta chamada agora também atualiza as permissões
+        console.log("[DrawerNavigation] Menu processado:", JSON.stringify(processedData, null, 2));
         setDynamicMenu(processedData);
       } catch (error: any) {
         Alert.alert("Erro", error.message || "Não foi possível carregar o menu.");
@@ -147,13 +164,18 @@ const CustomDrawerContent = (props: any & { extraData: {} }) => {
   };
 
   const renderMenuItem = (item: MenuItem, level: number = 0) => {
+    console.log(`[DrawerNavigation] Renderizando item: ${item.slug}, permissões:`, item.required_permissions);
+
     // Verifica se o usuário tem ALGUMA das permissões necessárias para este item
     // Se item.required_permissions for vazio, significa que nenhuma permissão específica é necessária, então é permitido.
     const hasRequiredPermissions = item.required_permissions
       ? item.required_permissions.some((perm) => hasPermission(perm))
       : true;
 
+    console.log(`[DrawerNavigation] Item ${item.slug} tem permissões necessárias:`, hasRequiredPermissions);
+
     if (!hasRequiredPermissions) {
+      console.log(`[DrawerNavigation] Item ${item.slug} não será renderizado - sem permissões`);
       return null; // Não renderiza o item se as permissões não forem atendidas
     }
 
@@ -182,6 +204,8 @@ const CustomDrawerContent = (props: any & { extraData: {} }) => {
       );
     } else {
       let onPressAction = () => {
+        console.log(`[DrawerNavigation] Clicou no item: ${item.slug}, rota: ${item.route}`);
+
         if (item.route) {
           if (item.route === "EquipamentScreen") {
             if (!clientId || !sectorId) {
@@ -200,6 +224,7 @@ const CustomDrawerContent = (props: any & { extraData: {} }) => {
             props.navigation.navigate(item.route as any, { equipmentId: equipmentId || 0 });
           }
           else {
+            console.log(`[DrawerNavigation] Navegando para: ${item.route}`);
             props.navigation.navigate(item.route as any, {});
           }
         } else if (item.action === "logout") {
@@ -220,11 +245,13 @@ const CustomDrawerContent = (props: any & { extraData: {} }) => {
     }
   };
 
-  if (loadingMenu) {
+  if (loadingMenu || permissionsLoading) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#007BFF" />
-        <Text style={styles.loadingText}>Carregando menu...</Text>
+        <Text style={styles.loadingText}>
+          {permissionsLoading ? t('common.loading') + ' permissões...' : t('common.loading') + ' menu...'}
+        </Text>
       </View>
     );
   }
@@ -233,15 +260,19 @@ const CustomDrawerContent = (props: any & { extraData: {} }) => {
     <DrawerContentScrollView {...props}>
       <CustomDrawerHeader />
       {/* Item Fixo: Meus Dados */}
-      {hasPermission("view_user") && (
-        <TouchableOpacity
-          style={[styles.menuItem, { paddingLeft: 16 }]}
-          onPress={() => props.navigation.navigate("PersonalDataScreen" as any, {})}
-        >
-          <Ionicons name="person" size={20} color="#333" style={styles.icon} />
-          <Text style={styles.menuText}>Meus Dados</Text>
-        </TouchableOpacity>
-      )}
+      {(() => {
+        const hasViewUserPermission = hasPermission("users.view_user");
+        console.log("[DrawerNavigation] Verificando permissão users.view_user:", hasViewUserPermission);
+        return hasViewUserPermission && (
+          <TouchableOpacity
+            style={[styles.menuItem, { paddingLeft: 16 }]}
+            onPress={() => props.navigation.navigate("PersonalDataScreen" as any, {})}
+          >
+            <Ionicons name="person" size={20} color="#333" style={styles.icon} />
+            <Text style={styles.menuText}>{t('menu.personalData')}</Text>
+          </TouchableOpacity>
+        );
+      })()}
       {dynamicMenu.map((item) => renderMenuItem(item))}
 
       {/* Item Fixo: Preferências */}
@@ -250,10 +281,10 @@ const CustomDrawerContent = (props: any & { extraData: {} }) => {
         onPress={() => props.navigation.navigate("PreferencesScreen" as any, {})}
       >
         <Ionicons name="settings" size={20} color="#333" style={styles.icon} />
-        <Text style={styles.menuText}>Preferências</Text>
+        <Text style={styles.menuText}>{t('menu.preferences')}</Text>
       </TouchableOpacity>
 
-      {dynamicMenu.map((item) => renderMenuItem(item))}
+
 
       {/* Item Fixo: Sair (sempre por último) */}
       <TouchableOpacity
@@ -261,7 +292,7 @@ const CustomDrawerContent = (props: any & { extraData: {} }) => {
         onPress={handleLogout}
       >
         <Ionicons name="arrow-forward" size={20} color="#333" style={styles.icon} />
-        <Text style={styles.menuText}>Sair</Text>
+        <Text style={styles.menuText}>{t('menu.logout')}</Text>
       </TouchableOpacity>
 
     </DrawerContentScrollView>
@@ -269,6 +300,7 @@ const CustomDrawerContent = (props: any & { extraData: {} }) => {
 };
 
 const DrawerNavigator: React.FC = () => {
+  const { t } = useLanguage();
   return (
     <Drawer.Navigator
       drawerContent={(props) => <CustomDrawerContent {...props} />}
@@ -283,24 +315,25 @@ const DrawerNavigator: React.FC = () => {
       <Drawer.Screen
         name="HomeScreen"
         component={HomeScreen}
-        options={{ title: "Início", headerTitle: () => <CustomDrawerHeader /> }}
+        options={{ title: t('menu.home'), headerTitle: () => <CustomDrawerHeader /> }}
       />
       <Drawer.Screen
         name="ManualsScreen"
         component={ManualsScreen}
-        options={{ title: "Manuais" }}
+        options={{ title: t('menu.manuals') }}
       />
       <Drawer.Screen
         name="PersonalDataScreen"
         component={PersonalDataScreen}
-        options={{ title: "Meus Dados" }}
+        options={{ title: t('menu.personalData') }}
       />
 
       <Drawer.Screen
         name="PreferencesScreen" // Adicione a PreferencesScreen aqui também
         component={PreferencesScreen}
-        options={{ title: "Preferências" }}
+        options={{ title: t('menu.preferences') }}
       />
+
     </Drawer.Navigator>
   );
 };

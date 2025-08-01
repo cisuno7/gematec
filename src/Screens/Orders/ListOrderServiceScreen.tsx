@@ -11,6 +11,7 @@ import { usePermissions } from "../../Context/PermissionsContext";
 import { API_BASE_URL } from "../../config/apiConfig";
 import { ServiceOrder } from "../../Models/ServiceOrder";
 import ServiceOrderFilters from "../../Components/ServiceOrderFilters";
+import { useLanguage } from "../../Context/LanguageContext";
 
 interface ListOrderServiceScreenProps {
     route: RouteProp<RootStackParamList, "ListOrderServiceScreen">;
@@ -18,6 +19,7 @@ interface ListOrderServiceScreenProps {
 }
 
 const ListOrderServiceScreen: React.FC<ListOrderServiceScreenProps> = ({ route, navigation }) => {
+    const { t } = useLanguage();
     const { equipmentId } = route.params || { equipmentId: null };
     const [orders, setOrders] = useState<ServiceOrder[]>([]);
     const [loading, setLoading] = useState(true);
@@ -37,17 +39,17 @@ const ListOrderServiceScreen: React.FC<ListOrderServiceScreenProps> = ({ route, 
     const [totalPages, setTotalPages] = useState(1);
 
     if (permissions.length === 0 && loading) {
-        return <View style={styles.container}><Text style={styles.emptyText}>Carregando permissões...</Text></View>;
+        return <View style={styles.container}><Text style={styles.emptyText}>{t('serviceOrder.loading')}</Text></View>;
     }
 
     if (!hasPermission("list_activities")) {
-        return <View style={styles.container}><Text style={styles.errorText}>Você não tem permissão para visualizar ordens de serviço.</Text></View>;
+        return <View style={styles.container}><Text style={styles.errorText}>{t('serviceOrder.noPermission')}</Text></View>;
     }
 
     const statusTranslations: { [key: string]: string } = {
-        open: "Aberto",
-        pending: "Pendente",
-        closed: "Fechado",
+        open: t('technicalAssistance.open'),
+        pending: t('technicalAssistance.pending'),
+        closed: t('technicalAssistance.closed'),
     };
 
     const fetchOrderServices = async () => {
@@ -55,8 +57,8 @@ const ListOrderServiceScreen: React.FC<ListOrderServiceScreenProps> = ({ route, 
             setLoading(true);
             const token = await AsyncStorage.getItem("access_token");
             if (!token) {
-                setError("Token de acesso não encontrado");
-                throw new Error("Token de acesso não encontrado");
+                setError(t('serviceOrder.tokenError'));
+                throw new Error(t('serviceOrder.tokenError'));
             }
 
             if (equipmentTypes.length === 0 || brands.length === 0) {
@@ -73,7 +75,7 @@ const ListOrderServiceScreen: React.FC<ListOrderServiceScreenProps> = ({ route, 
             setTotalPages(Math.ceil(response.count / perPage) || 1);
         } catch (error: any) {
             console.error("Erro:", error.message);
-            setError(error.message || "Erro desconhecido");
+            setError(error.message || t('serviceOrder.unknownError'));
         } finally {
             setLoading(false);
         }
@@ -88,11 +90,11 @@ const ListOrderServiceScreen: React.FC<ListOrderServiceScreenProps> = ({ route, 
             style={styles.row}
             onPress={() => navigation.navigate("ViewOrderActivityScreen", { serviceOrderId: item.id, equipmentId: item.equipment.id })}
         >
-            <Text style={styles.cell}>{item.client?.name || "Nome não disponível"}</Text>
-            <Text style={styles.cell}>{item.client?.email || "Email não disponível"}</Text>
-            <Text style={styles.cell}>{item.equipment?.tag || "Tag não disponível"}</Text>
-            <Text style={styles.cell}>{item.equipment?.equipmentType?.name || "Tipo não disponível"}</Text>
-            <Text style={styles.cell}>{item.equipment?.brand?.name || "Marca não disponível"}</Text>
+            <Text style={styles.cell}>{item.client?.name || t('serviceOrder.nameNotAvailable')}</Text>
+            <Text style={styles.cell}>{item.client?.email || t('serviceOrder.emailNotAvailable')}</Text>
+            <Text style={styles.cell}>{item.equipment?.tag || t('serviceOrder.tagNotAvailable')}</Text>
+            <Text style={styles.cell}>{item.equipment?.equipmentType?.name || t('serviceOrder.typeNotAvailable')}</Text>
+            <Text style={styles.cell}>{item.equipment?.brand?.name || t('serviceOrder.brandNotAvailable')}</Text>
             <Text style={styles.cell}>{statusTranslations[item.status] || item.status}</Text>
             <Text style={styles.cell}>{new Date(item.created_at).toLocaleDateString()}</Text>
         </TouchableOpacity>

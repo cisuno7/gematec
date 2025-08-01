@@ -19,10 +19,12 @@ import NewAssistanceModal from '../../Components/Newassistencemodal';
 import NewTechnicalAssistanceModal from '../../Components/Newassistencemodal';
 import { usePermissions } from "../../Context/PermissionsContext";
 import { TechnicalAssistance } from '../../Models/TechnicalAssistance';
+import { useLanguage } from "../../Context/LanguageContext";
 interface TechnicalAssistanceScreenProps {
     route: RouteProp<RootStackParamList, "TechnicalAssistanceScreen">;
 }
 const TechnicalAssistanceScreen: React.FC<TechnicalAssistanceScreenProps> = ({ route }) => {
+    const { t } = useLanguage();
     const [data, setData] = useState<TechnicalAssistance[]>([]);
     const [total, setTotal] = useState(0);
     const [totalPages, setTotalPages] = useState(1);
@@ -83,7 +85,7 @@ const TechnicalAssistanceScreen: React.FC<TechnicalAssistanceScreenProps> = ({ r
             <View style={styles.filtersContainer}>
                 <TextInput
                     style={styles.input}
-                    placeholder="Pesquisar (nome, email ou tag)"
+                    placeholder={t('technicalAssistance.searchPlaceholder')}
                     value={filters.search || ''} // Garante que seja string para TextInput
                     onChangeText={(text) => setFilters({ ...filters, search: text || undefined })}
                 />
@@ -92,7 +94,7 @@ const TechnicalAssistanceScreen: React.FC<TechnicalAssistanceScreenProps> = ({ r
                     onValueChange={(itemValue) => setFilters({ ...filters, equipment_type: itemValue || undefined })}
                     style={styles.picker}
                 >
-                    <Picker.Item label="Todos os tipos" value="" />
+                    <Picker.Item label={t('technicalAssistance.allTypes')} value="" />
                     {/* Adicionar opções de tipos de equipamento */}
                 </Picker>
                 <Picker
@@ -100,7 +102,7 @@ const TechnicalAssistanceScreen: React.FC<TechnicalAssistanceScreenProps> = ({ r
                     onValueChange={(itemValue) => setFilters({ ...filters, brand: itemValue || undefined })}
                     style={styles.picker}
                 >
-                    <Picker.Item label="Todos os fabricantes" value="" />
+                    <Picker.Item label={t('technicalAssistance.allManufacturers')} value="" />
                     {/* Adicionar opções de fabricantes */}
                 </Picker>
                 <Picker
@@ -108,14 +110,14 @@ const TechnicalAssistanceScreen: React.FC<TechnicalAssistanceScreenProps> = ({ r
                     onValueChange={(itemValue) => setFilters({ ...filters, status: itemValue || undefined })}
                     style={styles.picker}
                 >
-                    <Picker.Item label="Todos os status" value="" />
-                    <Picker.Item label="Aberto" value="open" />
-                    <Picker.Item label="Pendente" value="pending" />
-                    <Picker.Item label="Fechado" value="closed" />
+                    <Picker.Item label={t('technicalAssistance.allStatus')} value="" />
+                    <Picker.Item label={t('technicalAssistance.open')} value="open" />
+                    <Picker.Item label={t('technicalAssistance.pending')} value="pending" />
+                    <Picker.Item label={t('technicalAssistance.closed')} value="closed" />
                 </Picker>
             </View>
             <TouchableOpacity style={styles.button} onPress={() => setModalVisible(true)}>
-                <Text style={styles.buttonText}>Nova Assistência Técnica</Text>
+                <Text style={styles.buttonText}>{t('technicalAssistance.newTechnicalAssistance')}</Text>
             </TouchableOpacity>
             <NewTechnicalAssistanceModal
                 visible={modalVisible}
@@ -126,13 +128,13 @@ const TechnicalAssistanceScreen: React.FC<TechnicalAssistanceScreenProps> = ({ r
             ) : (
                 <View style={styles.tableContainer}>
                     <View style={styles.header}>
-                        <Text style={styles.headerText}>Cliente</Text>
-                        <Text style={styles.headerText}>Email</Text>
-                        <Text style={styles.headerText}>Tag</Text>
-                        <Text style={styles.headerText}>Tipo</Text>
-                        <Text style={styles.headerText}>Fabricante</Text>
-                        <Text style={styles.headerText}>Status</Text>
-                        <Text style={styles.headerText}>Data</Text>
+                        <Text style={styles.headerText}>{t('technicalAssistance.client')}</Text>
+                        <Text style={styles.headerText}>{t('technicalAssistance.email')}</Text>
+                        <Text style={styles.headerText}>{t('technicalAssistance.tag')}</Text>
+                        <Text style={styles.headerText}>{t('technicalAssistance.type')}</Text>
+                        <Text style={styles.headerText}>{t('technicalAssistance.manufacturer')}</Text>
+                        <Text style={styles.headerText}>{t('technicalAssistance.status')}</Text>
+                        <Text style={styles.headerText}>{t('technicalAssistance.date')}</Text>
                     </View>
                     <FlatList
                         data={data}

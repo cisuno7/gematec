@@ -24,7 +24,7 @@ apiClient.interceptors.request.use(
             // Set dynamic base URL
             // const decodedToken: any = jwtDecode(accessToken); // Remova esta linha
             const accountName = await AsyncStorage.getItem("account") || "default"; // Obtenha o nome da conta do AsyncStorage
-            config.baseURL = setDynamicApiUrl(accountName);
+            config.baseURL = await setDynamicApiUrl(accountName);
         }
 
         console.log('[ApiClient] Configuração final:', {
@@ -100,10 +100,10 @@ const refreshAccessToken = async () => {
         }
 
         const accountName = await AsyncStorage.getItem("account") || "default";
-        const dynamicBaseUrl = setDynamicApiUrl(accountName);
+        const dynamicBaseUrl = await setDynamicApiUrl(accountName);
 
         const response = await axios.post(
-            `${dynamicBaseUrl}/api/token/refresh/`,
+            `${dynamicBaseUrl}/token/refresh/`,
             { refresh: refreshToken },
             {
                 headers: {

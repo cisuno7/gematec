@@ -7,15 +7,21 @@ import { Text, StyleSheet } from 'react-native';
 import LoginScreen from '../Screens/LoginScreen';
 import PersonalDataScreen from '../Screens/PersonalDataScreen';
 import EquipmentDetailsScreen from '../Screens/Equipaments/EquipamentDetails';
-import ClientDetailScreen from '../Screens/Clients/ClientsDetails';
+import ClientDetailScreen from '../Screens/Clients/ClientDetailScreen';
+import ClientSectorsScreen from '../Screens/Clients/ClientSectorsScreen';
+import SectorDetailScreen from '../Screens/Clients/SectorDetailScreen';
+import ClientEquipmentListScreen from '../Screens/Clients/EquipmentListScreen';
 import CreateEquipmentScreen from '../Screens/Equipaments/CreateEquipmentScreen';
 import EditEquipmentScreen from '../Screens/Equipaments/EditEquipmentScreen';
 import { ClientsAvulsosScreen, ClientsComContratoScreen } from "../Screens/Clients/Client";
+import RoadmapScreen from '../Screens/Roadmap/RoadmapScreen';
+import RoadmapActivityDetailsScreen from '../Screens/Roadmap/RoadmapdetailsScreen';
 import HomeScreen from '../Screens/HomeScreen';
 import DrawerNavigator from "./DrawerNavigation";
 import EquipamentScreen from '../Screens/Equipaments/EquipamentScreen';
 import EquipmentQRCodeScreen from '../Screens/Equipaments/EquipmentQRCodeScreen';
 import EquipmentListScreen from "../Screens/Equipaments/EquipmentListScreen";
+import GeneralEquipmentListScreen from "../Screens/Equipaments/GeneralEquipmentListScreen";
 import PmocListScreen from "../Screens/Pmoc/PmocListScreen";
 import PmocDetailsScreen from "../Screens/Pmoc/PmocDetailsScreen";
 import PmocEquipmentScreen from "../Screens/Pmoc/PmocEquipmentScreen";
@@ -29,16 +35,19 @@ import HistOrderServiceEquipScreen from "../Screens/Orders/HistOrderServiceEquip
 import ViewResponseActivityScreen from "../Screens/Orders/ViewResponseActivityScreen";
 import CreateServiceOrderScreen from "../Screens/Orders/CreateServiceOrderScreen";
 import TechnicalAssistanceDetailsScreen from "../Screens/TechnicalAssistance/TechnicalAssistanceDetailsScreen";
-import ManualDetailsScreen from "../Screens/ManualDetailsScreen";
+
 import ManualsScreen from "../Screens/ManualsScreen";
 import SubSectorScreen from '../Screens/Clients/SubSectorScreen';
 import PreferencesScreen from '../Screens/PreferencesScreen'; // Importe a PreferencesScreen
 import { useUser } from '../Context/UserContext';
+import { useLanguage } from '../Context/LanguageContext';
 import { ActivityIndicator, View } from 'react-native';
 
 export type RootStackParamList = {
   CondenserTypesScreen: undefined;
   EvaporatorTypesScreen: undefined;
+  RoadmapScreen: undefined;
+  RoadmapDetailsScreen: { activity: any };
   PhasesScreen: undefined;
   TechnologiesScreen: undefined;
   FunctionsScreen: undefined;
@@ -63,20 +72,22 @@ export type RootStackParamList = {
   EquipmentDetailsScreen: { equipmentId: string };
   EquipmentQRCodeScreen: { equipmentId?: string };
   EditEquipmentScreen: { equipmentId: string };
-  EquipmentListScreen: { clientId?: number; sectorId?: number };
+  EquipmentListScreen: { clientId: number; sectorId: number };
+  GeneralEquipmentListScreen: undefined;
   PmocListScreen: undefined;
   PmocDetailsScreen: { pmocId: number };
   PmocEquipmentScreen: { pmocId: number; equipmentId: number };
   ServiceOrderScreen: undefined;
-  ActivityHistoryScreen: { equipmentId: number };
+  ActivityHistoryScreen: { equipmentId?: number, activityTypeSlug?: string, status?: string[] };
   NewServiceOrderScreen: { equipmentId: number };
   TechnicalAssistanceScreen: undefined;
   ListOrderServiceScreen: { equipmentId: number };
   ViewOrderActivityScreen: { serviceOrderId: number; equipmentId: number; pmocId?: number; equipmentVersionId?: number; questions?: string };
   HistOrderServiceEquipScreen: { equipmentId: number };
   TechnicalAssistanceDetails: { id: number };
-  ManualDetailsScreen: { manualId: number };
   SubSectorScreen: { clientId: number; parentSector: { id: number; name: string; level: number; complete_name: string } };
+  ClientSectorsScreen: { clientId: number };
+  SectorDetailScreen: { clientId: number; sectorId: number };
   ViewResponseActivityScreen: { serviceOrderId: number; equipmentStatus: string };
   RespondOrderScreen: { serviceOrderId: number; questions: string; equipmentId?: number };
   PreferencesScreen: undefined;
@@ -90,12 +101,13 @@ const Stack = createStackNavigator<RootStackParamList>();
 
 const AppRouter: React.FC = () => {
   const { isAuthenticated, isLoading } = useUser(); // Obtenha o estado de autenticação do UserContext
+  const { t } = useLanguage();
 
   if (isLoading) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#007BFF" />
-        <Text style={styles.loadingText}>Carregando...</Text>
+        <Text style={styles.loadingText}>{t('common.loading')}...</Text>
       </View>
     );
   }
@@ -103,33 +115,37 @@ const AppRouter: React.FC = () => {
     <Stack.Navigator initialRouteName={isAuthenticated ? "AuthenticatedFlow" : "LoginScreen"}>
       <Stack.Screen name="AuthenticatedFlow" component={DrawerNavigator} options={{ headerShown: false }} />
       <Stack.Screen name="LoginScreen" component={LoginScreen} options={{ headerTitle: 'Login' }} />
-      <Stack.Screen name="PersonalDataScreen" component={PersonalDataScreen} options={{ headerTitle: 'Meus Dados' }} />
-      <Stack.Screen name="ClientsAvulsosScreen" component={ClientsAvulsosScreen} options={{ headerTitle: 'Clientes Avulsos' }} />
-      <Stack.Screen name="ClientsComContratoScreen" component={ClientsComContratoScreen} options={{ headerTitle: 'Clientes com Contrato' }} />
+      <Stack.Screen name="PersonalDataScreen" component={PersonalDataScreen} options={{ headerTitle: t('menu.personalData') }} />
+      <Stack.Screen name="ClientsAvulsosScreen" component={ClientsAvulsosScreen} options={{ headerTitle: t('menu.clientsWithoutContract') }} />
+      <Stack.Screen name="ClientsComContratoScreen" component={ClientsComContratoScreen} options={{ headerTitle: t('menu.clientsWithContract') }} />
       <Stack.Screen name="ClientDetailScreen" component={ClientDetailScreen} options={{ headerTitle: 'Detalhes do Cliente' }} />
-      <Stack.Screen name="TechnicalAssistanceScreen" component={TechnicalAssistanceScreen} options={{ title: 'Assistência Técnica' }} />
+      <Stack.Screen name="TechnicalAssistanceScreen" component={TechnicalAssistanceScreen} options={{ title: t('menu.technicalAssistance') }} />
       <Stack.Screen name="TechnicalAssistanceDetails" component={TechnicalAssistanceDetailsScreen} options={{ title: 'Detalhes Assistência Técnica' }} />
-      <Stack.Screen name="EquipamentScreen" component={EquipamentScreen} options={{ headerTitle: 'Filtragem de Equipamentos' }} />
+      <Stack.Screen name="EquipamentScreen" component={EquipamentScreen} options={{ headerTitle: t('menu.filterEquipment') }} />
       <Stack.Screen name="EquipmentDetailsScreen" component={EquipmentDetailsScreen} options={{ headerTitle: 'Detalhes do Equipamento' }} />
-      <Stack.Screen name="EquipmentListScreen" component={EquipmentListScreen} options={{ headerTitle: "Listagem de Equipamentos" }} />
-      <Stack.Screen name="CreateEquipmentScreen" component={CreateEquipmentScreen} options={{ headerTitle: 'Criação de Equipamento' }} />
-      <Stack.Screen name="EquipmentQRCodeScreen" component={EquipmentQRCodeScreen} options={{ headerTitle: 'Leitura QR Code' }} />
+      <Stack.Screen name="EquipmentListScreen" component={EquipmentListScreen} options={{ headerTitle: t('menu.equipments') }} />
+      <Stack.Screen name="GeneralEquipmentListScreen" component={GeneralEquipmentListScreen} options={{ headerTitle: "Listagem Geral de Equipamentos" }} />
+      <Stack.Screen name="CreateEquipmentScreen" component={CreateEquipmentScreen} options={{ headerTitle: t('menu.createEquipment') }} />
+      <Stack.Screen name="EquipmentQRCodeScreen" component={EquipmentQRCodeScreen} options={{ headerTitle: t('menu.equipmentQrCode') }} />
       <Stack.Screen name="EditEquipmentScreen" component={EditEquipmentScreen} options={{ headerTitle: 'Editar Equipamento' }} />
-      <Stack.Screen name="PmocListScreen" component={PmocListScreen} options={{ headerTitle: "Listagem de PMOCs" }} />
+      <Stack.Screen name="PmocListScreen" component={PmocListScreen} options={{ headerTitle: t('menu.pmocs') }} />
       <Stack.Screen name="PmocDetailsScreen" component={PmocDetailsScreen} options={{ headerTitle: "Detalhes do PMOC" }} />
       <Stack.Screen name="PmocEquipmentScreen" component={PmocEquipmentScreen} options={{ headerTitle: "Detalhes do Equipamento PMOC" }} />
-      <Stack.Screen name="ActivityHistoryScreen" component={ActivityHistoryScreen} options={{ headerTitle: 'Historico do Equipamento' }} />
+      <Stack.Screen name="ActivityHistoryScreen" component={ActivityHistoryScreen} options={{ headerTitle: t('menu.activities') }} />
       <Stack.Screen name="NewServiceOrderScreen" component={NewServiceOrderScreen} options={{ title: "Nova Ordem de Serviço" }} />
-      <Stack.Screen name="ListOrderServiceScreen" component={ListOrderServiceScreen} options={{ title: "Listar Ordem de Serviço" }} />
-      <Stack.Screen name="ManualsScreen" component={ManualsScreen} options={{ headerTitle: 'Manuais' }} />
+      <Stack.Screen name="ListOrderServiceScreen" component={ListOrderServiceScreen} options={{ title: t('menu.serviceOrders') }} />
+      <Stack.Screen name="ManualsScreen" component={ManualsScreen} options={{ headerTitle: t('menu.manuals') }} />
       <Stack.Screen name="ViewOrderActivityScreen" component={ViewOrderActivityScreen} options={{ title: "Visualizar Plano de Atividade de uma Ordem de Serviço" }} />
       <Stack.Screen name="HistOrderServiceEquipScreen" component={HistOrderServiceEquipScreen} options={{ title: "Visualizar histórico de Ordem de Serviço em um Equipamento" }} />
       <Stack.Screen name="ViewResponseActivityScreen" component={ViewResponseActivityScreen} options={{ title: "Visualizar resposta de um plano de atividade (O.S)" }} />
       <Stack.Screen name="CreateServiceOrderScreen" component={CreateServiceOrderScreen} options={{ title: "Criar Nova Ordem de Serviço" }} />
-      <Stack.Screen name="ManualDetailsScreen" component={ManualDetailsScreen} options={{ headerTitle: '' }} />
       <Stack.Screen name="RespondOrderScreen" component={RespondOrderScreen} options={{ title: "Responder Plano de Atividade de uma Ordem de Serviço" }} />
       <Stack.Screen name="SubSectorScreen" component={SubSectorScreen} options={{ headerTitle: 'Sub-setores' }} />
-      <Stack.Screen name="PreferencesScreen" component={PreferencesScreen} options={{ headerTitle: 'Preferências' }} />
+      <Stack.Screen name="ClientSectorsScreen" component={ClientSectorsScreen} options={{ headerTitle: 'Setores do Cliente' }} />
+      <Stack.Screen name="RoadmapScreen" component={RoadmapScreen} options={{ headerTitle: 'Roteiro' }} />
+      <Stack.Screen name="RoadmapDetailsScreen" component={RoadmapActivityDetailsScreen} options={{ headerTitle: 'Detalhes da Atividade' }} />
+      <Stack.Screen name="SectorDetailScreen" component={SectorDetailScreen} options={{ headerTitle: 'Detalhes do Setor' }} />
+      <Stack.Screen name="PreferencesScreen" component={PreferencesScreen} options={{ headerTitle: t('menu.preferences') }} />
     </Stack.Navigator>
   );
 };

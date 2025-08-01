@@ -9,7 +9,7 @@ export interface UserPreferences {
 export default class PreferencesService {
     static async getPreferences(accessToken: string): Promise<UserPreferences> {
         const accountName = await AsyncStorage.getItem("account") || "default";
-        const dynamicBaseUrl = setDynamicApiUrl(accountName);
+        const dynamicBaseUrl = await setDynamicApiUrl(accountName);
         const response = await apiClient.get(`${dynamicBaseUrl}/me/preferences`, {
             headers: { Authorization: `Bearer ${accessToken}` },
         });
@@ -18,7 +18,7 @@ export default class PreferencesService {
 
     static async updatePreferences(accessToken: string, preferences: Partial<UserPreferences>): Promise<UserPreferences> {
         const accountName = await AsyncStorage.getItem("account") || "default";
-        const dynamicBaseUrl = setDynamicApiUrl(accountName);
+        const dynamicBaseUrl = await setDynamicApiUrl(accountName);
         const response = await apiClient.patch(`${dynamicBaseUrl}/me/preferences`, preferences, {
             headers: { Authorization: `Bearer ${accessToken}` },
         });

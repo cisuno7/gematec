@@ -1,13 +1,14 @@
 import axios from "axios";
-import { API_BASE_URL, buildApiUrlForAccount } from "../config/apiConfig";
+import { API_BASE_URL, buildApiUrlForAccount, setDynamicApiUrl } from "../config/apiConfig";
 import apiClient from "../Context/ApiClient";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 
 export default class AuthService {
   static async login(account: string, email: string, password: string) {
     try {
       // Montar a URL dinâmica com o subdomínio da conta
-      const apiUrl = buildApiUrlForAccount(account);
+      const apiUrl = await buildApiUrlForAccount(account); // Adicione await
       const endpoint = `${apiUrl}/token`;
       console.log('[AuthService] Endpoint de login dinâmico:', endpoint);
       const response = await axios.post(endpoint, { email, password });
@@ -87,30 +88,10 @@ export default class AuthService {
     }
   }
 
-  static async switchAccount(slidingToken: string, accountId: number): Promise<{ access: string; refresh: string }> {
+  static async revoke(refreshToken: string, account: string): Promise<void> {
     try {
-      const endpoint = `${API_BASE_URL}/accounts/switch`; // Ajustado
-      const response = await apiClient.post(endpoint, { account_id: accountId }, {
-        headers: { Authorization: `Bearer ${slidingToken}` },
-      });
-      return response.data; // Retorna { access, refresh }
-    } catch (error: any) {
-      if (error.response) {
-        if (error.response.status === 401) {
-          throw new Error('Token inválido ou expirado.');
-        } else if (error.response.status === 403) {
-          throw new Error('Permissão negada.');
-        } else if (error.response.status === 404) {
-          throw new Error('Endpoint não encontrado.');
-        }
-      }
-      throw new Error('Erro ao trocar de conta.');
-    }
-  }
-
-  static async revoke(refreshToken: string): Promise<void> {
-    try {
-      const endpoint = `${API_BASE_URL}/revoke`; // Novo endpoint
+      const apiUrl = await buildApiUrlForAccount(account);
+      const endpoint = `${apiUrl}/token/blacklist`; // Novo endpoint
       await apiClient.post(endpoint, { refresh_token: refreshToken });
     } catch (error: any) {
       console.error('Erro ao revogar o token:', error);
@@ -168,11 +149,13 @@ export default class AuthService {
   }
   static async updatePersonalData(accessToken: string, updatedData: { name?: string; birthdate?: string; rh_factor?: string; }) {
     try {
-      const endpoint = `${API_BASE_URL}/me`;
+      const accountName = await AsyncStorage.getItem("account") || "default";
+      const dynamicBaseUrl = await setDynamicApiUrl(accountName);
+      const endpoint = `${dynamicBaseUrl}/me`;
       console.log('Atualizando dados pessoais no endpoint:', endpoint);
       console.log('Dados enviados:', updatedData);
 
-      const response = await axios.patch(endpoint, updatedData, {
+      const response = await axios.put(endpoint, updatedData, {
         headers: {
           Authorization: `Bearer ${accessToken}`,
         },
@@ -195,10 +178,12 @@ export default class AuthService {
   static async getPersonalData(accessToken: string, token: string) {
     try {
       console.log('Iniciando requisição para dados pessoais...');
-      console.log('Endpoint usado:', `${API_BASE_URL}}/me`);
+      const accountName = await AsyncStorage.getItem("account") || "default";
+      const dynamicBaseUrl = await setDynamicApiUrl(accountName);
+      console.log('Endpoint usado:', `${dynamicBaseUrl}/me`);
       console.log('Token de acesso:', accessToken);
 
-      const response = await apiClient.get(`${API_BASE_URL}/me`, {
+      const response = await apiClient.get(`${dynamicBaseUrl}/me`, {
         headers: {
           Authorization: `Bearer ${accessToken}`,
         },
@@ -224,7 +209,9 @@ export default class AuthService {
   }
   static async updatePassword(accessToken: string, password: string, passwordConfirmation: string) {
     try {
-      const response = await apiClient.patch(`${API_BASE_URL}/me/password`, {
+      const accountName = await AsyncStorage.getItem("account") || "default";
+      const dynamicBaseUrl = await setDynamicApiUrl(accountName);
+      const response = await apiClient.patch(`${dynamicBaseUrl}/me/password`, {
         password,
         password_confirmation: passwordConfirmation,
       }, {

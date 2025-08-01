@@ -8,9 +8,13 @@ export default class PersonalData {
     ctps: string | null;
     rh_factor: string | null;
     birthdate: string | null;
+    is_active: boolean;
     admission_date: string | null;
-    group: any | null; // Adicionado
-    role: any | null; // Adicionado
+    group: any | null;
+    role: any | null;
+    last_login: string | null;
+    created_at: string;
+    updated_at: string;
   
     constructor(data: any) {
       this.id = data.id;
@@ -22,9 +26,13 @@ export default class PersonalData {
       this.ctps = data.ctps || '';
       this.rh_factor = data.rh_factor || '';
       this.birthdate = data.birthdate || '';
+      this.is_active = data.is_active || false;
       this.admission_date = data.admission_date || '';
-      this.group = data.group || null; // Inicializa com null se não houver
-      this.role = data.role || null;   // Inicializa com null se não houver
+      this.group = data.group || null;
+      this.role = data.role || null;
+      this.last_login = data.last_login || null;
+      this.created_at = data.created_at || '';
+      this.updated_at = data.updated_at || '';
     }
   }
   

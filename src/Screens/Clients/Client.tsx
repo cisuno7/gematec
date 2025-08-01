@@ -18,21 +18,7 @@ export const ClientsAvulsosScreen: React.FC<ClientScreenProps> = ({ route, navig
   const [loading, setLoading] = useState(false); // Adicionar estado de loading
 
 
-  if (permissions.length === 0 && loading) {
-    return (
-      <View style={styles.container}>
-        <Text style={styles.emptyText}>Carregando permissões...</Text>
-      </View>
-    );
-  }
 
-  if (!hasPermission("list_clients")) {
-    return (
-      <View style={styles.container}>
-        <Text style={styles.errorText}>Você não tem permissão para visualizar clientes avulsos.</Text>
-      </View>
-    );
-  }
 
   return <ClientList hasContract={false} navigation={navigation} />;
 };
@@ -42,22 +28,6 @@ export const ClientsComContratoScreen: React.FC<ClientScreenProps> = ({ route, n
   const { hasPermission, permissions } = usePermissions();
   const [loading, setLoading] = useState(false);
 
-
-  if (permissions.length === 0 && loading) {
-    return (
-      <View style={styles.container}>
-        <Text style={styles.emptyText}>Carregando permissões...</Text>
-      </View>
-    );
-  }
-
-  if (!hasPermission("list_clients")) {
-    return (
-      <View style={styles.container}>
-        <Text style={styles.errorText}>Você não tem permissão para visualizar clientes avulsos.</Text>
-      </View>
-    );
-  }
   return <ClientList hasContract={true} navigation={navigation} />;
 };
 const styles = StyleSheet.create({

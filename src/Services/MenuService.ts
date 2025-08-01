@@ -16,7 +16,7 @@ export default class MenuService {
             // Decodificar o token para obter o accountName
             // const decodedToken: any = jwtDecode(accessToken); // Remova esta linha
             const accountName = await AsyncStorage.getItem("account") || "default"; // Obtenha o nome da conta do AsyncStorage
-            const dynamicBaseUrl = setDynamicApiUrl(accountName);
+            const dynamicBaseUrl = await setDynamicApiUrl(accountName);
             const endpoint = `/me/menu?app=mobile`;
 
             console.log("[MenuService] Buscando menu dinâmico do endpoint:", `${dynamicBaseUrl}${endpoint}`);

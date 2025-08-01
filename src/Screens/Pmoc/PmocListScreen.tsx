@@ -18,6 +18,7 @@ import { RouteProp } from "@react-navigation/native";
 import { RootStackParamList } from "../../Routers/AppRouter";
 import { DrawerNavigationProp } from "@react-navigation/drawer";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useLanguage } from "../../Context/LanguageContext";
 
 interface PmocListScreenProps {
   route: RouteProp<RootStackParamList, "PmocListScreen">;
@@ -25,6 +26,7 @@ interface PmocListScreenProps {
 }
 
 const PmocListScreen: React.FC<PmocListScreenProps> = ({ route, navigation }) => {
+  const { t } = useLanguage();
   const [pmocs, setPmocs] = useState<Pmoc[]>([]);
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(1);
@@ -108,11 +110,11 @@ const PmocListScreen: React.FC<PmocListScreenProps> = ({ route, navigation }) =>
   return (
     <View style={styles.container}>
       <TouchableOpacity style={styles.createButton} onPress={() => setModalVisible(true)}>
-        <Text style={styles.createButtonText}>Criar Novo PMOC</Text>
+        <Text style={styles.createButtonText}>{t('pmoc.newPmoc')}</Text>
       </TouchableOpacity>
       <TextInput
         style={styles.searchInput}
-        placeholder="Pesquisar por nome ou email..."
+        placeholder={t('pmoc.searchPlaceholder')}
         value={search}
         onChangeText={setSearch}
       />
@@ -121,10 +123,10 @@ const PmocListScreen: React.FC<PmocListScreenProps> = ({ route, navigation }) =>
         onValueChange={(value) => setStatusFilter(value)}
         style={styles.picker}
       >
-        <Picker.Item label="Todos" value="" />
-        <Picker.Item label="Aberto" value="open" />
-        <Picker.Item label="Pendente" value="pending" />
-        <Picker.Item label="Fechado" value="closed" />
+        <Picker.Item label={t('pmoc.allStatus')} value="" />
+        <Picker.Item label={t('technicalAssistance.open')} value="open" />
+        <Picker.Item label={t('technicalAssistance.pending')} value="pending" />
+        <Picker.Item label={t('technicalAssistance.closed')} value="closed" />
       </Picker>
 
       {loading ? (
@@ -135,17 +137,17 @@ const PmocListScreen: React.FC<PmocListScreenProps> = ({ route, navigation }) =>
             data={pmocs}
             keyExtractor={(item) => item.id.toString()}
             renderItem={renderPmocItem}
-            ListEmptyComponent={<Text style={styles.emptyText}>Nenhum PMOC encontrado.</Text>}
+            ListEmptyComponent={<Text style={styles.emptyText}>{t('pmoc.noPmocsFound')}</Text>}
           />
           <View style={styles.pagination}>
             <Button
-              title="Anterior"
+              title={t('common.previous')}
               onPress={() => setPage((p) => Math.max(p - 1, 1))}
               disabled={page === 1}
             />
-            <Text style={styles.pageText}>Página {page} de {totalPages}</Text>
+            <Text style={styles.pageText}>{t('common.page')} {page} {t('common.of')} {totalPages}</Text>
             <Button
-              title="Próximo"
+              title={t('common.next')}
               onPress={() => setPage((p) => (p < totalPages ? p + 1 : p))}
               disabled={page === totalPages}
             />

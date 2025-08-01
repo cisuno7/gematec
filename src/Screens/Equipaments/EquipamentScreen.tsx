@@ -39,21 +39,7 @@ const EquipamentScreen: React.FC<EquipamentScreenProps> = ({ route, navigation }
   const [totalPages, setTotalPages] = useState(1);
   const { hasPermission, permissions } = usePermissions();
 
-  if (permissions.length === 0 && loading) {
-    return (
-      <View style={styles.container}>
-        <Text style={styles.emptyText}>Carregando permissões...</Text>
-      </View>
-    );
-  }
 
-  if (!hasPermission("list_equipments")) {
-    return (
-      <View style={styles.container}>
-        <Text style={styles.errorText}>Você não tem permissão para visualizar equipamentos.</Text>
-      </View>
-    );
-  }
 
   const fetchClientAndSector = async () => {
     try {

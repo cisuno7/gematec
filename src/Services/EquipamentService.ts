@@ -1,7 +1,9 @@
 import axios from 'axios';
 import { Equipment } from '../Models/Equipament';
+import EquipmentTemplateModel from '../Models/EquipmentTemplate';
 import apiClient from "../Context/ApiClient";
-import { API_BASE_URL } from "../config/apiConfig";
+import { setDynamicApiUrl } from "../config/apiConfig";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 interface EquipmentFilters {
   search?: string;
@@ -30,7 +32,9 @@ export default class EquipmentService {
       if (filters.subsector_id) params.append('subsector_id', filters.subsector_id.toString());
       if (filters.page) params.append('page', filters.page.toString());
       if (filters.per_page) params.append('per_page', filters.per_page.toString());
-      const url = `${API_BASE_URL}/equipments?${params}`;
+      const accountName = await AsyncStorage.getItem("account") || "default";
+      const dynamicBaseUrl = await setDynamicApiUrl(accountName);
+      const url = `${dynamicBaseUrl}/equipments?${params}`;
       const response = await apiClient.get(url, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -42,7 +46,9 @@ export default class EquipmentService {
   }
   static async fetchEquipmentDetails(equipmentId: string, accessToken: string) {
     try {
-      const response = await apiClient.get(`${API_BASE_URL}/equipments/${equipmentId}`, {
+      const accountName = await AsyncStorage.getItem("account") || "default";
+      const dynamicBaseUrl = await setDynamicApiUrl(accountName);
+      const response = await apiClient.get(`${dynamicBaseUrl}/equipments/${equipmentId}`, {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
       return response.data;
@@ -56,7 +62,9 @@ export default class EquipmentService {
     equipmentData: Partial<Equipment>
   ): Promise<Equipment> {
     try {
-      const response = await apiClient.post(`${API_BASE_URL}/equipments`, equipmentData, {
+      const accountName = await AsyncStorage.getItem("account") || "default";
+      const dynamicBaseUrl = await setDynamicApiUrl(accountName);
+      const response = await apiClient.post(`${dynamicBaseUrl}/equipments`, equipmentData, {
         headers: { Authorization: `Bearer ${token}` },
       });
       return response.data;
@@ -76,7 +84,9 @@ export default class EquipmentService {
       console.log("[EquipmentService] ID do Equipamento:", equipmentId);
       console.log("[EquipmentService] Dados para atualização:", data);
 
-      const response = await apiClient.put(`${API_BASE_URL}/equipments/${equipmentId}`, data, {
+      const accountName = await AsyncStorage.getItem("account") || "default";
+      const dynamicBaseUrl = await setDynamicApiUrl(accountName);
+      const response = await apiClient.put(`${dynamicBaseUrl}/equipments/${equipmentId}`, data, {
         headers: {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
@@ -114,7 +124,9 @@ export default class EquipmentService {
   static async removeEquipment(token: string, equipmentId: number): Promise<void> {
     try {
       console.log(`[EquipmentService] Removendo equipamento com ID: ${equipmentId}`);
-      const response = await apiClient.delete(`${API_BASE_URL}/equipments/${equipmentId}`, {
+      const accountName = await AsyncStorage.getItem("account") || "default";
+      const dynamicBaseUrl = await setDynamicApiUrl(accountName);
+      const response = await apiClient.delete(`${dynamicBaseUrl}/equipments/${equipmentId}`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -132,6 +144,24 @@ export default class EquipmentService {
       }
 
       throw new Error(error.message || "Erro ao remover o equipamento.");
+    }
+  }
+
+  static async getEquipmentTemplate(token: string): Promise<EquipmentTemplateModel> {
+    try {
+      console.log("[EquipmentService] Buscando template de equipamentos...");
+      const accountName = await AsyncStorage.getItem("account") || "default";
+      const dynamicBaseUrl = await setDynamicApiUrl(accountName);
+      const response = await apiClient.get(`${dynamicBaseUrl}/equipment_template`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      console.log("[EquipmentService] Template de equipamentos recebido:", response.data);
+      return new EquipmentTemplateModel(response.data);
+    } catch (error: any) {
+      console.error("[EquipmentService] Erro ao buscar template de equipamentos:", error);
+      throw new Error(error.response?.data?.message || "Falha ao buscar template de equipamentos.");
     }
   }
 

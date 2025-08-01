@@ -24,7 +24,8 @@
         "android.permission.RECORD_AUDIO"
       ],
       "package": "com.cisuno7.gematec",
-      "versionCode": 27
+      "versionCode": 27,
+      "usesCleartextTraffic": true
     },
     "web": {
       "favicon": "./assets/favicon.png"
