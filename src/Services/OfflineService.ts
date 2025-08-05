@@ -4,7 +4,7 @@ import { OfflineRequest } from '../Models/Offline';
 const PENDING_REQUESTS_KEY = 'pending_requests';
 const CACHE_KEY_PREFIX = 'cache_';
 
-export class OfflineService {
+export default class OfflineService {
 
     // --- Gerenciamento da Fila de Requisições Pendentes ---
 

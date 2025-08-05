@@ -16,7 +16,7 @@ import { RoadmapService } from '../../Services/RoadmapService';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import NetInfo from '@react-native-community/netinfo';
-import { OfflineService } from '../../Services/OfflineService';
+import OfflineService from '../../Services/OfflineService';
 
 
 interface RoadmapActivityDetailsScreenProps {

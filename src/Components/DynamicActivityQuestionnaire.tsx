@@ -14,6 +14,8 @@ import { Picker } from '@react-native-picker/picker';
 import * as ImagePicker from 'expo-image-picker';
 import { ActivityDynamicField } from '../Models/ActivityDynamicField';
 import { UploadFile } from '../Models/UploadFile';
+import CustomPicker from './CustomPicker';
+import { useLanguage } from '../Context/LanguageContext';
 
 interface DynamicActivityQuestionnaireProps {
   fields: ActivityDynamicField[];
@@ -26,6 +28,7 @@ const DynamicActivityQuestionnaire: React.FC<DynamicActivityQuestionnaireProps> 
   onChange,
   initialValues = {},
 }) => {
+  const { t } = useLanguage();
   const [answers, setAnswers] = useState<{ [key: string]: any }>(initialValues);
   const [uploads, setUploads] = useState<{ [key: string]: UploadFile[] }>({});
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
@@ -39,23 +42,23 @@ const DynamicActivityQuestionnaire: React.FC<DynamicActivityQuestionnaireProps> 
     const { rules, type, justification_target, has_upload } = field;
     let error = '';
     if (rules?.required && (value === undefined || value === '' || value === null)) {
-      error = 'Campo obrigatório';
+      error = t('validation.required');
     }
     if (type === 'text' && value) {
-      if (rules?.min_length && value.length < rules.min_length) error = `Mínimo ${rules.min_length} caracteres`;
-      if (rules?.max_length && value.length > rules.max_length) error = `Máximo ${rules.max_length} caracteres`;
+      if (rules?.min_length && value.length < rules.min_length) error = t('validation.minLength').replace('{min}', rules.min_length.toString());
+      if (rules?.max_length && value.length > rules.max_length) error = t('validation.maxLength').replace('{max}', rules.max_length.toString());
     }
     if (type === 'measure' && value) {
-      if (rules?.min_value && Number(value) < rules.min_value) error = `Mínimo ${rules.min_value}`;
-      if (rules?.max_value && Number(value) > rules.max_value) error = `Máximo ${rules.max_value}`;
+      if (rules?.min_value && Number(value) < rules.min_value) error = t('validation.minValue').replace('{min}', rules.min_value.toString());
+      if (rules?.max_value && Number(value) > rules.max_value) error = t('validation.maxValue').replace('{max}', rules.max_value.toString());
     }
     if (type === 'radio_with_justification' && value === justification_target) {
-      if (!justification || justification === '') error = 'Justificativa obrigatória';
-      if (rules?.min_length && justification && justification.length < rules.min_length) error = `Justificativa: mínimo ${rules.min_length} caracteres`;
-      if (rules?.max_length && justification && justification.length > rules.max_length) error = `Justificativa: máximo ${rules.max_length} caracteres`;
+      if (!justification || justification === '') error = t('validation.requiredJustification');
+      if (rules?.min_length && justification && justification.length < rules.min_length) error = `Justificativa: ${t('validation.minLength').replace('{min}', rules.min_length.toString())}`;
+      if (rules?.max_length && justification && justification.length > rules.max_length) error = `Justificativa: ${t('validation.maxLength').replace('{max}', rules.max_length.toString())}`;
     }
     if (has_upload && (!uploadList || uploadList.length === 0)) {
-      error = 'Upload obrigatório';
+      error = t('validation.requiredUpload');
     }
     return error;
   };
@@ -122,20 +125,15 @@ const DynamicActivityQuestionnaire: React.FC<DynamicActivityQuestionnaireProps> 
               );
             case 'select':
               return (
-                <View style={styles.pickerContainer}>
-                  <Picker
-                    selectedValue={value}
-                    onValueChange={(itemValue) => {
-                      setAnswers((prev) => ({ ...prev, [field.key]: itemValue }));
-                      setErrors((prev) => ({ ...prev, [field.key]: validateField(field, itemValue) }));
-                    }}
-                  >
-                    <Picker.Item label={`Selecione ${field.label}`} value="" />
-                    {field.options?.map((option, idx) => (
-                      <Picker.Item key={idx} label={option} value={option} />
-                    ))}
-                  </Picker>
-                </View>
+                <CustomPicker
+                  selectedValue={value}
+                  onValueChange={(itemValue) => {
+                    setAnswers((prev) => ({ ...prev, [field.key]: itemValue }));
+                    setErrors((prev) => ({ ...prev, [field.key]: validateField(field, itemValue) }));
+                  }}
+                  items={field.options?.map((option) => ({ label: option, value: option })) || []}
+                  placeholder={`Selecione ${field.label}`}
+                />
               );
             case 'radio':
               return (
@@ -262,6 +260,10 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: '#fff',
     marginBottom: 4,
+  },
+  picker: {
+    color: '#333',
+    backgroundColor: '#fff',
   },
   radioGroup: {
     flexDirection: 'row',

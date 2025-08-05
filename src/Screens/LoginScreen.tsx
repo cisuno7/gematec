@@ -143,10 +143,13 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ route, navigation }) => {
 
       let errorMessage = "Erro inesperado. Tente novamente.";
 
-      if (error.code === 'ENOTFOUND' || error.message.includes('getaddrinfo')) {
-        errorMessage = "Conta inválida. Verifique o nome da conta informado.";
+      // Se o AuthService já retornou uma mensagem específica, usar ela
+      if (error.message && !error.message.includes('Erro inesperado')) {
+        errorMessage = error.message;
+      } else if (error.code === 'ENOTFOUND' || error.message.includes('getaddrinfo')) {
+        errorMessage = "Conta não encontrada. Verifique o nome da conta informado.";
       } else if (error.response?.status === 401) {
-        errorMessage = "Email ou senha inválidos. Verifique suas credenciais.";
+        errorMessage = "Email ou senha incorretos. Verifique suas credenciais.";
       } else if (error.response?.data?.detail) {
         errorMessage = error.response.data.detail;
       }

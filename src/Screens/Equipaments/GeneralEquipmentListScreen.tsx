@@ -8,6 +8,7 @@ import {
     Alert,
     ActivityIndicator,
     Button,
+    ScrollView,
 } from "react-native";
 import { FontAwesome } from "@expo/vector-icons";
 import EquipmentService from "../../Services/EquipamentService";
@@ -30,13 +31,16 @@ const GeneralEquipmentListScreen: React.FC<GeneralEquipmentListScreenProps> = ({
 }) => {
     const [equipmentList, setEquipmentList] = useState<Equipment[]>([]);
     const [loading, setLoading] = useState(false);
-    const { hasPermission } = usePermissions();
+    const { hasPermission, permissions } = usePermissions();
     const [page, setPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
     const [filters, setFilters] = useState<any>({}); // Estado unificado para filtros
+    const [filterApplied, setFilterApplied] = useState(false); // Novo estado para controlar se filtro foi aplicado
+    const [lastFilterAttempt, setLastFilterAttempt] = useState<Date | null>(null); // Debug: última tentativa de filtro
+    const [resetKey, setResetKey] = useState(0); // Chave para resetar os filtros
 
     // Verificar permissão
-    if (!hasPermission("equipments.list_equipments")) {
+    if (!hasPermission("list_equipments")) {
         return (
             <View style={styles.container}>
                 <Text style={styles.errorText}>Você não tem permissão para visualizar equipamentos.</Text>
@@ -45,24 +49,35 @@ const GeneralEquipmentListScreen: React.FC<GeneralEquipmentListScreenProps> = ({
     }
 
     const fetchEquipments = async () => {
-        // Não busca se os filtros principais não estiverem preenchidos
-        if (!filters.client_id || !filters.sector_id) {
-            setEquipmentList([]);
-            setTotalPages(1);
+        // Só busca se os filtros principais estiverem preenchidos E se um filtro foi aplicado
+        if (!filterApplied || !filters.client_id || !filters.sector_id) {
+            if (filterApplied) {
+                setEquipmentList([]);
+                setTotalPages(1);
+            }
             return;
         }
 
         try {
             setLoading(true);
+            console.log("[GeneralEquipmentListScreen] Iniciando busca com filtros:", filters);
+
             const token = await AsyncStorage.getItem("access_token");
             if (!token) throw new Error("Token de acesso não encontrado.");
 
             const apiFilters = { ...filters, page, per_page: 10 };
+            console.log("[GeneralEquipmentListScreen] Filtros para API:", apiFilters);
+
             const response = await EquipmentService.fetchEquipments(token, apiFilters);
+            console.log("[GeneralEquipmentListScreen] Resposta da API:", response);
+
             setEquipmentList(response.results || []);
             setTotalPages(Math.ceil(response.count / 10) || 1);
         } catch (error: any) {
+            console.error("[GeneralEquipmentListScreen] Erro ao buscar equipamentos:", error);
             Alert.alert("Erro", error.message || "Falha ao carregar os equipamentos.");
+            setEquipmentList([]);
+            setTotalPages(1);
         } finally {
             setLoading(false);
         }
@@ -70,121 +85,196 @@ const GeneralEquipmentListScreen: React.FC<GeneralEquipmentListScreenProps> = ({
 
     useEffect(() => {
         fetchEquipments();
-    }, [page, filters]);
+    }, [page, filters, filterApplied]);
 
     const handleFilterChange = (newFilters: any) => {
+        console.log("[GeneralEquipmentListScreen] Novos filtros recebidos:", newFilters);
+        console.log("[GeneralEquipmentListScreen] Filtros anteriores:", filters);
+
+        // Debug: registra a tentativa de filtro
+        setLastFilterAttempt(new Date());
+
+        // Verifica se os filtros realmente mudaram
+        const filtersChanged = JSON.stringify(newFilters) !== JSON.stringify(filters);
+        console.log("[GeneralEquipmentListScreen] Filtros mudaram?", filtersChanged);
+
         setPage(1); // Reseta a página ao mudar os filtros
         setFilters(newFilters);
+
+        // Só marca como aplicado se realmente houver mudança
+        if (filtersChanged) {
+            setFilterApplied(true);
+            console.log("[GeneralEquipmentListScreen] Filtro marcado como aplicado");
+        } else {
+            console.log("[GeneralEquipmentListScreen] Filtros não mudaram, não marcando como aplicado");
+        }
     };
 
-    const renderEquipmentItem = ({ item }: { item: Equipment }) => (
-        <View style={styles.itemContainer}>
-            <View style={styles.equipmentInfo}>
-                <Text style={styles.itemText}>Tag: {item.tag || "N/A"}</Text>
-                <Text style={styles.itemText}>Patrimônio: {item.patrimony || "N/A"}</Text>
-                <Text style={styles.itemText}>Tipo: {item.equipment_type?.name || "N/A"}</Text>
-                <Text style={styles.itemText}>Fabricante: {item.brand?.name || "N/A"}</Text>
-            </View>
-
-            <View style={styles.actionButtons}>
-                {hasPermission("equipments.view_equipment") && (
-                    <TouchableOpacity
-                        style={styles.actionButton}
-                        onPress={() => navigation.navigate("EquipmentDetailsScreen", { equipmentId: String(item.id) })}
-                    >
-                        <FontAwesome name="eye" size={16} color="#007BFF" />
-                    </TouchableOpacity>
-                )}
-                {hasPermission("equipments.change_equipment") && (
-                    <TouchableOpacity
-                        style={styles.actionButton}
-                        onPress={() => navigation.navigate("EditEquipmentScreen", { equipmentId: String(item.id) })}
-                    >
-                        <FontAwesome name="pencil" size={16} color="#ffc107" />
-                    </TouchableOpacity>
-                )}
-                {hasPermission("equipments.delete_equipment") && (
-                    <TouchableOpacity
-                        style={styles.actionButton}
-                        onPress={() => {
-                            Alert.alert(
-                                "Confirmar Remoção",
-                                `Tem certeza que deseja remover o equipamento ${item.tag || ""}?`,
-                                [
-                                    { text: "Cancelar", style: "cancel" },
-                                    {
-                                        text: "Remover",
-                                        onPress: async () => {
-                                            const token = await AsyncStorage.getItem("access_token");
-                                            if (token) {
-                                                await EquipmentService.removeEquipment(token, item.id);
-                                                fetchEquipments();
-                                            }
-                                        },
-                                        style: "destructive",
-                                    },
-                                ]
-                            );
-                        }}
-                    >
-                        <FontAwesome name="trash" size={16} color="#dc3545" />
-                    </TouchableOpacity>
-                )}
-                {hasPermission("activities.add_activity") && (
-                    <TouchableOpacity
-                        style={styles.actionButton}
-                        onPress={() => navigation.navigate("ActivityHistoryScreen", { equipmentId: item.id })}
-                    >
-                        <FontAwesome name="wrench" size={16} color="#17a2b8" />
-                    </TouchableOpacity>
-                )}
-            </View>
-        </View>
-    );
+    const clearFilters = () => {
+        console.log("[GeneralEquipmentListScreen] Limpando filtros");
+        setFilters({});
+        setFilterApplied(false);
+        setPage(1);
+        setEquipmentList([]);
+        setTotalPages(1);
+        setResetKey(prev => prev + 1); // Incrementa a chave para forçar reset no componente
+    };
 
     return (
         <View style={styles.container}>
-            <EquipmentFilters onFilter={handleFilterChange} />
+            <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>
+                <EquipmentFilters onFilter={handleFilterChange} resetKey={resetKey} />
 
-            <View style={styles.headerSection}>
-                <Text style={styles.headerText}>
-                    Equipamentos Encontrados: {equipmentList.length}
-                </Text>
-                <TouchableOpacity
-                    style={styles.qrButton}
-                    onPress={() => navigation.navigate("EquipmentQRCodeScreen", {})}
-                >
-                    <FontAwesome name="qrcode" size={24} color="#fff" />
-                </TouchableOpacity>
-            </View>
+                {/* Botão para limpar filtros */}
+                {filterApplied && (
+                    <TouchableOpacity
+                        style={styles.clearFiltersButton}
+                        onPress={clearFilters}
+                    >
+                        <FontAwesome name="times" size={14} color="#fff" />
+                        <Text style={styles.clearFiltersText}>Limpar Filtros</Text>
+                    </TouchableOpacity>
+                )}
 
-            {loading ? (
-                <ActivityIndicator size="large" color="#007BFF" />
-            ) : equipmentList.length > 0 ? (
-                <FlatList
-                    data={equipmentList}
-                    keyExtractor={(item) => `${item.id}`}
-                    renderItem={renderEquipmentItem}
-                />
-            ) : (
-                <Text style={styles.emptyText}>Utilize os filtros para buscar os equipamentos.</Text>
-            )}
-
-            {equipmentList.length > 0 && (
-                <View style={styles.pagination}>
-                    <Button
-                        title="Anterior"
-                        onPress={() => setPage((p) => Math.max(p - 1, 1))}
-                        disabled={page === 1}
-                    />
-                    <Text style={styles.pageText}>Página {page} de {totalPages}</Text>
-                    <Button
-                        title="Próximo"
-                        onPress={() => setPage((p) => (p < totalPages ? p + 1 : p))}
-                        disabled={page === totalPages}
-                    />
+                <View style={styles.headerSection}>
+                    <View style={styles.headerInfo}>
+                        <Text style={styles.headerText}>
+                            Equipamentos Encontrados: {equipmentList.length}
+                        </Text>
+                        {filterApplied && !filters.client_id && (
+                            <Text style={styles.warningText}>Selecione um cliente para buscar equipamentos</Text>
+                        )}
+                        {filterApplied && filters.client_id && !filters.sector_id && (
+                            <Text style={styles.warningText}>Selecione um setor para buscar equipamentos</Text>
+                        )}
+                        {lastFilterAttempt && (
+                            <Text style={styles.debugText}>
+                                Última tentativa: {lastFilterAttempt.toLocaleTimeString()}
+                            </Text>
+                        )}
+                    </View>
+                    <View style={styles.headerButtons}>
+                        {hasPermission("add_equipment") && (
+                            <TouchableOpacity
+                                style={styles.createButton}
+                                onPress={() => navigation.navigate("CreateEquipmentScreen")}
+                            >
+                                <FontAwesome name="plus" size={16} color="#fff" />
+                                <Text style={styles.createButtonText}>Novo</Text>
+                            </TouchableOpacity>
+                        )}
+                        <TouchableOpacity
+                            style={styles.qrButton}
+                            onPress={() => navigation.navigate("EquipmentQRCodeScreen", {})}
+                        >
+                            <FontAwesome name="qrcode" size={20} color="#fff" />
+                        </TouchableOpacity>
+                    </View>
                 </View>
-            )}
+
+                {loading ? (
+                    <View style={styles.loadingContainer}>
+                        <ActivityIndicator size="large" color="#007BFF" />
+                        <Text style={styles.loadingText}>Buscando equipamentos...</Text>
+                    </View>
+                ) : equipmentList.length > 0 ? (
+                    <View style={styles.equipmentListContainer}>
+                        {equipmentList.map((item) => (
+                            <View key={item.id} style={styles.itemContainer}>
+                                <View style={styles.equipmentInfo}>
+                                    <Text style={styles.itemText}>Tag: {item.tag || "N/A"}</Text>
+                                    <Text style={styles.itemText}>Patrimônio: {item.patrimony || "N/A"}</Text>
+                                    <Text style={styles.itemText}>Tipo: {item.equipment_type?.name || "N/A"}</Text>
+                                    <Text style={styles.itemText}>Fabricante: {item.brand?.name || "N/A"}</Text>
+                                    <Text style={styles.itemText}>Subsetor: {item.subsector?.name || "N/A"}</Text>
+                                </View>
+
+                                <View style={styles.actionButtons}>
+                                    {hasPermission("view_equipment") && (
+                                        <TouchableOpacity
+                                            style={styles.actionButton}
+                                            onPress={() => navigation.navigate("EquipmentDetailsScreen", { equipmentId: String(item.id) })}
+                                        >
+                                            <FontAwesome name="eye" size={16} color="#007BFF" />
+                                        </TouchableOpacity>
+                                    )}
+                                    {hasPermission("change_equipment") && (
+                                        <TouchableOpacity
+                                            style={styles.actionButton}
+                                            onPress={() => navigation.navigate("EditEquipmentScreen", { equipmentId: String(item.id) })}
+                                        >
+                                            <FontAwesome name="pencil" size={16} color="#ffc107" />
+                                        </TouchableOpacity>
+                                    )}
+                                    {hasPermission("delete_equipment") && (
+                                        <TouchableOpacity
+                                            style={styles.actionButton}
+                                            onPress={() => {
+                                                Alert.alert(
+                                                    "Confirmar Remoção",
+                                                    `Tem certeza que deseja remover o equipamento ${item.tag || ""}?`,
+                                                    [
+                                                        { text: "Cancelar", style: "cancel" },
+                                                        {
+                                                            text: "Remover",
+                                                            onPress: async () => {
+                                                                const token = await AsyncStorage.getItem("access_token");
+                                                                if (token) {
+                                                                    await EquipmentService.removeEquipment(token, item.id);
+                                                                    fetchEquipments();
+                                                                }
+                                                            },
+                                                            style: "destructive",
+                                                        },
+                                                    ]
+                                                );
+                                            }}
+                                        >
+                                            <FontAwesome name="trash" size={16} color="#dc3545" />
+                                        </TouchableOpacity>
+                                    )}
+                                    {hasPermission("add_activity") && (
+                                        <TouchableOpacity
+                                            style={styles.actionButton}
+                                            onPress={() => navigation.navigate("ActivityHistoryScreen", { equipmentId: item.id })}
+                                        >
+                                            <FontAwesome name="wrench" size={16} color="#17a2b8" />
+                                        </TouchableOpacity>
+                                    )}
+                                </View>
+                            </View>
+                        ))}
+                    </View>
+                ) : filterApplied ? (
+                    <View style={styles.emptyContainer}>
+                        <FontAwesome name="search" size={48} color="#ccc" />
+                        <Text style={styles.emptyText}>Nenhum equipamento encontrado com os filtros aplicados.</Text>
+                        <Text style={styles.emptySubtext}>Tente ajustar os filtros ou verificar se os dados estão corretos.</Text>
+                    </View>
+                ) : (
+                    <View style={styles.emptyContainer}>
+                        <FontAwesome name="filter" size={48} color="#ccc" />
+                        <Text style={styles.emptyText}>Utilize os filtros para buscar os equipamentos.</Text>
+                        <Text style={styles.emptySubtext}>Selecione um cliente e setor para começar a busca.</Text>
+                    </View>
+                )}
+
+                {equipmentList.length > 0 && (
+                    <View style={styles.pagination}>
+                        <Button
+                            title="Anterior"
+                            onPress={() => setPage((p) => Math.max(p - 1, 1))}
+                            disabled={page === 1}
+                        />
+                        <Text style={styles.pageText}>Página {page} de {totalPages}</Text>
+                        <Button
+                            title="Próximo"
+                            onPress={() => setPage((p) => (p < totalPages ? p + 1 : p))}
+                            disabled={page === totalPages}
+                        />
+                    </View>
+                )}
+            </ScrollView>
         </View>
     );
 };
@@ -192,8 +282,27 @@ const GeneralEquipmentListScreen: React.FC<GeneralEquipmentListScreenProps> = ({
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        padding: 16,
         backgroundColor: "#f5f5f5",
+    },
+    scrollContainer: {
+        flex: 1,
+        padding: 16,
+    },
+    clearFiltersButton: {
+        backgroundColor: "#6c757d",
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "center",
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        borderRadius: 6,
+        marginBottom: 12,
+        gap: 6,
+    },
+    clearFiltersText: {
+        color: "#fff",
+        fontSize: 12,
+        fontWeight: "600",
     },
     headerSection: {
         flexDirection: "row",
@@ -201,48 +310,126 @@ const styles = StyleSheet.create({
         alignItems: "center",
         marginBottom: 16,
         marginTop: 16,
+        paddingHorizontal: 4,
+    },
+    headerInfo: {
+        flex: 1,
+        marginRight: 8,
     },
     headerText: {
         fontSize: 16,
         fontWeight: "bold",
         color: "#333",
     },
+    warningText: {
+        fontSize: 12,
+        color: "#ffc107",
+        marginTop: 4,
+        fontStyle: "italic",
+    },
+    debugText: {
+        fontSize: 10,
+        color: "#666",
+        marginTop: 2,
+        fontStyle: "italic",
+    },
+    headerButtons: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 6,
+        flexShrink: 0,
+    },
+    createButton: {
+        backgroundColor: "#28a745",
+        paddingHorizontal: 10,
+        paddingVertical: 8,
+        borderRadius: 6,
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 4,
+        minWidth: 60,
+    },
+    createButtonText: {
+        color: "#fff",
+        fontSize: 12,
+        fontWeight: "600",
+    },
     qrButton: {
         backgroundColor: "#007BFF",
-        padding: 10,
+        padding: 8,
         borderRadius: 5,
+        minWidth: 36,
+        alignItems: "center",
+        justifyContent: "center",
+    },
+    loadingContainer: {
+        alignItems: "center",
+        justifyContent: "center",
+        paddingVertical: 40,
+    },
+    loadingText: {
+        marginTop: 12,
+        fontSize: 14,
+        color: "#666",
+    },
+    equipmentListContainer: {
+        marginBottom: 20,
     },
     itemContainer: {
         backgroundColor: "#fff",
         padding: 16,
-        marginBottom: 8,
+        marginBottom: 12,
         borderRadius: 8,
-        elevation: 1,
-        flexDirection: "row",
-        justifyContent: "space-between",
-        alignItems: "center",
+        elevation: 2,
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 2,
     },
     equipmentInfo: {
-        flex: 1,
+        marginBottom: 12,
     },
     itemText: {
         fontSize: 14,
         color: "#333",
         marginBottom: 4,
+        lineHeight: 20,
     },
     actionButtons: {
         flexDirection: "row",
+        justifyContent: "flex-end",
         alignItems: "center",
+        borderTopWidth: 1,
+        borderTopColor: "#f0f0f0",
+        paddingTop: 12,
+        marginTop: 8,
     },
     actionButton: {
-        padding: 8,
+        padding: 10,
         marginLeft: 8,
+        backgroundColor: "#f8f9fa",
+        borderRadius: 6,
+        minWidth: 40,
+        alignItems: "center",
+        justifyContent: "center",
+    },
+    emptyContainer: {
+        alignItems: "center",
+        justifyContent: "center",
+        paddingVertical: 40,
     },
     emptyText: {
-        fontSize: 14,
+        fontSize: 16,
         color: "#666",
         textAlign: "center",
-        marginVertical: 20,
+        marginTop: 16,
+        fontWeight: "600",
+    },
+    emptySubtext: {
+        fontSize: 14,
+        color: "#999",
+        textAlign: "center",
+        marginTop: 8,
     },
     errorText: {
         fontSize: 16,
@@ -255,6 +442,8 @@ const styles = StyleSheet.create({
         justifyContent: "space-between",
         alignItems: "center",
         marginTop: 16,
+        marginBottom: 20,
+        paddingHorizontal: 16,
     },
     pageText: {
         fontSize: 14,

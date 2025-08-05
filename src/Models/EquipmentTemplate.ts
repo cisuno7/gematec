@@ -1,11 +1,14 @@
 export interface DynamicField {
-    id: number;
-    name: string;
+    id?: number;
+    name?: string;
+    key?: string; // Campo usado pelo backend
+    label?: string; // Label usado pelo backend
     type: 'text' | 'number' | 'select' | 'date' | 'boolean';
-    required: boolean;
+    required?: boolean;
     options?: string[]; // Para campos do tipo select
     default_value?: any;
-    order: number;
+    order?: number;
+    help_text?: string; // Campo adicional do backend
 }
 
 export interface EquipmentTemplate {

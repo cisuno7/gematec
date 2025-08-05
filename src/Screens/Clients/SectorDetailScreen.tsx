@@ -65,7 +65,7 @@ const SectorDetailScreen: React.FC<SectorDetailScreenProps> = ({ route, navigati
         }
     };
 
-    if (!hasPermission("clients.view_sector")) {
+    if (!hasPermission("view_sector")) {
         return (
             <View style={styles.container}>
                 <Text style={styles.errorText}>Você não tem permissão para visualizar setores.</Text>

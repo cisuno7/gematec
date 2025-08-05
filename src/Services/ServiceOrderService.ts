@@ -23,6 +23,8 @@ interface FetchServiceOrdersParams {
 class ServiceOrderService {
     static async fetchServiceOrders({ token, filters, page }: FetchServiceOrdersParams): Promise<{ results: ServiceOrder[]; count: number }> {
         try {
+            console.log('[ServiceOrderService] Buscando ordens de serviço com filtros:', filters);
+
             const accountName = await AsyncStorage.getItem("account") || "default";
             const dynamicBaseUrl = await setDynamicApiUrl(accountName);
             const url = `${dynamicBaseUrl}/service_orders?page=${page}&per_page=10`;
@@ -34,37 +36,106 @@ class ServiceOrderService {
                 sector_id: filters.sector_id || '',
                 client_id: filters.client_id || '',
             };
+
+            console.log('[ServiceOrderService] URL:', url);
+            console.log('[ServiceOrderService] Parâmetros:', params);
+
             const response = await apiClient.get(url, { headers: { Authorization: `Bearer ${token}` }, params });
+
+            console.log('[ServiceOrderService] Ordens de serviço carregadas com sucesso:', response.data);
             return response.data;
-        } catch (error) {
-            console.error('Erro ao buscar ordens de serviço:', error);
-            throw error;
+        } catch (error: any) {
+            console.error('[ServiceOrderService] Erro ao buscar ordens de serviço:', error);
+
+            if (error.response) {
+                console.error('[ServiceOrderService] Erro no servidor:');
+                console.error('Status:', error.response.status);
+                console.error('Dados:', error.response.data);
+                console.error('Headers:', error.response.headers);
+
+                if (error.response.status === 400) {
+                    const errorMessage = error.response.data?.message || error.response.data?.error || "Dados inválidos";
+                    throw new Error(`Erro de validação: ${errorMessage}`);
+                } else if (error.response.status === 401) {
+                    throw new Error("Token de acesso inválido ou expirado.");
+                } else if (error.response.status === 404) {
+                    throw new Error("Recurso não encontrado.");
+                } else if (error.response.status === 422) {
+                    const validationErrors = error.response.data?.errors || {};
+                    const errorMessages = Object.values(validationErrors).flat().join(", ");
+                    throw new Error(`Erro de validação: ${errorMessages}`);
+                } else {
+                    throw new Error(error.response.data?.message || "Erro inesperado no servidor.");
+                }
+            } else if (error.request) {
+                console.error('[ServiceOrderService] Erro de rede:', error.request);
+                throw new Error("Erro de conexão. Verifique sua internet.");
+            } else {
+                console.error('[ServiceOrderService] Erro inesperado:', error.message);
+                throw new Error(`Erro inesperado: ${error.message}`);
+            }
         }
     }
 
     static async fetchServiceOrderDetails(token: string, serviceOrderId: number): Promise<ServiceOrder> {
         try {
+            console.log('[ServiceOrderService] Buscando detalhes da ordem de serviço:', serviceOrderId);
+            
             const isConnected = await NetInfo.fetch().then(state => state.isConnected);
             let serviceOrderData;
 
             if (isConnected) {
                 const accountName = await AsyncStorage.getItem("account") || "default";
                 const dynamicBaseUrl = await setDynamicApiUrl(accountName);
-                const response = await apiClient.get(`${dynamicBaseUrl}/service_orders/${serviceOrderId}`, {
+                const url = `${dynamicBaseUrl}/service_orders/${serviceOrderId}`;
+                
+                console.log('[ServiceOrderService] URL para buscar detalhes:', url);
+                
+                const response = await apiClient.get(url, {
                     headers: { Authorization: `Bearer ${token}` },
                 });
                 serviceOrderData = response.data;
+                
+                console.log('[ServiceOrderService] Detalhes carregados com sucesso:', serviceOrderData);
                 await OfflineService.cacheData(`${SERVICE_ORDER_DETAILS_CACHE_KEY_PREFIX}${serviceOrderId}`, serviceOrderData);
             } else {
+                console.log('[ServiceOrderService] Modo offline, buscando do cache');
                 serviceOrderData = await OfflineService.getCachedData<ServiceOrder>(`${SERVICE_ORDER_DETAILS_CACHE_KEY_PREFIX}${serviceOrderId}`);
                 if (!serviceOrderData) {
                     throw new Error("Dados não disponíveis offline. Conecte-se à internet para carregar.");
                 }
             }
             return serviceOrderData;
-        } catch (error) {
-            console.error('Erro ao buscar detalhes da ordem de serviço:', error);
-            throw error;
+        } catch (error: any) {
+            console.error('[ServiceOrderService] Erro ao buscar detalhes da ordem de serviço:', error);
+            
+            if (error.response) {
+                console.error('[ServiceOrderService] Erro no servidor:');
+                console.error('Status:', error.response.status);
+                console.error('Dados:', error.response.data);
+                console.error('Headers:', error.response.headers);
+                
+                if (error.response.status === 400) {
+                    const errorMessage = error.response.data?.message || error.response.data?.error || "Dados inválidos";
+                    throw new Error(`Erro de validação: ${errorMessage}`);
+                } else if (error.response.status === 401) {
+                    throw new Error("Token de acesso inválido ou expirado.");
+                } else if (error.response.status === 404) {
+                    throw new Error("Ordem de serviço não encontrada.");
+                } else if (error.response.status === 422) {
+                    const validationErrors = error.response.data?.errors || {};
+                    const errorMessages = Object.values(validationErrors).flat().join(", ");
+                    throw new Error(`Erro de validação: ${errorMessages}`);
+                } else {
+                    throw new Error(error.response.data?.message || "Erro inesperado no servidor.");
+                }
+            } else if (error.request) {
+                console.error('[ServiceOrderService] Erro de rede:', error.request);
+                throw new Error("Erro de conexão. Verifique sua internet.");
+            } else {
+                console.error('[ServiceOrderService] Erro inesperado:', error.message);
+                throw new Error(`Erro inesperado: ${error.message}`);
+            }
         }
     }
 

@@ -7,32 +7,38 @@ import {
     TextInput,
     ActivityIndicator,
     TouchableOpacity,
-    Modal,
-    Alert
+    Alert,
+    ScrollView,
+    RefreshControl,
+    Dimensions,
 } from 'react-native';
-import { Picker } from '@react-native-picker/picker';
+import { FontAwesome, MaterialIcons, Ionicons } from '@expo/vector-icons';
 import { RouteProp } from '@react-navigation/native';
+import { DrawerNavigationProp } from '@react-navigation/drawer';
 import { RootStackParamList } from '../../Routers/AppRouter';
 import TechnicalAssistanceService from '../../Services/TechnicalAssistanceService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import NewAssistanceModal from '../../Components/Newassistencemodal';
-import NewTechnicalAssistanceModal from '../../Components/Newassistencemodal';
 import { usePermissions } from "../../Context/PermissionsContext";
 import { TechnicalAssistance } from '../../Models/TechnicalAssistance';
 import { useLanguage } from "../../Context/LanguageContext";
+
+const { width } = Dimensions.get('window');
+
 interface TechnicalAssistanceScreenProps {
     route: RouteProp<RootStackParamList, "TechnicalAssistanceScreen">;
+    navigation: DrawerNavigationProp<RootStackParamList, "TechnicalAssistanceScreen">;
 }
-const TechnicalAssistanceScreen: React.FC<TechnicalAssistanceScreenProps> = ({ route }) => {
+
+const TechnicalAssistanceScreen: React.FC<TechnicalAssistanceScreenProps> = ({ route, navigation }) => {
     const { t } = useLanguage();
     const [data, setData] = useState<TechnicalAssistance[]>([]);
     const [total, setTotal] = useState(0);
     const [totalPages, setTotalPages] = useState(1);
     const [loading, setLoading] = useState(false);
+    const [refreshing, setRefreshing] = useState(false);
     const [currentPage, setCurrentPage] = useState(1);
     const [perPage] = useState(10);
-    const [modalVisible, setModalVisible] = useState(false);
-    const { hasPermission, permissions } = usePermissions();
+    const { hasPermission } = usePermissions();
     const [filters, setFilters] = useState<{
         search?: string;
         equipment_type?: string;
@@ -45,180 +51,533 @@ const TechnicalAssistanceScreen: React.FC<TechnicalAssistanceScreenProps> = ({ r
         status: 'open'
     });
 
+    const [showFilters, setShowFilters] = useState(false);
 
+    const fetchData = async (isRefresh = false) => {
+        try {
+            if (isRefresh) {
+                setRefreshing(true);
+            } else {
+                setLoading(true);
+            }
+
+            const token = await AsyncStorage.getItem("access_token");
+            if (!token) throw new Error("Token de acesso não encontrado");
+
+            const service = new TechnicalAssistanceService();
+            const response = await service.fetchTechnicalAssistance(token, { page: currentPage, per_page: perPage }, filters);
+            setData(response.results);
+            setTotal(response.count);
+            setTotalPages(Math.ceil(response.count / perPage) || 1);
+        } catch (error) {
+            console.error('Erro ao buscar dados:', error);
+            Alert.alert('Erro', 'Falha ao carregar assistências técnicas');
+        } finally {
+            setLoading(false);
+            setRefreshing(false);
+        }
+    };
 
     useEffect(() => {
-        const fetchData = async () => {
-            try {
-                setLoading(true);
-                const token = await AsyncStorage.getItem("access_token");
-                if (!token) throw new Error("Token de acesso não encontrado");
-
-                const service = new TechnicalAssistanceService();
-                const response = await service.fetchTechnicalAssistance(token, { page: currentPage, per_page: perPage }, filters);
-                setData(response.results);
-                setTotal(response.count);
-                setTotalPages(Math.ceil(response.count / perPage) || 1);
-            } catch (error) {
-                console.error('Erro ao buscar dados:', error);
-            } finally {
-                setLoading(false);
-            }
-        };
         fetchData();
-    }, [currentPage]); // Note que filters não está na dependência aqui, ajuste se necessário
+    }, [currentPage, filters]);
 
-    const renderItem = ({ item }: { item: TechnicalAssistance }) => (
-        <View style={styles.row}>
-            <Text style={styles.cell}>{item.equipment.client?.name || "N/A"}</Text>
-            <Text style={styles.cell}>{item.equipment.client?.email || "N/A"}</Text>
-            <Text style={styles.cell}>{item.equipment.tag}</Text>
-            <Text style={styles.cell}>{item.equipment.equipment_type?.name || "N/A"}</Text>
-            <Text style={styles.cell}>{item.equipment.brand?.name || "N/A"}</Text>
-            <Text style={styles.cell}>{item.status}</Text>
-            <Text style={styles.cell}>{new Date(item.created_at).toLocaleDateString()}</Text>
+    const onRefresh = () => {
+        fetchData(true);
+    };
+
+    const getStatusInfo = (status: string) => {
+        switch (status) {
+            case 'open':
+                return { color: '#ff6b35', icon: 'alert-circle', label: 'Aberto' };
+            case 'pending':
+                return { color: '#f39c12', icon: 'time', label: 'Pendente' };
+            case 'closed':
+                return { color: '#27ae60', icon: 'checkmark-circle', label: 'Fechado' };
+            default:
+                return { color: '#95a5a6', icon: 'help-circle', label: 'Desconhecido' };
+        }
+    };
+
+    const renderStatusBadge = (status: string) => {
+        const statusInfo = getStatusInfo(status);
+        return (
+            <View style={[styles.statusBadge, { backgroundColor: statusInfo.color }]}>
+                <Ionicons name={statusInfo.icon as any} size={12} color="#fff" />
+                <Text style={styles.statusText}>{statusInfo.label}</Text>
+            </View>
+        );
+    };
+
+    const renderTechnicalAssistanceCard = ({ item }: { item: TechnicalAssistance }) => {
+        const statusInfo = getStatusInfo(item.status);
+        const createdDate = new Date(item.created_at).toLocaleDateString('pt-BR');
+
+        return (
+            <TouchableOpacity
+                style={styles.card}
+                onPress={() => navigation.navigate('TechnicalAssistanceDetails', { id: item.id })}
+            >
+                <View style={styles.cardHeader}>
+                    <View style={styles.cardTitleContainer}>
+                        <MaterialIcons name="build" size={20} color="#007BFF" />
+                        <Text style={styles.cardTitle}>Assistência #{item.id}</Text>
+                    </View>
+                    {renderStatusBadge(item.status)}
+                </View>
+
+                <View style={styles.cardContent}>
+                    <View style={styles.infoRow}>
+                        <Ionicons name="business" size={16} color="#666" />
+                        <Text style={styles.infoText}>
+                            {item.equipment.client?.name || "Cliente não informado"}
+                        </Text>
+                    </View>
+
+                    <View style={styles.infoRow}>
+                        <Ionicons name="qr-code" size={16} color="#666" />
+                        <Text style={styles.infoText}>
+                            Tag: {item.equipment.tag || "N/A"}
+                        </Text>
+                    </View>
+
+                    <View style={styles.infoRow}>
+                        <Ionicons name="construct" size={16} color="#666" />
+                        <Text style={styles.infoText}>
+                            {item.equipment.equipment_type?.name || "Tipo não informado"}
+                        </Text>
+                    </View>
+
+                    <View style={styles.infoRow}>
+                        <Ionicons name="business" size={16} color="#666" />
+                        <Text style={styles.infoText}>
+                            {item.equipment.brand?.name || "Fabricante não informado"}
+                        </Text>
+                    </View>
+
+                    <View style={styles.infoRow}>
+                        <Ionicons name="calendar" size={16} color="#666" />
+                        <Text style={styles.infoText}>
+                            Criado em: {createdDate}
+                        </Text>
+                    </View>
+                </View>
+
+                <View style={styles.cardFooter}>
+                    <TouchableOpacity
+                        style={styles.actionButton}
+                        onPress={() => navigation.navigate('TechnicalAssistanceDetails', { id: item.id })}
+                    >
+                        <Ionicons name="eye" size={16} color="#007BFF" />
+                        <Text style={styles.actionButtonText}>Ver Detalhes</Text>
+                    </TouchableOpacity>
+                </View>
+            </TouchableOpacity>
+        );
+    };
+
+    const renderFilterChip = (label: string, value: string, onPress: () => void, isSelected: boolean) => (
+        <TouchableOpacity
+            style={[styles.filterChip, isSelected && styles.filterChipSelected]}
+            onPress={onPress}
+        >
+            <Text style={[styles.filterChipText, isSelected && styles.filterChipTextSelected]}>
+                {label}
+            </Text>
+        </TouchableOpacity>
+    );
+
+    const renderFilters = () => (
+        <View style={styles.filtersSection}>
+            <View style={styles.filtersHeader}>
+                <Text style={styles.filtersTitle}>Filtros</Text>
+                <TouchableOpacity onPress={() => setShowFilters(!showFilters)}>
+                    <Ionicons
+                        name={showFilters ? "chevron-up" : "chevron-down"}
+                        size={24}
+                        color="#007BFF"
+                    />
+                </TouchableOpacity>
+            </View>
+
+            {showFilters && (
+                <View style={styles.filtersContent}>
+                    <View style={styles.searchContainer}>
+                        <Ionicons name="search" size={20} color="#666" style={styles.searchIcon} />
+                        <TextInput
+                            style={styles.searchInput}
+                            placeholder="Buscar por cliente, tag, tipo..."
+                            value={filters.search || ''}
+                            onChangeText={(text) => setFilters({ ...filters, search: text || undefined })}
+                        />
+                    </View>
+
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.statusFilters}>
+                        {renderFilterChip('Todos', '', () => setFilters({ ...filters, status: undefined }), !filters.status)}
+                        {renderFilterChip('Aberto', 'open', () => setFilters({ ...filters, status: 'open' }), filters.status === 'open')}
+                        {renderFilterChip('Pendente', 'pending', () => setFilters({ ...filters, status: 'pending' }), filters.status === 'pending')}
+                        {renderFilterChip('Fechado', 'closed', () => setFilters({ ...filters, status: 'closed' }), filters.status === 'closed')}
+                    </ScrollView>
+                </View>
+            )}
+        </View>
+    );
+
+    const renderEmptyState = () => (
+        <View style={styles.emptyContainer}>
+            <MaterialIcons name="build-circle" size={80} color="#ccc" />
+            <Text style={styles.emptyTitle}>Nenhuma assistência técnica encontrada</Text>
+            <Text style={styles.emptySubtitle}>
+                {filters.search || filters.status ?
+                    'Tente ajustar os filtros de busca' :
+                    'Não há assistências técnicas registradas no momento'
+                }
+            </Text>
+        </View>
+    );
+
+    const renderHeader = () => (
+        <View style={styles.header}>
+            <View style={styles.headerContent}>
+                <View>
+                    <Text style={styles.headerTitle}>{t('technicalAssistance.title')}</Text>
+                    <Text style={styles.headerSubtitle}>
+                        {total} {t('technicalAssistance.assistance')}{total !== 1 ? 's' : ''} {t('common.found')}{total !== 1 ? 's' : ''}
+                    </Text>
+                </View>
+                <TouchableOpacity style={styles.refreshButton} onPress={onRefresh}>
+                    <Ionicons name="refresh" size={24} color="#007BFF" />
+                </TouchableOpacity>
+            </View>
         </View>
     );
 
     return (
         <View style={styles.container}>
-            <View style={styles.filtersContainer}>
-                <TextInput
-                    style={styles.input}
-                    placeholder={t('technicalAssistance.searchPlaceholder')}
-                    value={filters.search || ''} // Garante que seja string para TextInput
-                    onChangeText={(text) => setFilters({ ...filters, search: text || undefined })}
-                />
-                <Picker
-                    selectedValue={filters.equipment_type || ''}
-                    onValueChange={(itemValue) => setFilters({ ...filters, equipment_type: itemValue || undefined })}
-                    style={styles.picker}
-                >
-                    <Picker.Item label={t('technicalAssistance.allTypes')} value="" />
-                    {/* Adicionar opções de tipos de equipamento */}
-                </Picker>
-                <Picker
-                    selectedValue={filters.brand || ''}
-                    onValueChange={(itemValue) => setFilters({ ...filters, brand: itemValue || undefined })}
-                    style={styles.picker}
-                >
-                    <Picker.Item label={t('technicalAssistance.allManufacturers')} value="" />
-                    {/* Adicionar opções de fabricantes */}
-                </Picker>
-                <Picker
-                    selectedValue={filters.status || ''}
-                    onValueChange={(itemValue) => setFilters({ ...filters, status: itemValue || undefined })}
-                    style={styles.picker}
-                >
-                    <Picker.Item label={t('technicalAssistance.allStatus')} value="" />
-                    <Picker.Item label={t('technicalAssistance.open')} value="open" />
-                    <Picker.Item label={t('technicalAssistance.pending')} value="pending" />
-                    <Picker.Item label={t('technicalAssistance.closed')} value="closed" />
-                </Picker>
-            </View>
-            <TouchableOpacity style={styles.button} onPress={() => setModalVisible(true)}>
-                <Text style={styles.buttonText}>{t('technicalAssistance.newTechnicalAssistance')}</Text>
-            </TouchableOpacity>
-            <NewTechnicalAssistanceModal
-                visible={modalVisible}
-                onClose={() => setModalVisible(false)}
-            />
-            {loading ? (
-                <ActivityIndicator size="large" color="#007BFF" />
-            ) : (
-                <View style={styles.tableContainer}>
-                    <View style={styles.header}>
-                        <Text style={styles.headerText}>{t('technicalAssistance.client')}</Text>
-                        <Text style={styles.headerText}>{t('technicalAssistance.email')}</Text>
-                        <Text style={styles.headerText}>{t('technicalAssistance.tag')}</Text>
-                        <Text style={styles.headerText}>{t('technicalAssistance.type')}</Text>
-                        <Text style={styles.headerText}>{t('technicalAssistance.manufacturer')}</Text>
-                        <Text style={styles.headerText}>{t('technicalAssistance.status')}</Text>
-                        <Text style={styles.headerText}>{t('technicalAssistance.date')}</Text>
-                    </View>
-                    <FlatList
-                        data={data}
-                        renderItem={renderItem}
-                        keyExtractor={(item) => item.id.toString()}
-                    />
+            {renderHeader()}
+            {renderFilters()}
+
+            {loading && !refreshing ? (
+                <View style={styles.loadingContainer}>
+                    <ActivityIndicator size="large" color="#007BFF" />
+                    <Text style={styles.loadingText}>{t('technicalAssistance.loading')}</Text>
                 </View>
+            ) : (
+                <FlatList
+                    data={data}
+                    renderItem={renderTechnicalAssistanceCard}
+                    keyExtractor={(item) => item.id.toString()}
+                    contentContainerStyle={styles.listContainer}
+                    showsVerticalScrollIndicator={false}
+                    refreshControl={
+                        <RefreshControl
+                            refreshing={refreshing}
+                            onRefresh={onRefresh}
+                            colors={['#007BFF']}
+                            tintColor="#007BFF"
+                        />
+                    }
+                    ListEmptyComponent={renderEmptyState()}
+                    ListFooterComponent={
+                        data.length > 0 ? (
+                            <View style={styles.pagination}>
+                                <TouchableOpacity
+                                    style={[styles.paginationButton, currentPage === 1 && styles.paginationButtonDisabled]}
+                                    onPress={() => setCurrentPage(Math.max(currentPage - 1, 1))}
+                                    disabled={currentPage === 1}
+                                >
+                                    <Ionicons name="chevron-back" size={20} color={currentPage === 1 ? "#ccc" : "#007BFF"} />
+                                    <Text style={[styles.paginationButtonText, currentPage === 1 && styles.paginationButtonTextDisabled]}>
+                                        {t('common.previous')}
+                                    </Text>
+                                </TouchableOpacity>
+
+                                <Text style={styles.paginationInfo}>
+                                    {t('common.page')} {currentPage} {t('common.of')} {totalPages}
+                                </Text>
+
+                                <TouchableOpacity
+                                    style={[styles.paginationButton, currentPage === totalPages && styles.paginationButtonDisabled]}
+                                    onPress={() => setCurrentPage(Math.min(currentPage + 1, totalPages))}
+                                    disabled={currentPage === totalPages}
+                                >
+                                    <Text style={[styles.paginationButtonText, currentPage === totalPages && styles.paginationButtonTextDisabled]}>
+                                        {t('common.next')}
+                                    </Text>
+                                    <Ionicons name="chevron-forward" size={20} color={currentPage === totalPages ? "#ccc" : "#007BFF"} />
+                                </TouchableOpacity>
+                            </View>
+                        ) : null
+                    }
+                />
             )}
         </View>
     );
 };
+
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        padding: 16,
-    },
-    filtersContainer: {
-        marginBottom: 16,
-    },
-    input: {
-        height: 40,
-        borderColor: '#ccc',
-        borderWidth: 1,
-        borderRadius: 4,
-        paddingHorizontal: 8,
-        marginBottom: 8,
-    },
-    picker: {
-        height: 40,
-        marginBottom: 8,
-    },
-    tableContainer: {
-        flex: 1,
-    },
-
-    button: {
-        backgroundColor: '#007BFF',
-        padding: 12,
-        borderRadius: 5,
-        alignItems: 'center',
-        marginBottom: 16,
-    },
-    buttonText: {
-        color: '#FFF',
-        fontSize: 16,
-        fontWeight: 'bold',
+        backgroundColor: '#f8f9fa',
     },
     header: {
-        flexDirection: 'row',
+        backgroundColor: '#fff',
+        paddingHorizontal: 20,
+        paddingTop: 20,
+        paddingBottom: 16,
         borderBottomWidth: 1,
-        borderBottomColor: '#ccc',
-        paddingVertical: 8,
+        borderBottomColor: '#e9ecef',
+        elevation: 2,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
     },
-    headerText: {
-        flex: 1,
+    headerContent: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+    },
+    headerTitle: {
+        fontSize: 28,
         fontWeight: 'bold',
-        textAlign: 'center',
+        color: '#2c3e50',
+        marginBottom: 4,
     },
-    row: {
-        flexDirection: 'row',
-        borderBottomWidth: 1,
-        borderBottomColor: '#eee',
-        paddingVertical: 8,
-    },
-    cell: {
-        flex: 1,
-        textAlign: 'center',
-    },
-    center: {
-        flex: 1,
-        justifyContent: "center",
-        alignItems: "center",
-    },
-    emptyText: {
+    headerSubtitle: {
         fontSize: 16,
-        color: "#666",
-        textAlign: "center",
-        marginTop: 20,
+        color: '#7f8c8d',
     },
-    errorText: {
+    refreshButton: {
+        padding: 8,
+        borderRadius: 20,
+        backgroundColor: '#f8f9fa',
+    },
+    filtersSection: {
+        backgroundColor: '#fff',
+        marginHorizontal: 16,
+        marginTop: 16,
+        borderRadius: 12,
+        elevation: 2,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+    },
+    filtersHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingHorizontal: 20,
+        paddingVertical: 16,
+    },
+    filtersTitle: {
         fontSize: 18,
-        color: "red",
-        textAlign: "center",
-        marginTop: 20,
+        fontWeight: '600',
+        color: '#2c3e50',
+    },
+    filtersContent: {
+        paddingHorizontal: 20,
+        paddingBottom: 20,
+    },
+    searchContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#f8f9fa',
+        borderRadius: 12,
+        paddingHorizontal: 16,
+        marginBottom: 16,
+    },
+    searchIcon: {
+        marginRight: 12,
+    },
+    searchInput: {
+        flex: 1,
+        height: 48,
+        fontSize: 16,
+        color: '#2c3e50',
+    },
+    statusFilters: {
+        marginBottom: 8,
+    },
+    filterChip: {
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        borderRadius: 20,
+        backgroundColor: '#f8f9fa',
+        marginRight: 12,
+        borderWidth: 1,
+        borderColor: '#e9ecef',
+    },
+    filterChipSelected: {
+        backgroundColor: '#007BFF',
+        borderColor: '#007BFF',
+    },
+    filterChipText: {
+        fontSize: 14,
+        color: '#6c757d',
+        fontWeight: '500',
+    },
+    filterChipTextSelected: {
+        color: '#fff',
+    },
+    listContainer: {
+        paddingHorizontal: 16,
+        paddingTop: 16,
+        paddingBottom: 20,
+    },
+    card: {
+        backgroundColor: '#fff',
+        borderRadius: 16,
+        marginBottom: 16,
+        elevation: 3,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+    },
+    cardHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingHorizontal: 20,
+        paddingTop: 20,
+        paddingBottom: 16,
+        borderBottomWidth: 1,
+        borderBottomColor: '#f1f3f4',
+    },
+    cardTitleContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    cardTitle: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        color: '#2c3e50',
+        marginLeft: 8,
+    },
+    statusBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 20,
+    },
+    statusText: {
+        color: '#fff',
+        fontSize: 12,
+        fontWeight: '600',
+        marginLeft: 4,
+    },
+    cardContent: {
+        paddingHorizontal: 20,
+        paddingVertical: 16,
+    },
+    infoRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 12,
+    },
+    infoText: {
+        fontSize: 14,
+        color: '#2c3e50',
+        marginLeft: 12,
+        flex: 1,
+    },
+    cardFooter: {
+        paddingHorizontal: 20,
+        paddingBottom: 20,
+        borderTopWidth: 1,
+        borderTopColor: '#f1f3f4',
+        paddingTop: 16,
+    },
+    actionButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#f8f9fa',
+        paddingVertical: 12,
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: '#e9ecef',
+    },
+    actionButtonText: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: '#007BFF',
+        marginLeft: 8,
+    },
+    loadingContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    loadingText: {
+        fontSize: 16,
+        color: '#6c757d',
+        marginTop: 16,
+    },
+    emptyContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingVertical: 60,
+    },
+    emptyTitle: {
+        fontSize: 20,
+        fontWeight: 'bold',
+        color: '#6c757d',
+        marginTop: 16,
+        marginBottom: 8,
+    },
+    emptySubtitle: {
+        fontSize: 16,
+        color: '#adb5bd',
+        textAlign: 'center',
+        paddingHorizontal: 40,
+    },
+    pagination: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingHorizontal: 20,
+        paddingVertical: 20,
+        backgroundColor: '#fff',
+        borderRadius: 12,
+        marginTop: 16,
+        elevation: 2,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+    },
+    paginationButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        borderRadius: 8,
+        backgroundColor: '#f8f9fa',
+        borderWidth: 1,
+        borderColor: '#e9ecef',
+    },
+    paginationButtonDisabled: {
+        backgroundColor: '#f8f9fa',
+        borderColor: '#e9ecef',
+    },
+    paginationButtonText: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: '#007BFF',
+        marginHorizontal: 4,
+    },
+    paginationButtonTextDisabled: {
+        color: '#adb5bd',
+    },
+    paginationInfo: {
+        fontSize: 14,
+        color: '#6c757d',
+        fontWeight: '500',
     },
 });
 

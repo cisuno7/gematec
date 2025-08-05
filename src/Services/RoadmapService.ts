@@ -1,7 +1,7 @@
 import axios from "axios";
 import { buildApiUrlForAccount } from "../config/apiConfig";
 import { RoadmapResponse, RoadmapActivity } from '../Models/Roadmap';
-import { OfflineService } from './OfflineService';
+import OfflineService from './OfflineService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const CURRENT_ROADMAP_CACHE_KEY = 'current_roadmap';
@@ -39,13 +39,30 @@ export class RoadmapService {
             throw new Error('Resposta inválida da API');
         }
 
-        // Verifica se é uma resposta paginada
+        console.log('[RoadmapService] Estrutura da resposta:', JSON.stringify(data, null, 2));
+
+        // Verifica se é uma resposta paginada com roadmaps
         if (data.results && Array.isArray(data.results)) {
-            // Converte a estrutura paginada para o formato esperado
+            console.log('[RoadmapService] Resposta paginada detectada');
+
+            // Se os resultados são roadmaps (não atividades), precisamos buscar as atividades
+            if (data.results.length > 0 && data.results[0].start_date) {
+                console.log('[RoadmapService] Roadmaps encontrados, buscando atividades...');
+
+                // Por enquanto, retorna uma estrutura vazia
+                // TODO: Implementar busca de atividades por roadmap
+                return {
+                    activities: [],
+                    total: 0,
+                    date: new Date().toISOString().split('T')[0]
+                } as RoadmapResponse;
+            }
+
+            // Se são atividades diretas
             return {
                 activities: data.results,
                 total: data.count || 0,
-                date: new Date().toISOString().split('T')[0] // Data atual como fallback
+                date: new Date().toISOString().split('T')[0]
             } as RoadmapResponse;
         }
 
@@ -72,7 +89,7 @@ export class RoadmapService {
 
             // Se não houver cache, busca na API
             const apiUrl = await buildApiUrlForAccount();
-            const endpoint = `${apiUrl}/roadmaps`;
+            const endpoint = `${apiUrl}/me/roadmap`;
             const headers = await this.getAuthHeaders();
 
             console.log('[RoadmapService] Buscando roteiro atual da API:', endpoint);
@@ -82,14 +99,28 @@ export class RoadmapService {
 
             console.log('[RoadmapService] Resposta da API:', JSON.stringify(response.data, null, 2));
 
-            // Valida a resposta
-            const validatedData = this.validateRoadmapResponse(response.data);
+            // Se a resposta contém roadmaps, busca as atividades do primeiro roadmap
+            if (response.data.results && response.data.results.length > 0) {
+                const firstRoadmap = response.data.results[0];
+                console.log('[RoadmapService] Buscando atividades do roadmap:', firstRoadmap.id);
 
-            // Salva os dados no cache para uso offline
-            await OfflineService.cacheData(CURRENT_ROADMAP_CACHE_KEY, validatedData);
-            console.log('[RoadmapService] Roteiro atual salvo no cache.');
+                const activitiesResponse = await this.getRoadmapActivities(firstRoadmap.id);
+                return activitiesResponse;
+            }
 
-            return validatedData;
+            // Se não há roadmaps para o dia, retorna resposta vazia
+            console.log('[RoadmapService] Nenhum roadmap encontrado para o dia atual');
+            const emptyResponse: RoadmapResponse = {
+                activities: [],
+                total: 0,
+                date: new Date().toISOString().split('T')[0]
+            };
+
+            // Salva os dados vazios no cache para uso offline
+            await OfflineService.cacheData(CURRENT_ROADMAP_CACHE_KEY, emptyResponse);
+            console.log('[RoadmapService] Roteiro vazio salvo no cache.');
+
+            return emptyResponse;
         } catch (error: any) {
             console.error('[RoadmapService] Erro ao buscar roteiro atual:', error);
 
@@ -100,6 +131,33 @@ export class RoadmapService {
                 return this.validateRoadmapResponse(cachedRoadmap);
             }
 
+            this.handleApiError(error);
+        }
+    }
+
+    /**
+     * Busca as atividades de um roadmap específico
+     */
+    static async getRoadmapActivities(roadmapId: number): Promise<RoadmapResponse> {
+        try {
+            const apiUrl = await buildApiUrlForAccount();
+            const endpoint = `${apiUrl}/roadmaps/${roadmapId}/activities`;
+            const headers = await this.getAuthHeaders();
+
+            console.log('[RoadmapService] Buscando atividades do roadmap:', endpoint);
+
+            const response = await axios.get(endpoint, { headers });
+            console.log('[RoadmapService] Atividades do roadmap:', JSON.stringify(response.data, null, 2));
+
+            // Valida e retorna as atividades
+            const validatedData = this.validateRoadmapResponse(response.data);
+
+            // Salva no cache
+            await OfflineService.cacheData(CURRENT_ROADMAP_CACHE_KEY, validatedData);
+
+            return validatedData;
+        } catch (error: any) {
+            console.error('[RoadmapService] Erro ao buscar atividades do roadmap:', error);
             this.handleApiError(error);
         }
     }
@@ -327,7 +385,8 @@ export class RoadmapService {
                 case 403:
                     throw new Error('Permissão negada para acessar este recurso.');
                 case 404:
-                    throw new Error('Recurso não encontrado.');
+                    // Para 404 no roadmap, retorna resposta vazia em vez de erro
+                    throw new Error('Nenhum roteiro encontrado para o dia atual.');
                 case 422:
                     throw new Error('Dados inválidos enviados para o servidor.');
                 case 500:

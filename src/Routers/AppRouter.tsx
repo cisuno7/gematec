@@ -26,6 +26,8 @@ import PmocListScreen from "../Screens/Pmoc/PmocListScreen";
 import PmocDetailsScreen from "../Screens/Pmoc/PmocDetailsScreen";
 import PmocEquipmentScreen from "../Screens/Pmoc/PmocEquipmentScreen";
 import ActivityHistoryScreen from "../Screens/Activity/ActivityHistoryScreen";
+import ActivityEquipmentListScreen from "../Screens/Activity/ActivityEquipmentListScreen";
+import ActivityQuestionnaireScreen from "../Screens/Activity/ActivityQuestionnaireScreen";
 import NewServiceOrderScreen from "../Screens/Orders/NewServiceOrderScreen";
 import TechnicalAssistanceScreen from '../Screens/TechnicalAssistance/TechnicalAssistanceScreen';
 import RespondOrderScreen from "../Screens/Orders/RespondOrderServiceScreen";
@@ -79,6 +81,8 @@ export type RootStackParamList = {
   PmocEquipmentScreen: { pmocId: number; equipmentId: number };
   ServiceOrderScreen: undefined;
   ActivityHistoryScreen: { equipmentId?: number, activityTypeSlug?: string, status?: string[] };
+  ActivityEquipmentListScreen: { activityId: number; activityName: string; clientId?: number; clientName?: string };
+  ActivityQuestionnaireScreen: { activityId: number; activityEquipmentId: number; equipmentId: number; equipmentTag: string; activityName: string };
   NewServiceOrderScreen: { equipmentId: number };
   TechnicalAssistanceScreen: undefined;
   ListOrderServiceScreen: { equipmentId: number };
@@ -132,6 +136,8 @@ const AppRouter: React.FC = () => {
       <Stack.Screen name="PmocDetailsScreen" component={PmocDetailsScreen} options={{ headerTitle: "Detalhes do PMOC" }} />
       <Stack.Screen name="PmocEquipmentScreen" component={PmocEquipmentScreen} options={{ headerTitle: "Detalhes do Equipamento PMOC" }} />
       <Stack.Screen name="ActivityHistoryScreen" component={ActivityHistoryScreen} options={{ headerTitle: t('menu.activities') }} />
+      <Stack.Screen name="ActivityEquipmentListScreen" component={ActivityEquipmentListScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="ActivityQuestionnaireScreen" component={ActivityQuestionnaireScreen} options={{ headerShown: false }} />
       <Stack.Screen name="NewServiceOrderScreen" component={NewServiceOrderScreen} options={{ title: "Nova Ordem de Serviço" }} />
       <Stack.Screen name="ListOrderServiceScreen" component={ListOrderServiceScreen} options={{ title: t('menu.serviceOrders') }} />
       <Stack.Screen name="ManualsScreen" component={ManualsScreen} options={{ headerTitle: t('menu.manuals') }} />

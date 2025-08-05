@@ -3,102 +3,107 @@
  * 
  * Este arquivo centraliza todas as permissões disponíveis no sistema,
  * facilitando a manutenção e evitando erros de digitação.
+ * 
+ * NOTA: As permissões foram simplificadas removendo o prefixo do recurso.
+ * Exemplo: 'clients.list_clients' agora é apenas 'list_clients'
  */
 
 export const PERMISSIONS = {
     // Equipamentos
     EQUIPMENT: {
-        VIEW: 'equipment.view',
-        CREATE: 'equipment.create',
-        EDIT: 'equipment.edit',
-        DELETE: 'equipment.delete',
-        ADMIN: 'equipment.admin',
+        VIEW: 'view',
+        CREATE: 'create',
+        EDIT: 'edit',
+        DELETE: 'delete',
+        ADMIN: 'admin',
     },
 
     // Clientes
     CLIENT: {
-        VIEW: 'client.view',
-        CREATE: 'client.create',
-        EDIT: 'client.edit',
-        DELETE: 'client.delete',
-        ADMIN: 'client.admin',
+        VIEW: 'view',
+        CREATE: 'create',
+        EDIT: 'edit',
+        DELETE: 'delete',
+        LIST_CONTRACTS: 'list_contracts',
+        CHANGE_CONTRACT: 'change_contract',
+        ADMIN: 'admin',
     },
 
     // Ordens de Serviço
     SERVICE_ORDER: {
-        VIEW: 'service_order.view',
-        CREATE: 'service_order.create',
-        EDIT: 'service_order.edit',
-        DELETE: 'service_order.delete',
-        APPROVE: 'service_order.approve',
-        ADMIN: 'service_order.admin',
+        VIEW: 'view',
+        CREATE: 'create',
+        EDIT: 'edit',
+        DELETE: 'delete',
+        APPROVE: 'approve',
+        ADMIN: 'admin',
     },
 
     // Manuais
     MANUAL: {
-        VIEW: 'manual.view',
-        CREATE: 'manual.create',
-        EDIT: 'manual.edit',
-        DELETE: 'manual.delete',
-        ADMIN: 'manual.admin',
+        VIEW: 'view',
+        CREATE: 'create',
+        EDIT: 'edit',
+        DELETE: 'delete',
+        ADMIN: 'admin',
     },
 
     // PMOCs
     PMOC: {
-        VIEW: 'pmoc.view',
-        CREATE: 'pmoc.create',
-        EDIT: 'pmoc.edit',
-        DELETE: 'pmoc.delete',
-        ADMIN: 'pmoc.admin',
+        VIEW: 'view',
+        CREATE: 'create',
+        EDIT: 'edit',
+        DELETE: 'delete',
+        ADMIN: 'admin',
     },
 
     // Atividades
     ACTIVITY: {
-        VIEW: 'activity.view',
-        CREATE: 'activity.create',
-        EDIT: 'activity.edit',
-        DELETE: 'activity.delete',
-        ADMIN: 'activity.admin',
+        VIEW: 'view',
+        CREATE: 'create',
+        EDIT: 'edit',
+        DELETE: 'delete',
+        ADMIN: 'admin',
     },
 
     // Assistência Técnica
     TECHNICAL_ASSISTANCE: {
-        VIEW: 'technical_assistance.view',
-        CREATE: 'technical_assistance.create',
-        EDIT: 'technical_assistance.edit',
-        DELETE: 'technical_assistance.delete',
-        ADMIN: 'technical_assistance.admin',
+        VIEW: 'view',
+        CREATE: 'create',
+        EDIT: 'edit',
+        DELETE: 'delete',
+        ADMIN: 'admin',
     },
 
     // Usuários
     USER: {
-        VIEW: 'user.view',
-        CREATE: 'user.create',
-        EDIT: 'user.edit',
-        DELETE: 'user.delete',
-        ADMIN: 'user.admin',
-        CHANGE_ME: 'user.change_me',
+        VIEW: 'view',
+        CREATE: 'create',
+        EDIT: 'edit',
+        DELETE: 'delete',
+        ADMIN: 'admin',
+        CHANGE_ME: 'change_me',
     },
 
     // Relatórios
     REPORT: {
-        VIEW: 'report.view',
-        EXPORT: 'report.export',
-        ADMIN: 'report.admin',
+        VIEW: 'view',
+        EXPORT: 'export',
+        ADMIN: 'admin',
     },
 
     // Configurações
     SETTINGS: {
-        VIEW: 'settings.view',
-        EDIT: 'settings.edit',
-        ADMIN: 'settings.admin',
+        VIEW: 'view',
+        EDIT: 'edit',
+        ADMIN: 'admin',
     },
 
     // QR Code
     QR_CODE: {
-        SCAN: 'qr_code.scan',
-        GENERATE: 'qr_code.generate',
-        ADMIN: 'qr_code.admin',
+        SCAN: 'scan',
+        GENERATE: 'generate',
+        ADMIN: 'admin',
     },
 } as const;
 
@@ -125,6 +130,7 @@ export const PERMISSION_GROUPS = {
     VIEW_ONLY: [
         PERMISSIONS.EQUIPMENT.VIEW,
         PERMISSIONS.CLIENT.VIEW,
+        PERMISSIONS.CLIENT.LIST_CONTRACTS,
         PERMISSIONS.SERVICE_ORDER.VIEW,
         PERMISSIONS.MANUAL.VIEW,
         PERMISSIONS.PMOC.VIEW,
@@ -197,4 +203,4 @@ export const getResourcePermissions = (resource: keyof typeof PERMISSIONS): stri
  */
 export type Permission = typeof PERMISSIONS[keyof typeof PERMISSIONS][keyof typeof PERMISSIONS[keyof typeof PERMISSIONS]];
 export type PermissionGroup = keyof typeof PERMISSIONS;
-export type PermissionAction = 'view' | 'create' | 'edit' | 'delete' | 'admin' | 'approve' | 'export' | 'scan' | 'generate' | 'change_me'; 
+export type PermissionAction = 'view' | 'list_contracts' | 'change_contract' | 'create' | 'edit' | 'delete' | 'admin' | 'approve' | 'export' | 'scan' | 'generate' | 'change_me'; 

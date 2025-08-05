@@ -74,9 +74,23 @@ const ManualsScreen: React.FC<ManualsScreenProps> = ({ navigation }) => {
     try {
       const token = await AsyncStorage.getItem("access_token");
       if (!token) throw new Error("Token de acesso não encontrado.");
-      if (!manual.file_url) throw new Error(t('manuals.fileUrlNotAvailable'));
-      const fileUri = await ManualService.downloadManual(manual.file_url, token);
-      Alert.alert(t('common.success'), t('manuals.downloadSuccess'));
+
+      // Usar content_url como campo principal, com fallback para file_url
+      const fileUrl = manual.content_url || manual.file_url;
+
+      if (!fileUrl) {
+        throw new Error(t('manuals.fileUrlNotAvailable'));
+      }
+
+      console.log("[ManualsScreen] Iniciando download do manual:", manual.name);
+      console.log("[ManualsScreen] URL do arquivo:", fileUrl);
+
+      const fileUri = await ManualService.downloadManual(fileUrl, token, manual.name);
+      
+      console.log("[ManualsScreen] Download concluído. Arquivo salvo em:", fileUri);
+      
+      // Não mostrar alerta de sucesso pois agora temos notificação e compartilhamento
+      // Alert.alert(t('common.success'), t('manuals.downloadSuccess'));
     } catch (error: any) {
       console.error("[ManualsScreen] Erro ao baixar manual:", error);
       Alert.alert(t('common.error'), error.message || t('manuals.downloadError'));

@@ -15,6 +15,7 @@ apiClient.interceptors.request.use(
             baseURL: config.baseURL,
             url: config.url,
             method: config.method,
+            params: config.params,
         });
 
         const accessToken = await AsyncStorage.getItem("access_token");
@@ -31,6 +32,7 @@ apiClient.interceptors.request.use(
             baseURL: config.baseURL,
             url: config.url,
             method: config.method,
+            params: config.params,
             hasAuth: !!accessToken,
         });
         console.log('[ApiClient] ==> FIM DA CONFIGURAÇÃO <==');
@@ -64,26 +66,44 @@ apiClient.interceptors.response.use(
 
         const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
 
+        // Verifica se é um erro 401 e se não é uma requisição de token
+        const isTokenRequest = originalRequest.url?.includes('/token') ||
+            originalRequest.url?.includes('/token/refresh') ||
+            originalRequest.url?.includes('/login');
+
         if (
             error.response?.status === 401 &&
             !originalRequest._retry &&
-            !originalRequest.url?.includes('/token') &&
-            !originalRequest.url?.includes('/token/refresh')
+            !isTokenRequest
         ) {
+            console.log("[ApiClient] Token expirado, tentando renovar...");
+            console.log("[ApiClient] URL da requisição original:", originalRequest.url);
+
             originalRequest._retry = true;
             try {
+                console.log("[ApiClient] Chamando refreshAccessToken...");
                 const newAccessToken = await refreshAccessToken();
+
                 if (!newAccessToken) {
+                    console.error("[ApiClient] Nenhum token recebido do refresh");
                     throw new Error("Falha ao renovar o token. Faça login novamente.");
                 }
+
+                console.log("[ApiClient] Novo token recebido, salvando...");
                 await AsyncStorage.setItem("access_token", newAccessToken);
+
+                console.log("[ApiClient] Reenviando requisição original com novo token...");
                 originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
+
                 return apiClient(originalRequest);
-            } catch (refreshError) {
-                console.error("[apiClient] Erro ao renovar token:", refreshError);
+            } catch (refreshError: any) {
+                console.error("[ApiClient] Erro ao renovar token:", refreshError);
+                console.error("[ApiClient] Limpando tokens do AsyncStorage...");
+
                 await AsyncStorage.removeItem("access_token");
                 await AsyncStorage.removeItem("refresh_token");
                 await AsyncStorage.removeItem("account");
+
                 throw new Error("Sessão expirada. Faça login novamente.");
             }
         }
@@ -94,32 +114,98 @@ apiClient.interceptors.response.use(
 
 const refreshAccessToken = async () => {
     try {
+        console.log("[refreshAccessToken] Iniciando renovação do token...");
+
         const refreshToken = await AsyncStorage.getItem("refresh_token");
         if (!refreshToken) {
+            console.error("[refreshAccessToken] Refresh token não encontrado no AsyncStorage");
             throw new Error("Refresh token não encontrado.");
         }
+
+        console.log("[refreshAccessToken] Refresh token encontrado, tentando renovar...");
 
         const accountName = await AsyncStorage.getItem("account") || "default";
         const dynamicBaseUrl = await setDynamicApiUrl(accountName);
 
-        const response = await axios.post(
-            `${dynamicBaseUrl}/token/refresh/`,
-            { refresh: refreshToken },
-            {
-                headers: {
-                    "Content-Type": "application/json",
-                },
-            }
-        );
+        console.log("[refreshAccessToken] URL para refresh:", `${dynamicBaseUrl}/token/refresh/`);
+        console.log("[refreshAccessToken] Account:", accountName);
+        console.log("[refreshAccessToken] URL base completa:", dynamicBaseUrl);
 
-        const { access, refresh: newRefreshToken } = response.data;
-        if (newRefreshToken) {
-            await AsyncStorage.setItem("refresh_token", newRefreshToken);
+        // Tenta primeiro com barra no final, se falhar tenta sem
+        let response;
+        try {
+            console.log("[refreshAccessToken] Tentando com /token/refresh/");
+            response = await axios.post(
+                `${dynamicBaseUrl}/token/refresh/`,
+                { refresh: refreshToken },
+                {
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    timeout: 10000,
+                }
+            );
+        } catch (firstError: any) {
+            if (firstError.response?.status === 404) {
+                console.log("[refreshAccessToken] Endpoint com / não encontrado, tentando sem /");
+                response = await axios.post(
+                    `${dynamicBaseUrl}/token/refresh`,
+                    { refresh: refreshToken },
+                    {
+                        headers: {
+                            "Content-Type": "application/json",
+                        },
+                        timeout: 10000,
+                    }
+                );
+            } else {
+                throw firstError;
+            }
         }
 
+        console.log("[refreshAccessToken] Resposta do servidor:", {
+            status: response.status,
+            hasAccess: !!response.data.access,
+            hasRefresh: !!response.data.refresh
+        });
+
+        const { access, refresh: newRefreshToken } = response.data;
+
+        if (!access) {
+            throw new Error("Token de acesso não recebido na resposta.");
+        }
+
+        if (newRefreshToken) {
+            await AsyncStorage.setItem("refresh_token", newRefreshToken);
+            console.log("[refreshAccessToken] Novo refresh token salvo");
+        }
+
+        console.log("[refreshAccessToken] Token renovado com sucesso");
         return access;
-    } catch (error) {
+    } catch (error: any) {
         console.error("[refreshAccessToken] Erro ao renovar token:", error);
+
+        if (error.response) {
+            console.error("[refreshAccessToken] Detalhes do erro:", {
+                status: error.response.status,
+                data: error.response.data,
+                url: error.config?.url
+            });
+        }
+
+        throw error;
+    }
+};
+
+// Função de teste para debug (remover em produção)
+export const testTokenRefresh = async () => {
+    try {
+        console.log("[TEST] Iniciando teste de refresh de token...");
+        const result = await refreshAccessToken();
+        console.log("[TEST] Refresh bem-sucedido:", !!result);
+        return result;
+    } catch (error) {
+        console.error("[TEST] Erro no teste de refresh:", error);
         throw error;
     }
 };

@@ -34,23 +34,23 @@ export default class AuthService {
         });
 
         if (error.response.status === 401) {
-          throw new Error('Usuário ou senha inválidos. Verifique suas credenciais.');
+          throw new Error('Email ou senha incorretos. Verifique suas credenciais e tente novamente.');
         } else if (error.response.status === 403) {
-          throw new Error('Permissão negada. Você não tem autorização para acessar este recurso.');
+          throw new Error('Acesso negado. Verifique suas permissões.');
         } else if (error.response.status === 404) {
-          throw new Error(`Endpoint não encontrado:`);
+          throw new Error('Serviço não encontrado. Verifique se a conta está correta.');
         } else if (error.response.status === 500) {
           throw new Error('Erro interno do servidor. Tente novamente mais tarde.');
         } else {
-          throw new Error(`Erro inesperado: ${error.response.status}.`);
+          throw new Error(`Erro de conexão (${error.response.status}). Tente novamente.`);
         }
       } else if (error.request) {
         console.error('[AuthService] Nenhuma resposta recebida do servidor:', error.request);
         console.error('[AuthService] URL que falhou:', error.request._url);
-        throw new Error('Erro ao conectar ao servidor. Verifique sua conexão com a internet.');
+        throw new Error('Não foi possível conectar ao servidor. Verifique sua conexão com a internet.');
       } else {
         console.error('[AuthService] Erro na configuração da requisição:', error.message);
-        throw new Error(`Erro inesperado: ${error.message}`);
+        throw new Error('Erro de configuração. Tente novamente.');
       }
     }
   }
@@ -91,17 +91,30 @@ export default class AuthService {
   static async revoke(refreshToken: string, account: string): Promise<void> {
     try {
       const apiUrl = await buildApiUrlForAccount(account);
-      const endpoint = `${apiUrl}/token/blacklist`; // Novo endpoint
-      await apiClient.post(endpoint, { refresh_token: refreshToken });
+      const endpoint = `${apiUrl}/token/blacklist`;
+      console.log('[AuthService] Revogando token no endpoint:', endpoint);
+      console.log('[AuthService] Refresh token:', refreshToken ? 'presente' : 'ausente');
+
+      const response = await apiClient.post(endpoint, { refresh: refreshToken });
+
+      console.log('[AuthService] Token revogado com sucesso. Status:', response.status);
     } catch (error: any) {
       console.error('Erro ao revogar o token:', error);
       if (error.response) {
+        console.error('[AuthService] Detalhes do erro:', {
+          status: error.response.status,
+          data: error.response.data,
+          url: error.config?.url
+        });
+
         if (error.response.status === 401) {
           throw new Error('Token inválido ou expirado.');
         } else if (error.response.status === 403) {
           throw new Error('Permissão negada.');
         } else if (error.response.status === 404) {
           throw new Error('Endpoint não encontrado.');
+        } else if (error.response.status === 400) {
+          throw new Error('Dados inválidos para revogação do token.');
         }
       }
       throw new Error('Erro ao revogar o token.');
@@ -113,7 +126,13 @@ export default class AuthService {
 
       console.log(`Refresh Token: ${refreshToken}`);
 
-      const response = await apiClient.post(`${API_BASE_URL}/token/refresh`, {
+      // Usa a URL dinâmica baseada na conta
+      const accountName = await AsyncStorage.getItem("account") || "default";
+      const dynamicBaseUrl = await setDynamicApiUrl(accountName);
+
+      console.log('[AuthService] URL para refresh:', `${dynamicBaseUrl}/token/refresh`);
+
+      const response = await apiClient.post(`${dynamicBaseUrl}/token/refresh`, {
         refresh: refreshToken,
       });
 
@@ -155,7 +174,7 @@ export default class AuthService {
       console.log('Atualizando dados pessoais no endpoint:', endpoint);
       console.log('Dados enviados:', updatedData);
 
-      const response = await axios.put(endpoint, updatedData, {
+      const response = await axios.patch(endpoint, updatedData, {
         headers: {
           Authorization: `Bearer ${accessToken}`,
         },

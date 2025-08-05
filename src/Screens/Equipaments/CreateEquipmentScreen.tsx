@@ -1,910 +1,620 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
   TextInput,
-  Button,
   StyleSheet,
   Alert,
   ActivityIndicator,
   ScrollView,
+  TouchableOpacity,
+  Switch,
+  Dimensions,
 } from "react-native";
 import { Picker } from "@react-native-picker/picker";
 import { RouteProp } from "@react-navigation/native";
 import { DrawerNavigationProp } from "@react-navigation/drawer";
 import { RootStackParamList } from "../../Routers/AppRouter";
 import EquipmentService from "../../Services/EquipamentService";
+import ClientService from "../../Services/ClientService";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import axios from "axios";
-import { usePermissions } from "../../Context/PermissionsContext";
+import { FontAwesome, MaterialIcons, Ionicons } from "@expo/vector-icons";
+import { DynamicField, EquipmentTemplate } from "../../Models/EquipmentTemplate";
 import { Equipment } from "../../Models/Equipament";
-import { API_BASE_URL } from "../../config/apiConfig";
+import { setDynamicApiUrl } from "../../config/apiConfig";
+import apiClient from "../../Context/ApiClient";
+
+const { width } = Dimensions.get('window');
+
 interface CreateEquipmentScreenProps {
   route: RouteProp<RootStackParamList, "CreateEquipmentScreen">;
   navigation: DrawerNavigationProp<RootStackParamList, "CreateEquipmentScreen">;
 }
 
-const CreateEquipmentScreen: React.FC<CreateEquipmentScreenProps> = ({ route, navigation }) => {
+interface CreateEquipmentScreenParams {
+  clientId?: number;
+  sectorId?: number;
+}
 
+const CreateEquipmentScreen: React.FC<CreateEquipmentScreenProps> = ({
+  route,
+  navigation,
+}) => {
+  // Obter parâmetros da rota para pré-seleção
+  const params = route.params as any;
+  const preSelectedClientId = params?.clientId;
+  const preSelectedSectorId = params?.sectorId;
 
-  // Estados para busca e seleção
-  const [client, setClient] = useState("");
-  const [sector, setSector] = useState("");
-  const [brand, setBrand] = useState("");
-  const [equipmentType, setEquipmentType] = useState("");
-  const [condenserType, setCondenserType] = useState("");
-  const [coilType, setCoilType] = useState("");
-  const [evaporatorType, setEvaporatorType] = useState("");
-  const [tag, setTag] = useState("");
-  const [patrimony, setPatrimony] = useState("");
-  const [serialNumber, setSerialNumber] = useState("");
-  const [voltage, setVoltage] = useState("");
-  const [electricCurrent, setElectricCurrent] = useState("");
-  const [capacity, setCapacity] = useState("");
-  const [technology, setTechnology] = useState<string | "new_technology" | null>(null);
+  // Estados para campos fixos
+  const [clientId, setClientId] = useState<string>(preSelectedClientId?.toString() || "");
+  const [sectorId, setSectorId] = useState<string>(preSelectedSectorId?.toString() || "");
+  const [brandId, setBrandId] = useState<string>("");
+  const [equipmentTypeId, setEquipmentTypeId] = useState<string>("");
+  const [tag, setTag] = useState<string>("");
+  const [isActive, setIsActive] = useState<boolean>(true);
+
+  // Estados para dados do template
+  const [equipmentTemplate, setEquipmentTemplate] = useState<EquipmentTemplate | null>(null);
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
 
-  // Novos estados para os novos campos
-  const [description, setDescription] = useState("");
-  const [capacityUnit, setCapacityUnit] = useState("");
-  const [compressorType, setCompressorType] = useState("");
-  const [coolingFluidType, setCoolingFluidType] = useState("");
-  const [condenserModel, setCondenserModel] = useState("");
-  const [condenserSerialNumber, setCondenserSerialNumber] = useState("");
-  const [evaporatorModel, setEvaporatorModel] = useState("");
-  const [evaporatorSerialNumber, setEvaporatorSerialNumber] = useState("");
-  const [electricPower, setElectricPower] = useState("");
-  const [phase, setPhase] = useState("");
-  const [isLeased, setIsLeased] = useState(false);
-  const [hasWarranty, setHasWarranty] = useState(false);
-  const [hasAutomation, setHasAutomation] = useState(false);
-
-  // Estados para resultados das buscas
+  // Estados para dados dos selects
   const [clients, setClients] = useState<any[]>([]);
   const [sectors, setSectors] = useState<any[]>([]);
   const [brands, setBrands] = useState<any[]>([]);
   const [equipmentTypes, setEquipmentTypes] = useState<any[]>([]);
-  const [condenserTypes, setCondenserTypes] = useState<any[]>([]);
-  const [coilTypes, setCoilTypes] = useState<any[]>([]);
-  const [evaporatorTypes, setEvaporatorTypes] = useState<any[]>([]);
 
-  // Novos estados para resultados das buscas dos selects
-  const [capacityUnits, setCapacityUnits] = useState<any[]>([]);
-  const [compressorTypes, setCompressorTypes] = useState<any[]>([]);
-  const [coolingFluidTypes, setCoolingFluidTypes] = useState<any[]>([]);
-  const [technologies, setTechnologies] = useState<any[]>([]);
-  const [phases, setPhases] = useState<any[]>([]);
+  // Estados para campos dinâmicos
+  const [dynamicFields, setDynamicFields] = useState<{ [key: string]: any }>({});
 
-  // Estados para queries de busca
-  const [clientQuery, setClientQuery] = useState("");
-  const [sectorQuery, setSectorQuery] = useState("");
-  const [brandQuery, setBrandQuery] = useState("");
-  const [typeQuery, setTypeQuery] = useState("");
-  const [condenserQuery, setCondenserQuery] = useState("");
-  const [coilQuery, setCoilQuery] = useState("");
-  const [evaporatorQuery, setEvaporatorQuery] = useState("");
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        const accessToken = await AsyncStorage.getItem("access_token");
+        if (!accessToken) throw new Error("Token de acesso não encontrado.");
 
-  // Novos estados para queries de busca
-  const [capacityUnitQuery, setCapacityUnitQuery] = useState("");
-  const [compressorTypeQuery, setCompressorTypeQuery] = useState("");
-  const [coolingFluidTypeQuery, setCoolingFluidTypeQuery] = useState("");
-  const [technologyQuery, setTechnologyQuery] = useState("");
-  const [phaseQuery, setPhaseQuery] = useState("");
+        // Buscar template de equipamento
+        const template = await EquipmentService.getEquipmentTemplate(accessToken);
+        setEquipmentTemplate(template);
 
-  const { hasPermission, permissions } = usePermissions();
+        // Inicializar campos dinâmicos com valores padrão
+        const dynamicData: { [key: string]: any } = {};
+        template.fields.forEach(field => {
+          const fieldKey = field.key || field.name || '';
+          if (fieldKey) {
+            dynamicData[fieldKey] = field.default_value || "";
+          }
+        });
+        setDynamicFields(dynamicData);
 
+        // Buscar dados dos selects
+        await fetchSelectData(accessToken);
 
-  const fetchCapacityUnits = async (query: string) => {
-    if (query.length < 3) {
-      setCapacityUnits([]);
-      return;
-    }
-    try {
-      const token = await AsyncStorage.getItem("access_token");
-      const res = await axios.get(`${API_BASE_URL}/capacity_units?name=${query}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setCapacityUnits(res.data.results || []);
-    } catch (error) {
-      console.error("[CreateEquipmentScreen] Erro ao buscar unidades de capacidade:", error);
-      Alert.alert("Erro", "Não foi possível carregar as unidades de capacidade.");
-    }
-  };
-
-  const fetchCompressorTypes = async (query: string) => {
-    if (query.length < 3) {
-      setCompressorTypes([]);
-      return;
-    }
-    try {
-      const token = await AsyncStorage.getItem("access_token");
-      const res = await axios.get(`${API_BASE_URL}/compressor_types?name=${query}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setCompressorTypes(res.data.results || []);
-    } catch (error) {
-      console.error("[CreateEquipmentScreen] Erro ao buscar tipos de compressor:", error);
-      Alert.alert("Erro", "Não foi possível carregar os tipos de compressor.");
-    }
-  };
-
-  const fetchCoolingFluidTypes = async (query: string) => {
-    if (query.length < 3) {
-      setCoolingFluidTypes([]);
-      return;
-    }
-    try {
-      const token = await AsyncStorage.getItem("access_token");
-      const res = await axios.get(`${API_BASE_URL}/cooling_fluid_types?name=${query}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setCoolingFluidTypes(res.data.results || []);
-    } catch (error) {
-      console.error("[CreateEquipmentScreen] Erro ao buscar tipos de fluído refrigerante:", error);
-      Alert.alert("Erro", "Não foi possível carregar os tipos de fluído refrigerante.");
-    }
-  };
-
-  const fetchTechnologies = async (query: string) => {
-    if (query.length < 3) {
-      setTechnologies([]);
-      return;
-    }
-    try {
-      const token = await AsyncStorage.getItem("access_token");
-      const res = await axios.get(`${API_BASE_URL}/tecnologies?name=${query}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setTechnologies(res.data.results || []);
-    } catch (error) {
-      console.error("[CreateEquipmentScreen] Erro ao buscar tecnologias:", error);
-      Alert.alert("Erro", "Não foi possível carregar as tecnologias.");
-    }
-  };
-
-  const fetchPhases = async (query: string) => {
-    if (query.length < 3) {
-      setPhases([]);
-      return;
-    }
-    try {
-      const token = await AsyncStorage.getItem("access_token");
-      const res = await axios.get(`${API_BASE_URL}/phases?name=${query}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setPhases(res.data.results || []);
-    } catch (error) {
-      console.error("[CreateEquipmentScreen] Erro ao buscar fases:", error);
-      Alert.alert("Erro", "Não foi possível carregar as fases.");
-    }
-  };
-
-  // Funções de busca com suporte a paginação
-  const fetchClients = async (query: string) => {
-    if (query.length < 3) {
-      setClients([]);
-      return;
-    }
-    try {
-      const token = await AsyncStorage.getItem("access_token");
-      const res = await axios.get(`${API_BASE_URL}/clients?name=${query}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setClients(res.data.results || []);
-    } catch (error) {
-      console.error("[CreateEquipmentScreen] Erro ao buscar clientes:", error);
-      Alert.alert("Erro", "Não foi possível carregar os clientes.");
-    }
-  };
-
-  const fetchSectors = async (clientId: string, query: string) => {
-    if (!clientId || query.length < 3) {
-      setSectors([]);
-      return;
-    }
-    try {
-      const token = await AsyncStorage.getItem("access_token");
-      const res = await axios.get(`${API_BASE_URL}/clients/${clientId}/sectors?name=${query}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setSectors(res.data.results || []);
-    } catch (error) {
-      console.error("[CreateEquipmentScreen] Erro ao buscar setores:", error);
-      Alert.alert("Erro", "Não foi possível carregar os setores.");
-    }
-  };
-
-  const fetchBrands = async (query: string) => {
-    if (query.length < 3) {
-      setBrands([]);
-      return;
-    }
-    try {
-      const token = await AsyncStorage.getItem("access_token");
-      const res = await axios.get(`${API_BASE_URL}/brands?name=${query}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setBrands(res.data.results || []);
-    } catch (error) {
-      console.error("[CreateEquipmentScreen] Erro ao buscar marcas:", error);
-      Alert.alert("Erro", "Não foi possível carregar os fabricantes.");
-    }
-  };
-
-  const fetchEquipmentTypes = async (query: string) => {
-    if (query.length < 3) {
-      setEquipmentTypes([]);
-      return;
-    }
-    try {
-      const token = await AsyncStorage.getItem("access_token");
-      const res = await axios.get(`${API_BASE_URL}/equipment_type?name=${query}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setEquipmentTypes(res.data.results || []);
-    } catch (error) {
-      console.error("[CreateEquipmentScreen] Erro ao buscar tipos de equipamento:", error);
-      Alert.alert("Erro", "Não foi possível carregar os tipos de equipamento.");
-    }
-  };
-
-  const fetchCondenserTypes = async (query: string) => {
-    if (query.length < 3) {
-      setCondenserTypes([]);
-      return;
-    }
-    try {
-      const token = await AsyncStorage.getItem("access_token");
-      const res = await axios.get(`${API_BASE_URL}/condenser_type?name=${query}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setCondenserTypes(res.data.results || []);
-    } catch (error: any) {
-      console.error("[CreateEquipmentScreen] Erro ao buscar tipos de condensadora:", error.message);
-      if (error.response?.status === 404) {
-        Alert.alert("Erro", "Endpoint /api/condenser_type não encontrado no servidor.");
-      } else {
-        Alert.alert("Erro", "Não foi possível carregar os tipos de condensadora.");
+      } catch (error: any) {
+        console.error("[CreateEquipmentScreen] Erro ao buscar dados:", error);
+        Alert.alert("Erro", error.message || "Falha ao carregar dados.");
+      } finally {
+        setLoading(false);
       }
-      setCondenserTypes([]);
-    }
-  };
+    };
 
-  const fetchCoilTypes = async (query: string) => {
-    if (query.length < 3) {
-      setCoilTypes([]);
-      return;
+    fetchData();
+  }, []);
+
+  // Buscar setores quando o cliente mudar
+  useEffect(() => {
+    const fetchSectors = async () => {
+      if (!clientId) {
+        setSectors([]);
+        return;
+      }
+
+      try {
+        console.log("[CreateEquipmentScreen] Buscando setores para cliente:", clientId);
+        const accessToken = await AsyncStorage.getItem("access_token");
+        if (!accessToken) return;
+
+        const sectorsResponse = await ClientService.getClientSectors(clientId, accessToken);
+        console.log("[CreateEquipmentScreen] Setores recebidos:", sectorsResponse.results);
+        setSectors(sectorsResponse.results || []);
+      } catch (error) {
+        console.error("Erro ao buscar setores:", error);
+        setSectors([]);
+      }
+    };
+
+    fetchSectors();
+  }, [clientId]);
+
+  // Carregar setores automaticamente se cliente foi pré-selecionado
+  useEffect(() => {
+    if (preSelectedClientId && preSelectedClientId.toString() !== clientId) {
+      console.log("[CreateEquipmentScreen] Cliente pré-selecionado detectado:", preSelectedClientId);
+      setClientId(preSelectedClientId.toString());
     }
+  }, [preSelectedClientId]);
+
+  const fetchSelectData = async (token: string) => {
     try {
-      const token = await AsyncStorage.getItem("access_token");
-      const res = await axios.get(`${API_BASE_URL}/coil_type?name=${query}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setCoilTypes(res.data.results || []);
+      // Buscar clientes
+      const clientsResponse = await ClientService.getClients(false, 1, token, "");
+      setClients(clientsResponse.results);
+
+      // Buscar fabricantes
+      try {
+        const accountName = await AsyncStorage.getItem("account") || "default";
+        const dynamicBaseUrl = await setDynamicApiUrl(accountName);
+        const brandsResponse = await apiClient.get(`${dynamicBaseUrl}/brands`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        setBrands(brandsResponse.data.results || []);
+      } catch (error) {
+        console.error("Erro ao buscar fabricantes:", error);
+        setBrands([]);
+      }
+
+      // Buscar tipos de equipamento
+      try {
+        const accountName = await AsyncStorage.getItem("account") || "default";
+        const dynamicBaseUrl = await setDynamicApiUrl(accountName);
+        const equipmentTypesResponse = await apiClient.get(`${dynamicBaseUrl}/equipment_types`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        setEquipmentTypes(equipmentTypesResponse.data.results || []);
+      } catch (error) {
+        console.error("Erro ao buscar tipos de equipamento:", error);
+        setEquipmentTypes([]);
+      }
     } catch (error) {
-      console.error("[CreateEquipmentScreen] Erro ao buscar tipos de serpentina:", error);
-      Alert.alert("Erro", "Não foi possível carregar os tipos de serpentina.");
+      console.error("Erro ao buscar dados dos selects:", error);
     }
   };
 
-  const fetchEvaporatorTypes = async (query: string) => {
-    if (query.length < 3) {
-      setEvaporatorTypes([]);
-      return;
-    }
-    try {
-      const token = await AsyncStorage.getItem("access_token");
-      const res = await axios.get(`${API_BASE_URL}/evaporator_type?name=${query}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setEvaporatorTypes(res.data.results || []);
-    } catch (error) {
-      console.error("[CreateEquipmentScreen] Erro ao buscar tipos de evaporadora:", error);
-      Alert.alert("Erro", "Não foi possível carregar os tipos de evaporadora.");
-    }
-  };
-
-  // Funções de mudança de query
-  const handleClientQueryChange = (text: string) => {
-    setClientQuery(text);
-    setClient(""); // Reseta a seleção ao mudar a busca
-    fetchClients(text);
-  };
-
-  const handleSectorQueryChange = (text: string) => {
-    setSectorQuery(text);
-    setSector(""); // Reseta a seleção ao mudar a busca
-    if (client) fetchSectors(client, text);
-  };
-
-  const handleCapacityUnitQueryChange = (text: string) => {
-    setCapacityUnitQuery(text);
-    setCapacityUnit("");
-    fetchCapacityUnits(text);
-  };
-
-  const handleCompressorTypeQueryChange = (text: string) => {
-    setCompressorTypeQuery(text);
-    setCompressorType("");
-    fetchCompressorTypes(text);
-  };
-
-  const handleCoolingFluidTypeQueryChange = (text: string) => {
-    setCoolingFluidTypeQuery(text);
-    setCoolingFluidType("");
-    fetchCoolingFluidTypes(text);
-  };
-
-  const handleTechnologyQueryChange = (text: string) => {
-    setTechnologyQuery(text);
-    setTechnology(null);
-    fetchTechnologies(text);
-  };
-
-  const handlePhaseQueryChange = (text: string) => {
-    setPhaseQuery(text);
-    setPhase("");
-    fetchPhases(text);
-  };
-
-  const handleBrandQueryChange = (text: string) => {
-    setBrandQuery(text);
-    setBrand(""); // Reseta a seleção ao mudar a busca
-    fetchBrands(text);
-  };
-
-  const handleTypeQueryChange = (text: string) => {
-    setTypeQuery(text);
-    setEquipmentType(""); // Reseta a seleção ao mudar a busca
-    fetchEquipmentTypes(text);
-  };
-
-  const handleCondenserQueryChange = (text: string) => {
-    setCondenserQuery(text);
-    setCondenserType(""); // Reseta a seleção ao mudar a busca
-    fetchCondenserTypes(text);
-  };
-
-  const handleCoilQueryChange = (text: string) => {
-    setCoilQuery(text);
-    setCoilType(""); // Reseta a seleção ao mudar a busca
-    fetchCoilTypes(text);
-  };
-
-  const handleEvaporatorQueryChange = (text: string) => {
-    setEvaporatorQuery(text);
-    setEvaporatorType(""); // Reseta a seleção ao mudar a busca
-    fetchEvaporatorTypes(text);
-  };
-
-  const createNewItem = async (endpoint: string, name: string, setValue: (value: string) => void) => {
-    try {
-      const token = await AsyncStorage.getItem("access_token");
-      const res = await axios.post(`${API_BASE_URL}${endpoint}`, { name }, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setValue(res.data.id.toString());
-      Alert.alert("Sucesso", `Novo item "${name}" criado com sucesso!`);
-    } catch (error) {
-      console.error(`[CreateEquipmentScreen] Erro ao criar item em ${endpoint}:`, error);
-      Alert.alert("Erro", `Falha ao criar novo item.`);
-    }
-  };
-
-  // Função de criação do equipamento
   const handleCreateEquipment = async () => {
-    if (!client || !sector || !brand || !equipmentType) {
-      Alert.alert("Erro", "Preencha todos os campos obrigatórios (*).");
-      return;
-    }
-    if (capacity && !capacityUnit) {
-      Alert.alert("Erro", "Unidade de capacidade é obrigatória quando capacidade é preenchida.");
+    console.log("[CreateEquipmentScreen] Iniciando validação para criação de equipamento");
+
+    // Validar campos obrigatórios fixos
+    const requiredFixedFields = [];
+    if (!clientId) requiredFixedFields.push("Cliente");
+    if (!sectorId) requiredFixedFields.push("Setor");
+    if (!brandId) requiredFixedFields.push("Fabricante");
+    if (!equipmentTypeId) requiredFixedFields.push("Tipo de Equipamento");
+    if (!tag || tag.trim() === "") requiredFixedFields.push("Tag");
+
+    if (requiredFixedFields.length > 0) {
+      Alert.alert("Erro", `Campos obrigatórios não preenchidos: ${requiredFixedFields.join(", ")}`);
       return;
     }
 
+    // Validar campos dinâmicos obrigatórios baseados no template
+    if (equipmentTemplate) {
+      console.log("[CreateEquipmentScreen] Validando campos dinâmicos do template");
+      const requiredFields = equipmentTemplate.fields.filter(field => field.required);
+      const missingFields = requiredFields.filter((field: DynamicField) => {
+        const fieldKey = field.key || field.name || '';
+        if (!fieldKey) return false;
+
+        const value = dynamicFields[fieldKey];
+        console.log(`[CreateEquipmentScreen] Campo ${fieldKey}:`, value, "Tipo:", typeof value);
+
+        // Validação específica por tipo
+        if (field.type === 'number') {
+          return value === undefined || value === null || value === "" || isNaN(Number(value));
+        } else if (field.type === 'boolean') {
+          return value === undefined || value === null;
+        } else {
+          return !value || value === "" || value === "undefined" || value === "null";
+        }
+      });
+
+      if (missingFields.length > 0) {
+        const fieldNames = missingFields.map((f: DynamicField) => f.label || f.name || f.key).join(", ");
+        Alert.alert("Erro", `Campos obrigatórios não preenchidos: ${fieldNames}`);
+        return;
+      }
+    }
+
     try {
-      setLoading(true);
-      const token = await AsyncStorage.getItem("access_token");
-      if (!token) throw new Error("Token de acesso não encontrado.");
-      const payload: Partial<Equipment> = {
-        client_id: parseInt(client),
-        sector_id: parseInt(sector),
-        brand_id: parseInt(brand),
-        equipment_type_id: parseInt(equipmentType),
-        condenser_type_id: condenserType ? parseInt(condenserType) : undefined,
-        coil_type_id: coilType ? parseInt(coilType) : undefined,
-        evaporator_type_id: evaporatorType ? parseInt(evaporatorType) : undefined,
-        tag: tag || undefined,
-        patrimony: patrimony || undefined,
-        serial_number: serialNumber || undefined,
-        description: description || undefined,
-        capacity: capacity ? parseFloat(capacity) : undefined,
-        capacity_unit_id: capacityUnit ? parseInt(capacityUnit) : undefined,
-        compressor_type_id: compressorType ? parseInt(compressorType) : undefined,
-        cooling_fluid_type_id: coolingFluidType ? parseInt(coolingFluidType) : undefined,
-        condenser_model: condenserModel || undefined,
-        condenser_serial_number: condenserSerialNumber || undefined,
-        evaporator_model: evaporatorModel || undefined,
-        evaporator_serial_number: evaporatorSerialNumber || undefined,
-        voltage: voltage ? parseFloat(voltage) : undefined,
-        electric_current: electricCurrent ? parseFloat(electricCurrent) : undefined,
-        electric_power: electricPower ? parseFloat(electricPower) : undefined,
-        phase_id: phase ? parseInt(phase) : undefined,
-        is_leased: isLeased,
-        has_warranty: hasWarranty,
-        has_automation: hasAutomation,
-        technology_id: technology && technology !== "new_technology" ? parseInt(technology) : undefined, // Ajustado para technolog
+      setSaving(true);
+      const accessToken = await AsyncStorage.getItem("access_token");
+      if (!accessToken) throw new Error("Token de acesso não encontrado.");
+
+      // Preparar payload com validação de tipos
+      const payload: any = {
+        client_id: parseInt(clientId),
+        sector_id: parseInt(sectorId),
+        brand_id: parseInt(brandId),
+        equipment_type_id: parseInt(equipmentTypeId),
+        tag: tag.trim(),
+        is_active: isActive,
       };
 
-      await EquipmentService.createEquipment(token, payload);
+      // Adicionar campos dinâmicos com validação de tipo
+      if (equipmentTemplate) {
+        equipmentTemplate.fields.forEach((field: DynamicField) => {
+          const fieldKey = field.key || field.name || '';
+          if (fieldKey && dynamicFields[fieldKey] !== undefined) {
+            let value = dynamicFields[fieldKey];
+
+            // Converter valor baseado no tipo do campo
+            if (field.type === 'number') {
+              value = parseFloat(value) || 0;
+            } else if (field.type === 'boolean') {
+              value = Boolean(value);
+            } else if (field.type === 'text') {
+              value = String(value).trim();
+            }
+
+            payload[fieldKey] = value;
+          }
+        });
+      }
+
+      console.log("[CreateEquipmentScreen] Payload para criação:", payload);
+
+      await EquipmentService.createEquipment(accessToken, payload);
+
       Alert.alert("Sucesso", "Equipamento criado com sucesso!");
       navigation.goBack();
     } catch (error: any) {
       console.error("[CreateEquipmentScreen] Erro ao criar equipamento:", error);
       Alert.alert("Erro", error.message || "Falha ao criar equipamento.");
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
 
-  return (
-    <ScrollView style={styles.container}>
-      <Text style={styles.label}>Cliente*</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Digite para buscar cliente (min 3 caracteres)"
-        value={clientQuery}
-        onChangeText={handleClientQueryChange}
-      />
-      <Picker
-        selectedValue={client}
-        onValueChange={(value) => {
-          setClient(value);
-          setSector("");
-          setSectorQuery("");
-          if (value) fetchSectors(value, "");
-        }}
-        style={styles.picker}
-      >
-        <Picker.Item label="Selecione um cliente" value="" />
-        {clients.map((c) => (
-          <Picker.Item key={c.id} label={c.name} value={c.id} />
-        ))}
-      </Picker>
+  const renderField = (field: DynamicField) => {
+    const fieldKey = field.key || field.name || '';
+    const fieldLabel = field.label || field.name || fieldKey;
+    const value = dynamicFields[fieldKey] || "";
 
-      <Text style={styles.label}>Setor*</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Digite para buscar setor (min 3 caracteres)"
-        value={sectorQuery}
-        onChangeText={handleSectorQueryChange}
-        editable={!!client}
-      />
-      <Picker
-        selectedValue={sector}
-        onValueChange={setSector}
-        style={styles.picker}
-      >
-        <Picker.Item label="Selecione um setor" value="" />
-        {sectors.map((s) => (
-          <Picker.Item key={s.id} label={s.name} value={s.id} />
-        ))}
-      </Picker>
+    switch (field.type) {
+      case 'text':
+        return (
+          <TextInput
+            style={styles.textInput}
+            placeholder={`Digite ${fieldLabel?.toLowerCase() || 'valor'}`}
+            value={value}
+            onChangeText={(text) => setDynamicFields(prev => ({ ...prev, [fieldKey]: text }))}
+          />
+        );
 
-      <Text style={styles.label}>Fabricante*</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Digite para buscar fabricante (min 3 caracteres)"
-        value={brandQuery}
-        onChangeText={handleBrandQueryChange}
-      />
-      <Picker
-        selectedValue={brand}
-        onValueChange={setBrand}
-        style={styles.picker}
-      >
-        <Picker.Item label="Selecione um fabricante" value="" />
-        {brands.map((b) => (
-          <Picker.Item key={b.id} label={b.name} value={b.id} />
-        ))}
-      </Picker>
+      case 'number':
+        return (
+          <TextInput
+            style={styles.textInput}
+            placeholder={`Digite ${fieldLabel?.toLowerCase() || 'valor'}`}
+            value={value.toString()}
+            onChangeText={(text) => setDynamicFields(prev => ({ ...prev, [fieldKey]: parseFloat(text) || 0 }))}
+            keyboardType="numeric"
+          />
+        );
 
-      <Text style={styles.label}>Tipo de Equipamento*</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Digite para buscar tipo (min 3 caracteres)"
-        value={typeQuery}
-        onChangeText={handleTypeQueryChange}
-      />
-      <Picker
-        selectedValue={equipmentType}
-        onValueChange={setEquipmentType}
-        style={styles.picker}
-      >
-        <Picker.Item label="Selecione tipo de equipamento" value="" />
-        {equipmentTypes.map((t) => (
-          <Picker.Item key={t.id} label={t.name} value={t.id} />
-        ))}
-      </Picker>
+      case 'select':
+        return (
+          <View style={styles.pickerContainer}>
+            <Picker
+              selectedValue={value}
+              onValueChange={(itemValue) => setDynamicFields(prev => ({ ...prev, [fieldKey]: itemValue }))}
+              style={styles.picker}
+            >
+              <Picker.Item label={`Selecione ${fieldLabel?.toLowerCase() || 'opção'}`} value="" />
+              {field.options?.map((option, index) => (
+                <Picker.Item key={index} label={option} value={option} />
+              ))}
+            </Picker>
+          </View>
+        );
 
-      <Text style={styles.label}>Tipo de Coifa</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Digite para buscar coifa (min 3 caracteres)"
-        value={condenserQuery}
-        onChangeText={handleCondenserQueryChange}
-      />
-      <Picker
-        selectedValue={condenserType}
-        onValueChange={setCondenserType}
-        style={styles.picker}
-      >
-        <Picker.Item label="Selecione tipo de coifa" value="" />
-        {condenserTypes.map((t) => (
-          <Picker.Item key={t.id} label={t.name} value={t.id} />
-        ))}
-      </Picker>
+      case 'boolean':
+        return (
+          <View style={styles.switchContainer}>
+            <Switch
+              value={value}
+              onValueChange={(newValue) => setDynamicFields(prev => ({ ...prev, [fieldKey]: newValue }))}
+              trackColor={{ false: "#767577", true: "#81b0ff" }}
+              thumbColor={value ? "#007BFF" : "#f4f3f4"}
+            />
+            <Text style={styles.switchLabel}>{value ? "Sim" : "Não"}</Text>
+          </View>
+        );
 
-      <Text style={styles.label}>Tipo de Serpentina</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Digite para buscar serpentina (min 3 caracteres)"
-        value={coilQuery}
-        onChangeText={handleCoilQueryChange}
-      />
-      <Picker
-        selectedValue={coilType}
-        onValueChange={setCoilType}
-        style={styles.picker}
-      >
-        <Picker.Item label="Selecione tipo de serpentina" value="" />
-        {coilTypes.map((t) => (
-          <Picker.Item key={t.id} label={t.name} value={t.id} />
-        ))}
-      </Picker>
+      default:
+        return (
+          <TextInput
+            style={styles.textInput}
+            placeholder={`Digite ${fieldLabel?.toLowerCase() || 'valor'}`}
+            value={value}
+            onChangeText={(text) => setDynamicFields(prev => ({ ...prev, [fieldKey]: text }))}
+          />
+        );
+    }
+  };
 
-      <Text style={styles.label}>Tipo de Evaporadora</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Digite para buscar evaporadora (min 3 caracteres)"
-        value={evaporatorQuery}
-        onChangeText={handleEvaporatorQueryChange}
-      />
-      <Picker
-        selectedValue={evaporatorType}
-        onValueChange={setEvaporatorType}
-        style={styles.picker}
-      >
-        <Picker.Item label="Selecione tipo de evaporadora" value="" />
-        {evaporatorTypes.map((t) => (
-          <Picker.Item key={t.id} label={t.name} value={t.id} />
-        ))}
-      </Picker>
+  const renderSelectField = (label: string, value: string, onValueChange: (value: string) => void, options: any[], placeholder: string) => (
+    <View style={styles.inputGroup}>
+      <Text style={styles.inputLabel}>{label}*</Text>
+      <View style={styles.pickerContainer}>
+        <Picker
+          selectedValue={value}
+          onValueChange={onValueChange}
+          style={styles.picker}
+        >
+          <Picker.Item label={placeholder} value="" />
+          {options.map((option) => (
+            <Picker.Item key={option.id} label={option.name} value={option.id.toString()} />
+          ))}
+        </Picker>
+      </View>
+    </View>
+  );
 
-      <Text style={styles.label}>Tag</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Digite a tag"
-        value={tag}
-        onChangeText={setTag}
-      />
-
-      <Text style={styles.label}>Patrimônio</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Digite o patrimônio"
-        value={patrimony}
-        onChangeText={setPatrimony}
-      />
-
-      <Text style={styles.label}>Número de Série</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Digite o número de série"
-        value={serialNumber}
-        onChangeText={setSerialNumber}
-      />
-
-      <Text style={styles.label}>Tecnologia</Text>
-      <Picker
-        selectedValue={technology}
-        onValueChange={setTechnology}
-        style={styles.picker}
-      >
-        <Picker.Item label="Selecione a tecnologia" value="" />
-        <Picker.Item label="Inverter" value="inverter" />
-        <Picker.Item label="Convencional" value="convencional" />
-      </Picker>
-
-      <Text style={styles.label}>Voltagem</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Digite a voltagem"
-        value={voltage}
-        onChangeText={setVoltage}
-        keyboardType="numeric"
-      />
-
-      <Text style={styles.label}>Corrente Elétrica</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Digite a corrente elétrica"
-        value={electricCurrent}
-        onChangeText={setElectricCurrent}
-        keyboardType="numeric"
-      />
-
-      <Text style={styles.label}>Capacidade</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Digite a capacidade"
-        value={capacity}
-        onChangeText={setCapacity}
-      />
-
-      {loading ? (
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#007BFF" />
-      ) : (
-        <Button title="Criar Equipamento" onPress={handleCreateEquipment} />
-      )}
-      <Text style={styles.label}>Descrição</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Digite a descrição"
-        value={description}
-        onChangeText={setDescription}
-      />
+        <Text style={styles.loadingText}>Carregando dados...</Text>
+      </View>
+    );
+  }
 
-      <Text style={styles.label}>Capacidade</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Digite a capacidade"
-        value={capacity}
-        onChangeText={setCapacity}
-        keyboardType="numeric"
-      />
-      <Text style={styles.label}>Unidade de Capacidade</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Digite para buscar unidade (min 3 caracteres)"
-        value={capacityUnitQuery}
-        onChangeText={handleCapacityUnitQueryChange}
-      />
-      <Picker
-        selectedValue={capacityUnit}
-        onValueChange={(value) => setCapacityUnit(value)}
-        style={styles.picker}
-      >
-        <Picker.Item label="Selecione unidade de capacidade" value="" />
-        {capacityUnits.map((u) => (
-          <Picker.Item key={u.id} label={u.name} value={u.id.toString()} />
-        ))}
-        <Picker.Item label="Criar nova unidade" value="new_capacity_unit" />
-      </Picker>
-      {capacityUnit === "new_capacity_unit" && (
-        <TextInput
-          style={styles.input}
-          placeholder="Digite o nome da nova unidade"
-          onSubmitEditing={(e) => createNewItem("/capacity_units", e.nativeEvent.text, setCapacityUnit)}
-        />
-      )}
+  return (
+    <View style={styles.container}>
+      {/* Header */}
+      <View style={styles.header}>
+        <View style={styles.headerContent}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+          >
+            <Ionicons name="arrow-back" size={24} color="#fff" />
+          </TouchableOpacity>
+          <View style={styles.headerTextContainer}>
+            <Text style={styles.headerTitle}>Criar Equipamento</Text>
+            <Text style={styles.headerSubtitle}>Adicione um novo equipamento</Text>
+          </View>
+        </View>
+      </View>
 
-      <Text style={styles.label}>Tipo de Compressor</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Digite para buscar tipo (min 3 caracteres)"
-        value={compressorTypeQuery}
-        onChangeText={handleCompressorTypeQueryChange}
-      />
-      <Picker
-        selectedValue={compressorType}
-        onValueChange={(value) => setCompressorType(value)}
-        style={styles.picker}
-      >
-        <Picker.Item label="Selecione tipo de compressor" value="" />
-        {compressorTypes.map((c) => (
-          <Picker.Item key={c.id} label={c.name} value={c.id} />
-        ))}
-        <Picker.Item label="Criar novo tipo" value="new_compressor_type" />
-      </Picker>
-      {compressorType === "new_compressor_type" && (
-        <TextInput
-          style={styles.input}
-          placeholder="Digite o nome do novo tipo"
-          onSubmitEditing={(e) => createNewItem("/compressor_types", e.nativeEvent.text, setCompressorType)}
-        />
-      )}
+      <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>
+        <View style={styles.content}>
+          {/* Campos Fixos */}
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <MaterialIcons name="settings" size={20} color="#007BFF" />
+              <Text style={styles.sectionTitle}>Informações Básicas</Text>
+            </View>
 
-      <Text style={styles.label}>Tipo de Fluído Refrigerante</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Digite para buscar tipo (min 3 caracteres)"
-        value={coolingFluidTypeQuery}
-        onChangeText={handleCoolingFluidTypeQueryChange}
-      />
-      <Picker
-        selectedValue={coolingFluidType}
-        onValueChange={(value) => setCoolingFluidType(value)}
-        style={styles.picker}
-      >
-        <Picker.Item label="Selecione tipo de fluído" value="" />
-        {coolingFluidTypes.map((f) => (
-          <Picker.Item key={f.id} label={f.name} value={f.id} />
-        ))}
-        <Picker.Item label="Criar novo tipo" value="new_cooling_fluid_type" />
-      </Picker>
-      {coolingFluidType === "new_cooling_fluid_type" && (
-        <TextInput
-          style={styles.input}
-          placeholder="Digite o nome do novo fluído"
-          onSubmitEditing={(e) => createNewItem("/cooling_fluid_types", e.nativeEvent.text, setCoolingFluidType)}
-        />
-      )}
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Tag*</Text>
+              <TextInput
+                style={styles.textInput}
+                placeholder="Digite a tag do equipamento"
+                value={tag}
+                onChangeText={setTag}
+              />
+            </View>
 
-      <Text style={styles.label}>Modelo da Condensadora</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Digite o modelo"
-        value={condenserModel}
-        onChangeText={setCondenserModel}
-      />
-      <Text style={styles.label}>Número de Série da Condensadora</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Digite o número de série"
-        value={condenserSerialNumber}
-        onChangeText={setCondenserSerialNumber}
-      />
+            {renderSelectField("Cliente", clientId, setClientId, clients, "Selecione o cliente")}
+            {renderSelectField("Setor", sectorId, setSectorId, sectors, "Selecione o setor")}
+            {renderSelectField("Fabricante", brandId, setBrandId, brands, "Selecione o fabricante")}
+            {renderSelectField("Tipo de Equipamento", equipmentTypeId, setEquipmentTypeId, equipmentTypes, "Selecione o tipo")}
 
-      <Text style={styles.label}>Modelo da Evaporadora</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Digite o modelo"
-        value={evaporatorModel}
-        onChangeText={setEvaporatorModel}
-      />
-      <Text style={styles.label}>Número de Série da Evaporadora</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Digite o número de série"
-        value={evaporatorSerialNumber}
-        onChangeText={setEvaporatorSerialNumber}
-      />
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Status Ativo</Text>
+              <View style={styles.switchContainer}>
+                <Switch
+                  value={isActive}
+                  onValueChange={setIsActive}
+                  trackColor={{ false: "#767577", true: "#81b0ff" }}
+                  thumbColor={isActive ? "#007BFF" : "#f4f3f4"}
+                />
+                <Text style={styles.switchLabel}>{isActive ? "Ativo" : "Inativo"}</Text>
+              </View>
+            </View>
+          </View>
 
-      <Text style={styles.label}>Tensão Elétrica</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Digite a tensão"
-        value={voltage}
-        onChangeText={setVoltage}
-        keyboardType="numeric"
-      />
-      <Text style={styles.label}>Potência Elétrica</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Digite a potência"
-        value={electricPower}
-        onChangeText={setElectricPower}
-        keyboardType="numeric"
-      />
+          {/* Campos Dinâmicos */}
+          {equipmentTemplate && (
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <MaterialIcons name="dynamic-feed" size={20} color="#007BFF" />
+                <Text style={styles.sectionTitle}>Especificações Técnicas</Text>
+              </View>
 
-      <Text style={styles.label}>Fase</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Digite para buscar fase (min 3 caracteres)"
-        value={phaseQuery}
-        onChangeText={handlePhaseQueryChange}
-      />
-      <Picker
-        selectedValue={phase}
-        onValueChange={(value) => setPhase(value)}
-        style={styles.picker}
-      >
-        <Picker.Item label="Selecione a fase" value="" />
-        {phases.map((p) => (
-          <Picker.Item key={p.id} label={p.name} value={p.id} />
-        ))}
-        <Picker.Item label="Criar nova fase" value="new_phase" />
-      </Picker>
-      {phase === "new_phase" && (
-        <TextInput
-          style={styles.input}
-          placeholder="Digite o nome da nova fase"
-          onSubmitEditing={(e) => createNewItem("/phases", e.nativeEvent.text, setPhase)}
-        />
-      )}
+              {equipmentTemplate.fields
+                .filter((field: DynamicField) => (field.key || field.name) && (field.key || field.name)?.trim() !== '')
+                .sort((a, b) => (a.order || 0) - (b.order || 0))
+                .map((field: DynamicField) => (
+                  <View key={field.id || field.key} style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>
+                      {field.label || field.name || field.key}
+                      {field.required && <Text style={styles.required}>*</Text>}
+                    </Text>
+                    {renderField(field)}
+                  </View>
+                ))}
+            </View>
+          )}
+        </View>
+      </ScrollView>
 
-      <Text style={styles.label}>Equipamento Locado?</Text>
-      <Picker
-        selectedValue={isLeased}
-        onValueChange={(value) => setIsLeased(value)}
-        style={styles.picker}
-      >
-        <Picker.Item label="Não" value={false} />
-        <Picker.Item label="Sim" value={true} />
-      </Picker>
-      <Text style={styles.label}>Tem Garantia?</Text>
-      <Picker
-        selectedValue={hasWarranty}
-        onValueChange={(value) => setHasWarranty(value)}
-        style={styles.picker}
-      >
-        <Picker.Item label="Não" value={false} />
-        <Picker.Item label="Sim" value={true} />
-      </Picker>
-      <Text style={styles.label}>Possui Automação?</Text>
-      <Picker
-        selectedValue={hasAutomation}
-        onValueChange={(value) => setHasAutomation(value)}
-        style={styles.picker}
-      >
-        <Picker.Item label="Não" value={false} />
-        <Picker.Item label="Sim" value={true} />
-      </Picker>
-
-      <Text style={styles.label}>Tecnologia</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Digite para buscar tecnologia (min 3 caracteres)"
-        value={technologyQuery}
-        onChangeText={handleTechnologyQueryChange}
-      />
-      <Picker
-        selectedValue={technology}
-        onValueChange={(value) => setTechnology(value)}
-        style={styles.picker}
-      >
-        <Picker.Item label="Selecione a tecnologia" value={null} />
-        {technologies.map((t) => (
-          <Picker.Item key={t.id} label={t.name} value={t.id.toString()} />
-        ))}
-        <Picker.Item label="Criar nova tecnologia" value="new_technology" />
-      </Picker>
-      {technology === "new_technology" && (
-        <TextInput
-          style={styles.input}
-          placeholder="Digite o nome da nova tecnologia"
-          onSubmitEditing={(e) => createNewItem("/tecnologies", e.nativeEvent.text, setTechnology as any)}
-        />
-      )}
-    </ScrollView>
+      {/* Botão de Criar */}
+      <View style={styles.footer}>
+        <TouchableOpacity
+          style={[styles.createButton, saving && styles.createButtonDisabled]}
+          onPress={handleCreateEquipment}
+          disabled={saving}
+        >
+          {saving ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <>
+              <MaterialIcons name="add" size={20} color="#fff" />
+              <Text style={styles.createButtonText}>Criar Equipamento</Text>
+            </>
+          )}
+        </TouchableOpacity>
+      </View>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 20,
+    backgroundColor: "#f8f9fa",
   },
-  label: {
-    marginBottom: 5,
-    fontWeight: "bold",
-    fontSize: 14,
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#f8f9fa",
   },
-  input: {
-    borderWidth: 1,
-    borderColor: "#ccc",
-    borderRadius: 5,
-    padding: 10,
-    marginBottom: 15,
-  },
-  picker: {
-    borderWidth: 1,
-    borderColor: "#ccc",
-    borderRadius: 5,
-    marginBottom: 15,
-  },
-  emptyText: {
+  loadingText: {
+    marginTop: 16,
     fontSize: 16,
     color: "#666",
-    textAlign: "center",
-    marginTop: 20,
   },
-  errorText: {
+  header: {
+    backgroundColor: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+    paddingTop: 50,
+    paddingBottom: 20,
+    paddingHorizontal: 20,
+  },
+  headerContent: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 16,
+  },
+  headerTextContainer: {
+    flex: 1,
+  },
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: "bold",
+    color: "#fff",
+    marginBottom: 4,
+  },
+  headerSubtitle: {
     fontSize: 16,
-    color: "#FF0000",
-    textAlign: "center",
-    marginTop: 20,
+    color: "rgba(255,255,255,0.8)",
+  },
+  scrollContainer: {
+    flex: 1,
+  },
+  content: {
+    padding: 20,
+  },
+  section: {
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    marginBottom: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f0f0f0",
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#333",
+    marginLeft: 8,
+  },
+  inputGroup: {
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f8f9fa",
+  },
+  inputLabel: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#333",
+    marginBottom: 8,
+  },
+  required: {
+    color: "#FF6B6B",
+  },
+  textInput: {
+    borderWidth: 1,
+    borderColor: "#ddd",
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    backgroundColor: "#f8f9fa",
+    color: "#333",
+  },
+  pickerContainer: {
+    borderWidth: 1,
+    borderColor: "#ddd",
+    borderRadius: 8,
+    backgroundColor: "#f8f9fa",
+  },
+  picker: {
+    height: 50,
+    color: "#333",
+    backgroundColor: "#fff",
+  },
+  switchContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  switchLabel: {
+    fontSize: 16,
+    color: "#333",
+    marginLeft: 12,
+  },
+  footer: {
+    padding: 20,
+    backgroundColor: "#fff",
+    borderTopWidth: 1,
+    borderTopColor: "#f0f0f0",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  createButton: {
+    backgroundColor: "#28a745",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 16,
+    borderRadius: 12,
+    shadowColor: "#28a745",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  createButtonDisabled: {
+    backgroundColor: "#ccc",
+  },
+  createButtonText: {
+    color: "#fff",
+    fontSize: 18,
+    fontWeight: "bold",
+    marginLeft: 8,
   },
 });
 

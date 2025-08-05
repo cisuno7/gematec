@@ -15,7 +15,7 @@ export interface LanguageContextType {
 }
 
 const translations: { [language: string]: Translations } = {
-    'pt-br': {
+    'pt-BR': {
         // Navigation/Menu
         'menu.home': 'Início',
         'menu.personalData': 'Meus Dados',
@@ -135,6 +135,9 @@ const translations: { [language: string]: Translations } = {
         'technicalAssistance.loadError': 'Não foi possível carregar a assistência técnica.',
         'technicalAssistance.offlineData': 'Dados não disponíveis offline. Conecte-se à internet para carregar.',
         'technicalAssistance.technology': 'Tecnologia',
+        'technicalAssistance.title': 'Assistência Técnica',
+        'technicalAssistance.assistance': 'assistência',
+        'technicalAssistance.loading': 'Carregando assistências técnicas...',
 
         // Roadmap
         'roadmap.noActivitiesFound': 'Nenhuma atividade encontrada',
@@ -180,6 +183,9 @@ const translations: { [language: string]: Translations } = {
         'pmoc.searchPlaceholder': 'Pesquisar por nome ou email...',
         'pmoc.allStatus': 'Todos',
         'pmoc.noPmocsFound': 'Nenhum PMOC encontrado.',
+        'pmoc.subtitle': 'Plano de Manutenção Operacional Contínua',
+        'pmoc.tryAdjustFilters': 'Tente ajustar os filtros de busca',
+        'pmoc.noPmocsRegistered': 'Não há PMOCs registrados no momento',
 
         // Service Orders
         'serviceOrder.title': 'Ordens de Serviço',
@@ -201,6 +207,82 @@ const translations: { [language: string]: Translations } = {
         'serviceOrder.tagNotAvailable': 'Tag não disponível',
         'serviceOrder.typeNotAvailable': 'Tipo não disponível',
         'serviceOrder.brandNotAvailable': 'Marca não disponível',
+        'serviceOrder.order': 'ordem',
+        'serviceOrder.orders': 'ordens',
+        'serviceOrder.found': 'encontrada',
+        'serviceOrder.foundPlural': 'encontradas',
+
+        // Activity
+        'activity.title': 'Atividades',
+        'activity.noPermission': 'Você não tem permissão para visualizar atividades',
+        'activity.all': 'Todos',
+        'activity.open': 'Aberto',
+        'activity.pending': 'Pendente',
+        'activity.closed': 'Fechado',
+        'activity.pmoc': 'PMOC',
+        'activity.serviceOrder': 'Ordem de Serviço',
+        'activity.technicalAssistance': 'Assistência Técnica',
+        'activity.installation': 'Instalação',
+        'activity.loading': 'Carregando atividades...',
+        'activity.noActivitiesFound': 'Nenhuma atividade encontrada',
+
+        // Activity Equipment List Screen
+        'activityEquipmentList.title': 'Equipamentos Vinculados',
+        'activityEquipmentList.filters': 'Filtros',
+        'activityEquipmentList.search': 'Buscar',
+        'activityEquipmentList.searchPlaceholder': 'Buscar por tag, fabricante ou tipo...',
+        'activityEquipmentList.status': 'Status',
+        'activityEquipmentList.sector': 'Setor',
+        'activityEquipmentList.subsector': 'Subsetor',
+        'activityEquipmentList.showOnlyStarted': 'Mostrar apenas iniciados',
+        'activityEquipmentList.created': 'Criado',
+        'activityEquipmentList.inProgress': 'Em Andamento',
+        'activityEquipmentList.completed': 'Concluído',
+        'activityEquipmentList.startActivity': 'Iniciar Atividade',
+        'activityEquipmentList.viewDetails': 'Ver Detalhes',
+        'activityEquipmentList.equipmentInfo': 'Informações do Equipamento',
+        'activityEquipmentList.manufacturer': 'Fabricante',
+        'activityEquipmentList.type': 'Tipo',
+        'activityEquipmentList.location': 'Localização',
+        'activityEquipmentList.noEquipmentsFound': 'Nenhum equipamento encontrado',
+        'activityEquipmentList.loading': 'Carregando equipamentos...',
+        'activityEquipmentList.error': 'Erro ao carregar equipamentos',
+        'activityEquipmentList.retry': 'Tentar Novamente',
+
+        // Activity Questionnaire Screen
+        'activityQuestionnaire.title': 'Questionário',
+        'activityQuestionnaire.equipmentInfo': 'Informações do Equipamento',
+        'activityQuestionnaire.equipmentTag': 'Tag',
+        'activityQuestionnaire.manufacturer': 'Fabricante',
+        'activityQuestionnaire.type': 'Tipo',
+        'activityQuestionnaire.sector': 'Setor',
+        'activityQuestionnaire.activityStatus': 'Status da Atividade',
+        'activityQuestionnaire.activityNotStarted': 'Atividade Não Iniciada',
+        'activityQuestionnaire.activityStarted': 'Atividade Iniciada',
+        'activityQuestionnaire.activityCompleted': 'Atividade Concluída',
+        'activityQuestionnaire.questionnaire': 'Questionário',
+        'activityQuestionnaire.startActivity': 'Iniciar Atividade',
+        'activityQuestionnaire.saveAnswers': 'Salvar Respostas',
+        'activityQuestionnaire.completeActivity': 'Concluir Atividade',
+        'activityQuestionnaire.loading': 'Carregando questionário...',
+        'activityQuestionnaire.error': 'Erro ao carregar questionário',
+        'activityQuestionnaire.retry': 'Tentar Novamente',
+        'activityQuestionnaire.startSuccess': 'Atividade iniciada com sucesso!',
+        'activityQuestionnaire.startError': 'Falha ao iniciar atividade. Tente novamente.',
+        'activityQuestionnaire.saveSuccess': 'Respostas salvas com sucesso!',
+        'activityQuestionnaire.saveError': 'Falha ao salvar respostas. Tente novamente.',
+        'activityQuestionnaire.completeSuccess': 'Atividade concluída com sucesso!',
+        'activityQuestionnaire.completeError': 'Falha ao concluir atividade. Tente novamente.',
+        'activityQuestionnaire.validationError': 'Por favor, preencha todos os campos obrigatórios.',
+        
+        // Validation Messages
+        'validation.required': 'Campo obrigatório',
+        'validation.minLength': 'Mínimo {min} caracteres',
+        'validation.maxLength': 'Máximo {max} caracteres',
+        'validation.minValue': 'Mínimo {min}',
+        'validation.maxValue': 'Máximo {max}',
+        'validation.requiredJustification': 'Justificativa obrigatória',
+        'validation.requiredUpload': 'Upload obrigatório',
     },
     'en': {
         // Navigation/Menu
@@ -272,6 +354,7 @@ const translations: { [language: string]: Translations } = {
         'common.next': 'Next',
         'common.page': 'Page',
         'common.of': 'of',
+        'common.found': 'found',
 
         // Manuais
         'manuals.noPermission': 'You do not have permission to view manuals.',
@@ -322,6 +405,9 @@ const translations: { [language: string]: Translations } = {
         'technicalAssistance.loadError': 'Could not load technical assistance.',
         'technicalAssistance.offlineData': 'Data not available offline. Connect to the internet to load.',
         'technicalAssistance.technology': 'Technology',
+        'technicalAssistance.title': 'Technical Assistance',
+        'technicalAssistance.assistance': 'assistance',
+        'technicalAssistance.loading': 'Loading technical assistance...',
 
         // Roadmap
         'roadmap.noActivitiesFound': 'No activities found',
@@ -367,6 +453,9 @@ const translations: { [language: string]: Translations } = {
         'pmoc.searchPlaceholder': 'Search by name or email...',
         'pmoc.allStatus': 'All',
         'pmoc.noPmocsFound': 'No PMOCs found.',
+        'pmoc.subtitle': 'Operational Maintenance Continuous Plan',
+        'pmoc.tryAdjustFilters': 'Try adjusting the search filters',
+        'pmoc.noPmocsRegistered': 'There are no PMOCs registered at the moment',
 
         // Service Orders
         'serviceOrder.title': 'Service Orders',
@@ -388,6 +477,82 @@ const translations: { [language: string]: Translations } = {
         'serviceOrder.tagNotAvailable': 'Tag not available',
         'serviceOrder.typeNotAvailable': 'Type not available',
         'serviceOrder.brandNotAvailable': 'Brand not available',
+        'serviceOrder.order': 'order',
+        'serviceOrder.orders': 'orders',
+        'serviceOrder.found': 'found',
+        'serviceOrder.foundPlural': 'found',
+
+        // Activity
+        'activity.title': 'Activities',
+        'activity.noPermission': 'You do not have permission to view activities',
+        'activity.all': 'All',
+        'activity.open': 'Open',
+        'activity.pending': 'Pending',
+        'activity.closed': 'Closed',
+        'activity.pmoc': 'PMOC',
+        'activity.serviceOrder': 'Service Order',
+        'activity.technicalAssistance': 'Technical Assistance',
+        'activity.installation': 'Installation',
+        'activity.loading': 'Loading activities...',
+        'activity.noActivitiesFound': 'No activities found',
+
+        // Activity Equipment List Screen
+        'activityEquipmentList.title': 'Linked Equipment',
+        'activityEquipmentList.filters': 'Filters',
+        'activityEquipmentList.search': 'Search',
+        'activityEquipmentList.searchPlaceholder': 'Search by tag, manufacturer or type...',
+        'activityEquipmentList.status': 'Status',
+        'activityEquipmentList.sector': 'Sector',
+        'activityEquipmentList.subsector': 'Subsector',
+        'activityEquipmentList.showOnlyStarted': 'Show only started',
+        'activityEquipmentList.created': 'Created',
+        'activityEquipmentList.inProgress': 'In Progress',
+        'activityEquipmentList.completed': 'Completed',
+        'activityEquipmentList.startActivity': 'Start Activity',
+        'activityEquipmentList.viewDetails': 'View Details',
+        'activityEquipmentList.equipmentInfo': 'Equipment Information',
+        'activityEquipmentList.manufacturer': 'Manufacturer',
+        'activityEquipmentList.type': 'Type',
+        'activityEquipmentList.location': 'Location',
+        'activityEquipmentList.noEquipmentsFound': 'No equipment found',
+        'activityEquipmentList.loading': 'Loading equipment...',
+        'activityEquipmentList.error': 'Error loading equipment',
+        'activityEquipmentList.retry': 'Try Again',
+
+        // Activity Questionnaire Screen
+        'activityQuestionnaire.title': 'Questionnaire',
+        'activityQuestionnaire.equipmentInfo': 'Equipment Information',
+        'activityQuestionnaire.equipmentTag': 'Tag',
+        'activityQuestionnaire.manufacturer': 'Manufacturer',
+        'activityQuestionnaire.type': 'Type',
+        'activityQuestionnaire.sector': 'Sector',
+        'activityQuestionnaire.activityStatus': 'Activity Status',
+        'activityQuestionnaire.activityNotStarted': 'Activity Not Started',
+        'activityQuestionnaire.activityStarted': 'Activity Started',
+        'activityQuestionnaire.activityCompleted': 'Activity Completed',
+        'activityQuestionnaire.questionnaire': 'Questionnaire',
+        'activityQuestionnaire.startActivity': 'Start Activity',
+        'activityQuestionnaire.saveAnswers': 'Save Answers',
+        'activityQuestionnaire.completeActivity': 'Complete Activity',
+        'activityQuestionnaire.loading': 'Loading questionnaire...',
+        'activityQuestionnaire.error': 'Error loading questionnaire',
+        'activityQuestionnaire.retry': 'Try Again',
+        'activityQuestionnaire.startSuccess': 'Activity started successfully!',
+        'activityQuestionnaire.startError': 'Failed to start activity. Try again.',
+        'activityQuestionnaire.saveSuccess': 'Answers saved successfully!',
+        'activityQuestionnaire.saveError': 'Failed to save answers. Try again.',
+        'activityQuestionnaire.completeSuccess': 'Activity completed successfully!',
+        'activityQuestionnaire.completeError': 'Failed to complete activity. Try again.',
+        'activityQuestionnaire.validationError': 'Please fill in all required fields.',
+        
+        // Validation Messages
+        'validation.required': 'Required field',
+        'validation.minLength': 'Minimum {min} characters',
+        'validation.maxLength': 'Maximum {max} characters',
+        'validation.minValue': 'Minimum {min}',
+        'validation.maxValue': 'Maximum {max}',
+        'validation.requiredJustification': 'Required justification',
+        'validation.requiredUpload': 'Required upload',
     },
 };
 
@@ -402,7 +567,7 @@ export const useLanguage = () => {
 };
 
 export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-    const [currentLanguage, setCurrentLanguage] = useState<string>('pt-br');
+    const [currentLanguage, setCurrentLanguage] = useState<string>('pt-BR');
 
     useEffect(() => {
         const loadSavedLanguage = async () => {
@@ -428,7 +593,7 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
 
     const t = (key: string): string => {
-        const languageTranslations = translations[currentLanguage] || translations['pt-br'];
+        const languageTranslations = translations[currentLanguage] || translations['pt-BR'];
         return languageTranslations[key] || key;
     };
 
@@ -439,7 +604,7 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                 await setLanguage(preferences.language);
                 console.log(`[LanguageContext] Preferências carregadas: ${preferences.language}`);
             } else {
-                console.warn(`[LanguageContext] Idioma não suportado: ${preferences.language}, usando padrão pt-br`);
+                console.warn(`[LanguageContext] Idioma não suportado: ${preferences.language}, usando padrão pt-BR`);
             }
         } catch (error) {
             console.error('[LanguageContext] Erro ao carregar preferências do usuário:', error);

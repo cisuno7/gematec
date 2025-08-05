@@ -4,6 +4,8 @@ import { setDynamicApiUrl } from "../config/apiConfig";
 import { Category, Manual } from "../Models/Manual";
 import { jwtDecode } from "jwt-decode";
 import * as FileSystem from "expo-file-system";
+import * as Sharing from "expo-sharing";
+import * as Notifications from "expo-notifications";
 
 interface FetchManualsParams {
     accessToken: string;
@@ -111,13 +113,31 @@ export default class ManualService {
         }
     }
 
-    static async downloadManual(manualUrl: string, accessToken: string): Promise<string> {
+    static async downloadManual(manualUrl: string, accessToken: string, manualName?: string): Promise<string> {
         try {
-            const filename = manualUrl.split('/').pop() || 'manual.pdf';
+            // Construir URL completa se for relativa
+            let fullUrl = manualUrl;
+            if (!manualUrl.startsWith('http')) {
+                const dynamicBaseUrl = await ManualService.getDynamicBaseUrl(accessToken);
+                fullUrl = `${dynamicBaseUrl}${manualUrl.startsWith('/') ? '' : '/'}${manualUrl}`;
+            }
+
+            console.log("[ManualService] Tentando baixar de:", fullUrl);
+
+            // Gerar nome do arquivo baseado no nome do manual ou URL
+            const originalFilename = manualUrl.split('/').pop() || 'manual.pdf';
+            const fileExtension = originalFilename.split('.').pop() || 'pdf';
+            const safeManualName = manualName ? manualName.replace(/[^a-zA-Z0-9]/g, '_') : 'manual';
+            const filename = `${safeManualName}.${fileExtension}`;
+
+            // Salvar no diretório de documentos da aplicação
             const fileUri = FileSystem.documentDirectory + filename;
 
+            console.log("[ManualService] Salvando arquivo como:", filename);
+            console.log("[ManualService] Caminho completo:", fileUri);
+
             const downloadResumable = FileSystem.createDownloadResumable(
-                manualUrl,
+                fullUrl,
                 fileUri,
                 {
                     headers: { Authorization: `Bearer ${accessToken}` },
@@ -128,7 +148,51 @@ export default class ManualService {
             if (!downloadResult || !downloadResult.uri) {
                 throw new Error("Download do manual falhou ou foi cancelado.");
             }
+
             console.log("[ManualService] Download concluído em:", downloadResult.uri);
+
+            // Verificar se o arquivo foi realmente salvo
+            const fileInfo = await FileSystem.getInfoAsync(downloadResult.uri);
+            if (!fileInfo.exists) {
+                throw new Error("Arquivo não foi salvo corretamente.");
+            }
+
+            console.log("[ManualService] Arquivo salvo com sucesso. Tamanho:", fileInfo.size, "bytes");
+
+            // Tentar compartilhar o arquivo
+            try {
+                const isAvailable = await Sharing.isAvailableAsync();
+                if (isAvailable) {
+                    console.log("[ManualService] Compartilhando arquivo...");
+                    await Sharing.shareAsync(downloadResult.uri, {
+                        mimeType: `application/${fileExtension}`,
+                        dialogTitle: `Manual: ${manualName || 'Documento'}`,
+                    });
+                    console.log("[ManualService] Arquivo compartilhado com sucesso");
+                } else {
+                    console.log("[ManualService] Compartilhamento não disponível nesta plataforma");
+                }
+            } catch (shareError) {
+                console.warn("[ManualService] Erro ao compartilhar arquivo:", shareError);
+                // Não falha o download se o compartilhamento falhar
+            }
+
+            // Enviar notificação local
+            try {
+                await Notifications.scheduleNotificationAsync({
+                    content: {
+                        title: "Download Concluído",
+                        body: `Manual "${manualName || 'Documento'}" foi baixado com sucesso.`,
+                        data: { fileUri: downloadResult.uri },
+                    },
+                    trigger: null, // Notificação imediata
+                });
+                console.log("[ManualService] Notificação enviada");
+            } catch (notificationError) {
+                console.warn("[ManualService] Erro ao enviar notificação:", notificationError);
+                // Não falha o download se a notificação falhar
+            }
+
             return downloadResult.uri as string;
         } catch (error: any) {
             console.error("[ManualService] Erro ao baixar manual:", {

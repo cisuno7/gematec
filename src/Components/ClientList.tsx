@@ -29,7 +29,7 @@ const ClientList: React.FC<ClientListProps> = ({ hasContract, navigation }) => {
   const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(false);
 
-  if (!hasPermission("clients.list_clients")) {
+  if (!hasPermission("list_clients")) {
     return (
       <View style={styles.container}>
         <Text style={styles.errorText}>Você não tem permissão para visualizar clientes.</Text>
@@ -79,7 +79,7 @@ const ClientList: React.FC<ClientListProps> = ({ hasContract, navigation }) => {
       </View>
 
       <View style={styles.actionButtons}>
-        {hasPermission("clients.view_client") && (
+        {hasPermission("view_client") && (
           <TouchableOpacity
             style={styles.actionButton}
             onPress={() => navigation.navigate("ClientDetailScreen", { clientId: item.id })}
@@ -88,7 +88,7 @@ const ClientList: React.FC<ClientListProps> = ({ hasContract, navigation }) => {
           </TouchableOpacity>
         )}
 
-        {hasPermission("clients.list_sectors") && (
+        {hasPermission("list_sectors") && (
           <TouchableOpacity
             style={styles.actionButton}
             onPress={() => navigation.navigate("ClientSectorsScreen", { clientId: item.id })}

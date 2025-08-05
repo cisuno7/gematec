@@ -6,6 +6,7 @@ import {
     ScrollView,
     ActivityIndicator,
     Alert,
+    TouchableOpacity,
 } from "react-native";
 import { RouteProp } from "@react-navigation/native";
 import { DrawerNavigationProp } from "@react-navigation/drawer";
@@ -30,7 +31,7 @@ const EquipmentListScreen: React.FC<EquipmentListScreenProps> = ({ route, naviga
         setLoading(false);
     }, [sectorId]);
 
-    if (!hasPermission("equipments.list_equipments")) {
+    if (!hasPermission("list_equipments")) {
         return (
             <View style={styles.container}>
                 <Text style={styles.errorText}>Você não tem permissão para visualizar equipamentos.</Text>
@@ -51,6 +52,17 @@ const EquipmentListScreen: React.FC<EquipmentListScreenProps> = ({ route, naviga
         <ScrollView style={styles.container}>
             <View style={styles.section}>
                 <Text style={styles.sectionTitle}>Equipamentos do Setor</Text>
+
+                {/* Botão Adicionar Equipamento */}
+                {hasPermission("create_equipment") && (
+                    <TouchableOpacity
+                        style={styles.addButton}
+                        onPress={() => navigation.navigate("CreateEquipmentScreen", {})}
+                    >
+                        <Text style={styles.addButtonText}>➕ Adicionar Equipamento</Text>
+                    </TouchableOpacity>
+                )}
+
                 <Text style={styles.infoText}>
                     Esta funcionalidade será implementada em breve.
                 </Text>
@@ -103,6 +115,18 @@ const styles = StyleSheet.create({
         color: "#FF0000",
         textAlign: "center",
         marginTop: 20,
+    },
+    addButton: {
+        backgroundColor: "#28a745",
+        padding: 15,
+        borderRadius: 8,
+        marginBottom: 15,
+        alignItems: "center",
+    },
+    addButtonText: {
+        color: "#fff",
+        fontSize: 16,
+        fontWeight: "bold",
     },
 });
 

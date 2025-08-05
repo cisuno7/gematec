@@ -10,6 +10,7 @@ import {
   Button,
   TextInput,
   Switch,
+  ScrollView,
 } from "react-native";
 import { FontAwesome } from "@expo/vector-icons";
 import EquipmentService from "../../Services/EquipamentService";
@@ -41,9 +42,9 @@ const EquipmentListScreen: React.FC<EquipmentListScreenProps> = ({
   const [clientName, setClientName] = useState("");
   const [sectorName, setSectorName] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
+  const [brandFilter, setBrandFilter] = useState("");
+  const [equipmentTypeFilter, setEquipmentTypeFilter] = useState("");
   const [subsectorFilter, setSubsectorFilter] = useState<number | undefined>(undefined);
-  const [onlyMine, setOnlyMine] = useState(false);
 
   // Filtros extras para setor/subsetor/status
   // ... (pode expandir para buscar setores/subsetores se necessário)
@@ -79,13 +80,17 @@ const EquipmentListScreen: React.FC<EquipmentListScreenProps> = ({
         const response = await ActivityService.fetchActivityEquipments(activityId, { token });
         let filtered = response.results || response.equipments || [];
         // Filtros locais
-        if (statusFilter) filtered = filtered.filter((eq: any) => eq.status === statusFilter);
         if (subsectorFilter) filtered = filtered.filter((eq: any) => eq.subsector_id === subsectorFilter);
         if (searchTerm) filtered = filtered.filter((eq: any) =>
           (eq.tag || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
           (eq.patrimony || "").toLowerCase().includes(searchTerm.toLowerCase())
         );
-        if (onlyMine) filtered = filtered.filter((eq: any) => eq.started_by_me);
+        if (brandFilter) filtered = filtered.filter((eq: any) =>
+          (eq.brand?.name || "").toLowerCase().includes(brandFilter.toLowerCase())
+        );
+        if (equipmentTypeFilter) filtered = filtered.filter((eq: any) =>
+          (eq.equipment_type?.name || "").toLowerCase().includes(equipmentTypeFilter.toLowerCase())
+        );
         setEquipmentList(filtered);
         setTotalPages(1); // Paginação local, ajuste se backend suportar
       } else {
@@ -110,7 +115,7 @@ const EquipmentListScreen: React.FC<EquipmentListScreenProps> = ({
   useEffect(() => {
     fetchClientAndSectorNames();
     fetchEquipments();
-  }, [clientId, sectorId, page, activityId, statusFilter, subsectorFilter, searchTerm, onlyMine]);
+  }, [clientId, sectorId, page, activityId, subsectorFilter, searchTerm, brandFilter, equipmentTypeFilter]);
 
   const handleRemoveEquipment = async (equipmentId: number) => {
     try {
@@ -124,86 +129,124 @@ const EquipmentListScreen: React.FC<EquipmentListScreenProps> = ({
     }
   };
 
-  const renderEquipmentItem = ({ item }: { item: any }) => (
-    <View style={styles.itemContainer}>
-      <View style={{ flex: 1 }}>
-        <Text style={styles.itemText}>Status: {item.status || "N/A"}</Text>
-        <Text style={styles.itemText}>Tag: {item.tag || item.patrimony || "N/A"}</Text>
-        <Text style={styles.itemText}>Fabricante: {item.brand?.name || "N/A"}</Text>
-        <Text style={styles.itemText}>Setor: {item.sector?.name || "N/A"}</Text>
-        <Text style={styles.itemText}>Tipo: {item.equipment_type?.name || "N/A"}</Text>
-      </View>
-      <TouchableOpacity
-        style={styles.editButton}
-        onPress={() => navigation.navigate("EditEquipmentScreen", { equipmentId: String(item.id) })}
-      >
-        <FontAwesome name="pencil" size={20} color="#007BFF" />
-        <Text style={styles.editButtonText}>Editar</Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-        style={styles.removeButton}
-        onPress={() =>
-          Alert.alert(
-            "Confirmação",
-            "Tem certeza de que deseja remover este equipamento?",
-            [
-              { text: "Cancelar", style: "cancel" },
-              { text: "Confirmar", onPress: () => handleRemoveEquipment(item.id) },
-            ]
-          )
-        }
-      >
-        <FontAwesome name="times" size={20} color="red" />
-        <Text style={styles.removeButtonText}>Remover</Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-        style={styles.editButton}
-        onPress={() => navigation.navigate("ViewOrderActivityScreen", { equipmentId: item.id })}
-      >
-        <FontAwesome name="eye" size={20} color="#007BFF" />
-        <Text style={styles.editButtonText}>Ver Detalhes</Text>
-      </TouchableOpacity>
-    </View>
-  );
+
 
   return (
     <View style={styles.container}>
-      {clientId && (
-        <Text style={styles.headerText}>Cliente: {clientName}</Text>
-      )}
-      {sectorId && (
-        <Text style={styles.headerText}>Setor: {sectorName}</Text>
-      )}
-      {/* Filtros */}
-      <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 10 }}>
-        <TextInput
-          style={{ flex: 1, borderWidth: 1, borderColor: "#ccc", borderRadius: 5, padding: 8, marginRight: 8 }}
-          placeholder="Buscar por termo (tag, patrimônio...)"
-          value={searchTerm}
-          onChangeText={setSearchTerm}
-        />
-        <Text>Status:</Text>
-        <TextInput
-          style={{ width: 80, borderWidth: 1, borderColor: "#ccc", borderRadius: 5, padding: 8, marginLeft: 4 }}
-          placeholder="Status"
-          value={statusFilter || ""}
-          onChangeText={setStatusFilter}
-        />
-      </View>
-      <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 10 }}>
-        <Text>Somente meus:</Text>
-        <Switch value={onlyMine} onValueChange={setOnlyMine} />
-      </View>
-      {loading ? (
-        <ActivityIndicator size="large" color="#007BFF" />
-      ) : (
-        <>
-          <FlatList
-            data={equipmentList}
-            keyExtractor={(item) => `${item.id}`}
-            renderItem={renderEquipmentItem}
-            ListEmptyComponent={<Text style={styles.emptyText}>Nenhum equipamento encontrado.</Text>}
+      <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>
+        {/* Header com informações do cliente/setor */}
+        <View style={styles.headerSection}>
+          <View style={styles.headerInfo}>
+            {clientId && (
+              <Text style={styles.headerText}>Cliente: {clientName}</Text>
+            )}
+            {sectorId && (
+              <Text style={styles.headerText}>Setor: {sectorName}</Text>
+            )}
+          </View>
+          {hasPermission("add_equipment") && (
+            <TouchableOpacity
+              style={styles.createButton}
+              onPress={() => navigation.navigate("CreateEquipmentScreen")}
+            >
+              <FontAwesome name="plus" size={16} color="#fff" />
+              <Text style={styles.createButtonText}>Adicionar Equipamento</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* Filtros */}
+        <View style={styles.filtersSection}>
+          <Text style={styles.filtersTitle}>Filtros</Text>
+
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Buscar por Tag ou Patrimônio"
+            value={searchTerm}
+            onChangeText={setSearchTerm}
           />
+
+          {/* Filtro de Fabricante */}
+          <View style={styles.filterRow}>
+            <Text style={styles.filterLabel}>Fabricante:</Text>
+            <TextInput
+              style={styles.statusInput}
+              placeholder="Fabricante"
+              value={brandFilter || ""}
+              onChangeText={setBrandFilter}
+            />
+          </View>
+
+          {/* Filtro de Tipo de Equipamento */}
+          <View style={styles.filterRow}>
+            <Text style={styles.filterLabel}>Tipo:</Text>
+            <TextInput
+              style={styles.statusInput}
+              placeholder="Tipo de Equipamento"
+              value={equipmentTypeFilter || ""}
+              onChangeText={setEquipmentTypeFilter}
+            />
+          </View>
+        </View>
+
+        {/* Lista de equipamentos */}
+        {loading ? (
+          <ActivityIndicator size="large" color="#007BFF" />
+        ) : equipmentList.length > 0 ? (
+          <View style={styles.equipmentListContainer}>
+            {equipmentList.map((item) => (
+              <View key={item.id} style={styles.itemContainer}>
+                <View style={styles.equipmentInfo}>
+                  <Text style={styles.itemText}>Tag: {item.tag || "N/A"}</Text>
+                  <Text style={styles.itemText}>Patrimônio: {item.patrimony || "N/A"}</Text>
+                  <Text style={styles.itemText}>Fabricante: {item.brand?.name || "N/A"}</Text>
+                  <Text style={styles.itemText}>Tipo: {item.equipment_type?.name || "N/A"}</Text>
+                </View>
+
+                <View style={styles.actionButtons}>
+                  {hasPermission("change_equipment") && (
+                    <TouchableOpacity
+                      style={styles.actionButton}
+                      onPress={() => navigation.navigate("EditEquipmentScreen", { equipmentId: String(item.id) })}
+                    >
+                      <FontAwesome name="pencil" size={16} color="#ffc107" />
+                    </TouchableOpacity>
+                  )}
+                  {hasPermission("delete_equipment") && (
+                    <TouchableOpacity
+                      style={styles.actionButton}
+                      onPress={() =>
+                        Alert.alert(
+                          "Confirmação",
+                          "Tem certeza de que deseja remover este equipamento?",
+                          [
+                            { text: "Cancelar", style: "cancel" },
+                            { text: "Confirmar", onPress: () => handleRemoveEquipment(item.id) },
+                          ]
+                        )
+                      }
+                    >
+                      <FontAwesome name="trash" size={16} color="#dc3545" />
+                    </TouchableOpacity>
+                  )}
+                  {hasPermission("view_equipment") && (
+                    <TouchableOpacity
+                      style={styles.actionButton}
+                      onPress={() => navigation.navigate("EquipmentDetailsScreen", { equipmentId: String(item.id) })}
+                    >
+                      <FontAwesome name="eye" size={16} color="#007BFF" />
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </View>
+            ))}
+          </View>
+        ) : (
+          <Text style={styles.emptyText}>Nenhum equipamento encontrado.</Text>
+        )}
+
+        {/* Paginação */}
+        {equipmentList.length > 0 && (
           <View style={styles.pagination}>
             <Button
               title="Anterior"
@@ -217,8 +260,8 @@ const EquipmentListScreen: React.FC<EquipmentListScreenProps> = ({
               disabled={page === totalPages}
             />
           </View>
-        </>
-      )}
+        )}
+      </ScrollView>
     </View>
   );
 };
@@ -226,20 +269,133 @@ const EquipmentListScreen: React.FC<EquipmentListScreenProps> = ({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 20,
     backgroundColor: "#f5f5f5",
   },
+  scrollContainer: {
+    flex: 1,
+    padding: 16,
+  },
+  headerSection: {
+    marginBottom: 16,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  headerInfo: {
+    flex: 1,
+  },
   headerText: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "bold",
-    marginBottom: 10,
-    textAlign: "center",
+    color: "#333",
+    marginBottom: 4,
+  },
+  createButton: {
+    backgroundColor: "#28a745",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 6,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  createButtonText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  filtersSection: {
+    backgroundColor: "#fff",
+    borderRadius: 8,
+    padding: 16,
+    marginBottom: 16,
+    elevation: 1,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+  },
+  filtersTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#333",
+    marginBottom: 12,
+  },
+  searchInput: {
+    borderWidth: 1,
+    borderColor: "#ddd",
+    borderRadius: 6,
+    padding: 12,
+    marginBottom: 12,
+    backgroundColor: "#fff",
+    fontSize: 14,
+  },
+  filterRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  filterLabel: {
+    fontSize: 14,
+    color: "#333",
+    marginRight: 8,
+    minWidth: 80,
+  },
+  statusInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: "#ddd",
+    borderRadius: 6,
+    padding: 8,
+    backgroundColor: "#fff",
+    fontSize: 14,
+  },
+  equipmentListContainer: {
+    marginBottom: 20,
+  },
+  itemContainer: {
+    backgroundColor: "#fff",
+    padding: 16,
+    marginBottom: 12,
+    borderRadius: 8,
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+  },
+  equipmentInfo: {
+    marginBottom: 12,
+  },
+  itemText: {
+    fontSize: 14,
+    color: "#333",
+    marginBottom: 4,
+    lineHeight: 20,
+  },
+  actionButtons: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    alignItems: "center",
+    borderTopWidth: 1,
+    borderTopColor: "#f0f0f0",
+    paddingTop: 12,
+    marginTop: 8,
+  },
+  actionButton: {
+    padding: 10,
+    marginLeft: 8,
+    backgroundColor: "#f8f9fa",
+    borderRadius: 6,
+    minWidth: 40,
+    alignItems: "center",
+    justifyContent: "center",
   },
   emptyText: {
     fontSize: 14,
     color: "#666",
     textAlign: "center",
-    marginVertical: 10,
+    marginVertical: 20,
   },
   errorText: {
     fontSize: 16,
@@ -247,53 +403,13 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginTop: 20,
   },
-  opContainer: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    marginBottom: 10,
-  },
-  qrButton: {
-    backgroundColor: "#007BFF",
-    padding: 10,
-    borderRadius: 5,
-  },
-  itemContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    padding: 10,
-    borderBottomWidth: 1,
-    borderColor: "#ccc",
-  },
-  itemText: {
-    fontSize: 16,
-    color: "#333",
-  },
-  editButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginHorizontal: 10,
-  },
-  editButtonText: {
-    marginLeft: 5,
-    fontSize: 14,
-    color: "#007BFF",
-  },
-  removeButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginHorizontal: 10,
-  },
-  removeButtonText: {
-    marginLeft: 5,
-    fontSize: 14,
-    color: "red",
-  },
   pagination: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginTop: 10,
+    marginTop: 16,
+    marginBottom: 20,
+    paddingHorizontal: 16,
   },
   pageText: {
     fontSize: 14,

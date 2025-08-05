@@ -285,6 +285,8 @@ const styles = StyleSheet.create({
         borderColor: "#ccc",
         borderRadius: 5,
         marginBottom: 10,
+        backgroundColor: "#fff",
+        color: "#333",
     },
     summarySection: {
         marginBottom: 20,

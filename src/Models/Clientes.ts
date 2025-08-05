@@ -24,9 +24,9 @@ export interface Address {
 
 export interface Contract {
   id: number;
-  start_date: string;
-  end_date: string;
-  activity_frequency: string;
+  start_date: string | null;
+  end_date: string | null;
+  activity_frequency_in_days: number | null;
 }
 
 export interface Contact {

@@ -16,12 +16,14 @@ import { RoadmapActivity } from '../../Models/Roadmap';
 import { useLanguage } from '../../Context/LanguageContext';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import OfflineService from '../../Services/OfflineService';
 
 interface RoadmapScreenProps {
     navigation: any;
 }
 
 const { width } = Dimensions.get('window');
+const CURRENT_ROADMAP_CACHE_KEY = 'current_roadmap_cache';
 
 const RoadmapScreen: React.FC<RoadmapScreenProps> = ({ navigation }) => {
     const { t } = useLanguage();
@@ -34,9 +36,31 @@ const RoadmapScreen: React.FC<RoadmapScreenProps> = ({ navigation }) => {
         try {
             setLoading(true);
             const response = await RoadmapService.getCurrentRoadmap();
-            setActivities(response.activities);
+            console.log('[RoadmapScreen] Dados recebidos:', response);
+            console.log('[RoadmapScreen] Atividades:', response.activities);
+
+            // Validar e limpar dados
+            const validActivities = response.activities.map(activity => ({
+                ...activity,
+                status: activity.status || 'pending',
+                priority: activity.priority || 'medium',
+                type: activity.type || 'maintenance',
+                clientName: activity.clientName || 'Cliente não informado',
+                address: activity.address || 'Endereço não informado',
+                title: activity.title || 'Atividade sem título'
+            }));
+
+            setActivities(validActivities);
         } catch (error: any) {
-            Alert.alert('Erro', error.message || 'Erro ao carregar roteiro');
+            console.error('[RoadmapScreen] Erro ao carregar roteiro:', error);
+
+            // Se não há roteiros para o dia, não mostrar erro
+            if (error.message && error.message.includes('Nenhum roteiro encontrado')) {
+                console.log('[RoadmapScreen] Nenhum roteiro para o dia atual');
+                setActivities([]);
+            } else {
+                Alert.alert('Erro', error.message || 'Erro ao carregar roteiro');
+            }
         } finally {
             setLoading(false);
         }
@@ -85,7 +109,8 @@ const RoadmapScreen: React.FC<RoadmapScreenProps> = ({ navigation }) => {
             case 'cancelled':
                 return t('roadmap.cancelled');
             default:
-                return 'Desconhecido';
+                console.warn(`[RoadmapScreen] Status desconhecido: ${status}`);
+                return t('roadmap.pending'); // Fallback para pending
         }
     };
 
@@ -111,7 +136,8 @@ const RoadmapScreen: React.FC<RoadmapScreenProps> = ({ navigation }) => {
             case 'low':
                 return t('roadmap.low');
             default:
-                return 'Desconhecida';
+                console.warn(`[RoadmapScreen] Prioridade desconhecida: ${priority}`);
+                return t('roadmap.medium'); // Fallback para medium
         }
     };
 
@@ -141,7 +167,8 @@ const RoadmapScreen: React.FC<RoadmapScreenProps> = ({ navigation }) => {
             case 'installation':
                 return t('roadmap.installation');
             default:
-                return 'Atividade';
+                console.warn(`[RoadmapScreen] Tipo desconhecido: ${type}`);
+                return t('roadmap.maintenance'); // Fallback para maintenance
         }
     };
 

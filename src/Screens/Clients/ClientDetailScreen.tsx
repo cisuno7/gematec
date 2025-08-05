@@ -25,9 +25,13 @@ interface ClientDetailScreenProps {
 }
 
 const ClientDetailScreen: React.FC<ClientDetailScreenProps> = ({ route, navigation }) => {
-    const { hasPermission } = usePermissions();
+    const { hasPermission, permissions } = usePermissions();
     const { t } = useLanguage();
     const { clientId } = route.params;
+
+    // Debug das permissões
+    console.log("[ClientDetailScreen] Permissões disponíveis:", permissions);
+    console.log("[ClientDetailScreen] Tem permissão list_contracts:", hasPermission("list_contracts"));
 
     const [client, setClient] = useState<Client | null>(null);
     const [contracts, setContracts] = useState<Contract[]>([]);
@@ -53,14 +57,29 @@ const ClientDetailScreen: React.FC<ClientDetailScreenProps> = ({ route, navigati
             setClient(clientData);
 
             // Buscar contratos se tiver permissão
-            if (hasPermission("clients.view_contract")) {
+            const hasListContractsPermission = hasPermission("list_contracts");
+            console.log("[ClientDetailScreen] Verificando permissão para buscar contratos:", hasListContractsPermission);
+
+            if (hasListContractsPermission) {
                 try {
+                    console.log("[ClientDetailScreen] Iniciando busca de contratos para cliente:", clientId);
                     const contractsData = await ClientService.getClientContracts(clientId.toString(), token);
                     console.log("[ClientDetailScreen] Contratos recebidos:", contractsData);
                     setContracts(contractsData.results || []);
-                } catch (error) {
-                    console.error("Erro ao buscar contratos:", error);
+                } catch (error: any) {
+                    console.error("[ClientDetailScreen] Erro ao buscar contratos:", error);
+                    // Se o erro for 404 (sem contratos), definir array vazio
+                    if (error.response?.status === 404) {
+                        console.log("[ClientDetailScreen] Cliente não possui contratos");
+                        setContracts([]);
+                    } else {
+                        // Para outros erros, mostrar mensagem mas não bloquear a tela
+                        console.warn("[ClientDetailScreen] Erro ao buscar contratos, mas continuando...");
+                        setContracts([]);
+                    }
                 }
+            } else {
+                console.log("[ClientDetailScreen] Usuário não tem permissão para listar contratos");
             }
 
             // Buscar contatos
@@ -89,7 +108,7 @@ const ClientDetailScreen: React.FC<ClientDetailScreenProps> = ({ route, navigati
         }
     };
 
-    if (!hasPermission("clients.view_client")) {
+    if (!hasPermission("view_client")) {
         return (
             <View style={styles.container}>
                 <Text style={styles.errorText}>Você não tem permissão para visualizar clientes.</Text>
@@ -115,8 +134,96 @@ const ClientDetailScreen: React.FC<ClientDetailScreenProps> = ({ route, navigati
     }
 
     const formatDate = (dateString: string) => {
-        if (!dateString) return "N/A";
-        return new Date(dateString).toLocaleDateString('pt-BR');
+        if (!dateString || dateString === "null" || dateString === "undefined" || dateString === "") {
+            console.log("[ClientDetailScreen] Data vazia ou nula:", dateString);
+            return "N/A";
+        }
+
+        try {
+            // Log para debug
+            console.log("[ClientDetailScreen] Formatando data:", dateString, "tipo:", typeof dateString);
+
+            // Se já for uma data válida, usar diretamente
+            let date: Date;
+
+            // Verificar se é uma string ISO ou formato conhecido
+            if (typeof dateString === 'string') {
+                // Tentar diferentes formatos de data
+                if (dateString.includes('T')) {
+                    // Formato ISO
+                    date = new Date(dateString);
+                } else if (dateString.includes('-')) {
+                    // Formato YYYY-MM-DD
+                    date = new Date(dateString + 'T00:00:00');
+                } else if (dateString.includes('/')) {
+                    // Formato DD/MM/YYYY ou MM/DD/YYYY
+                    const parts = dateString.split('/');
+                    if (parts.length === 3) {
+                        // Assumir formato DD/MM/YYYY
+                        date = new Date(`${parts[2]}-${parts[1]}-${parts[0]}T00:00:00`);
+                    } else {
+                        date = new Date(dateString);
+                    }
+                } else {
+                    // Tentar parse direto
+                    date = new Date(dateString);
+                }
+            } else {
+                date = new Date(dateString);
+            }
+
+            if (isNaN(date.getTime())) {
+                console.warn("[ClientDetailScreen] Data inválida após parsing:", dateString);
+                return "Data inválida";
+            }
+
+            const formattedDate = date.toLocaleDateString('pt-BR');
+            console.log("[ClientDetailScreen] Data formatada com sucesso:", dateString, "->", formattedDate);
+            return formattedDate;
+        } catch (error) {
+            console.error("[ClientDetailScreen] Erro ao formatar data:", dateString, error);
+            return "Data inválida";
+        }
+    };
+
+    const formatFrequency = (frequencyInDays: number | null) => {
+        console.log("[ClientDetailScreen] ===== INÍCIO formatFrequency =====");
+        console.log("[ClientDetailScreen] Frequência em dias recebida:", frequencyInDays);
+        console.log("[ClientDetailScreen] Tipo da frequência:", typeof frequencyInDays);
+
+        // Verificar se é null, undefined ou 0
+        if (!frequencyInDays || frequencyInDays === null || frequencyInDays === undefined) {
+            console.log("[ClientDetailScreen] ❌ Frequência vazia ou nula, retornando N/A");
+            console.log("[ClientDetailScreen] ===== FIM formatFrequency (vazio) =====");
+            return "N/A";
+        }
+
+        // Converter dias para formato legível
+        let result: string;
+
+        if (frequencyInDays === 1) {
+            result = "Diário";
+        } else if (frequencyInDays === 7) {
+            result = "Semanal";
+        } else if (frequencyInDays === 15) {
+            result = "Quinzenal";
+        } else if (frequencyInDays === 30) {
+            result = "Mensal";
+        } else if (frequencyInDays === 60) {
+            result = "Bimestral";
+        } else if (frequencyInDays === 90) {
+            result = "Trimestral";
+        } else if (frequencyInDays === 180) {
+            result = "Semestral";
+        } else if (frequencyInDays === 365) {
+            result = "Anual";
+        } else {
+            result = `A cada ${frequencyInDays} dias`;
+        }
+
+        console.log("[ClientDetailScreen] ✅ Frequência formatada:", frequencyInDays, "dias ->", result);
+        console.log("[ClientDetailScreen] ===== FIM formatFrequency (sucesso) =====");
+        return result;
     };
 
     return (
@@ -164,43 +271,55 @@ const ClientDetailScreen: React.FC<ClientDetailScreenProps> = ({ route, navigati
             </View>
 
             {/* Contratos */}
-            {hasPermission("clients.view_contract") && (
-                <View style={styles.section}>
-                    <TouchableOpacity
-                        style={styles.sectionHeader}
-                        onPress={() => setShowContracts(!showContracts)}
-                    >
-                        <Text style={styles.sectionTitle}>Contratos ({contracts.length})</Text>
-                        <Ionicons
-                            name={showContracts ? "chevron-up" : "chevron-down"}
-                            size={20}
-                            color="#007BFF"
-                        />
-                    </TouchableOpacity>
+            {(() => {
+                const hasListContractsPermission = hasPermission("list_contracts");
+                console.log("[ClientDetailScreen] Renderizando seção de contratos. Tem permissão:", hasListContractsPermission);
+                return hasListContractsPermission && (
+                    <View style={styles.section}>
+                        <TouchableOpacity
+                            style={styles.sectionHeader}
+                            onPress={() => setShowContracts(!showContracts)}
+                        >
+                            <Text style={styles.sectionTitle}>Contratos ({contracts.length})</Text>
+                            <Ionicons
+                                name={showContracts ? "chevron-up" : "chevron-down"}
+                                size={20}
+                                color="#007BFF"
+                            />
+                        </TouchableOpacity>
 
-                    {showContracts && (
-                        <View style={styles.listContainer}>
-                            {contracts.length > 0 ? (
-                                contracts.map((contract) => (
-                                    <View key={contract.id} style={styles.listItem}>
-                                        <Text style={styles.listItemText}>
-                                            <Text style={styles.bold}>Início:</Text> {formatDate(contract.start_date || "")}
-                                        </Text>
-                                        <Text style={styles.listItemText}>
-                                            <Text style={styles.bold}>Fim:</Text> {formatDate(contract.end_date || "")}
-                                        </Text>
-                                        <Text style={styles.listItemText}>
-                                            <Text style={styles.bold}>Frequência:</Text> {String(contract.activity_frequency || "N/A")}
-                                        </Text>
-                                    </View>
-                                ))
-                            ) : (
-                                <Text style={styles.emptyText}>Nenhum contrato encontrado.</Text>
-                            )}
-                        </View>
-                    )}
-                </View>
-            )}
+                        {showContracts && (
+                            <View style={styles.listContainer}>
+                                {contracts.length > 0 ? (
+                                    contracts.map((contract) => {
+                                        console.log("[ClientDetailScreen] ===== RENDERIZANDO CONTRATO =====");
+                                        console.log("[ClientDetailScreen] ID:", contract.id);
+                                        console.log("[ClientDetailScreen] Start Date:", contract.start_date, "(tipo:", typeof contract.start_date, ")");
+                                        console.log("[ClientDetailScreen] End Date:", contract.end_date, "(tipo:", typeof contract.end_date, ")");
+                                        console.log("[ClientDetailScreen] Activity Frequency in Days:", contract.activity_frequency_in_days, "(tipo:", typeof contract.activity_frequency_in_days, ")");
+
+                                        return (
+                                            <View key={contract.id} style={styles.listItem}>
+                                                <Text style={styles.listItemText}>
+                                                    <Text style={styles.bold}>Início:</Text> {formatDate(contract.start_date || "")}
+                                                </Text>
+                                                <Text style={styles.listItemText}>
+                                                    <Text style={styles.bold}>Fim:</Text> {formatDate(contract.end_date || "")}
+                                                </Text>
+                                                <Text style={styles.listItemText}>
+                                                    <Text style={styles.bold}>Frequência:</Text> {formatFrequency(contract.activity_frequency_in_days)}
+                                                </Text>
+                                            </View>
+                                        );
+                                    })
+                                ) : (
+                                    <Text style={styles.emptyText}>Nenhum contrato encontrado.</Text>
+                                )}
+                            </View>
+                        )}
+                    </View>
+                );
+            })()}
 
             {/* Contatos */}
             <View style={styles.section}>
@@ -283,7 +402,7 @@ const ClientDetailScreen: React.FC<ClientDetailScreenProps> = ({ route, navigati
             </View>
 
             {/* Botão Listar Setores */}
-            {hasPermission("clients.list_sectors") && (
+            {hasPermission("list_sectors") && (
                 <TouchableOpacity
                     style={styles.listSectorsButton}
                     onPress={() => navigation.navigate("ClientSectorsScreen", { clientId })}

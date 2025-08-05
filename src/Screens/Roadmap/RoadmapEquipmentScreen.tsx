@@ -12,7 +12,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { RoadmapActivity } from '../../Models/Roadmap';
 import { RoadmapService } from '../../Services/RoadmapService';
-import { OfflineService } from '../../Services/OfflineService';
+import OfflineService from '../../Services/OfflineService';
 import NetInfo from '@react-native-community/netinfo';
 
 interface RoadmapEquipmentScreenProps {

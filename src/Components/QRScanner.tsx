@@ -58,7 +58,6 @@ const QRScanner: React.FC<QRScannerProps> = ({ onScanned }) => {
         }}
         onBarcodeScanned={scanned ? undefined : handleBarCodeScanned} // Liga o evento de escaneamento
       />
-      <Button title="Reescanear" onPress={() => setScanned(false)} />
     </View>
   );
 };

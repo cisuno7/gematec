@@ -12,6 +12,7 @@ import { Picker } from '@react-native-picker/picker';
 import { DynamicField, EquipmentTemplate } from '../Models/EquipmentTemplate';
 import EquipmentService from '../Services/EquipamentService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import CustomPicker from './CustomPicker';
 
 interface DynamicEquipmentFieldsProps {
     onFieldsChange: (fields: { [key: string]: any }) => void;
@@ -84,18 +85,13 @@ const DynamicEquipmentFields: React.FC<DynamicEquipmentFieldsProps> = ({
 
             case 'select':
                 return (
-                    <View style={[styles.pickerContainer, field.required && styles.requiredInput]}>
-                        <Picker
-                            selectedValue={value}
-                            onValueChange={(itemValue) => handleFieldChange(field.name, itemValue)}
-                            style={styles.picker}
-                        >
-                            <Picker.Item label={`Selecione ${field.name}`} value="" />
-                            {field.options?.map((option, index) => (
-                                <Picker.Item key={index} label={option} value={option} />
-                            ))}
-                        </Picker>
-                    </View>
+                    <CustomPicker
+                        selectedValue={value}
+                        onValueChange={(itemValue) => handleFieldChange(field.name, itemValue)}
+                        items={field.options?.map((option) => ({ label: option, value: option })) || []}
+                        placeholder={`Selecione ${field.name}`}
+                        style={field.required && styles.requiredInput}
+                    />
                 );
 
             case 'date':
@@ -212,6 +208,7 @@ const styles = StyleSheet.create({
         padding: 12,
         fontSize: 16,
         backgroundColor: '#fff',
+        color: '#333',
     },
     requiredInput: {
         borderColor: '#dc3545',
@@ -224,6 +221,8 @@ const styles = StyleSheet.create({
     },
     picker: {
         height: 50,
+        color: '#333',
+        backgroundColor: '#fff',
     },
     booleanContainer: {
         flexDirection: 'row',

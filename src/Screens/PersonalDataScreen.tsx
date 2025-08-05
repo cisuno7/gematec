@@ -1,5 +1,6 @@
 import React, { useContext, useEffect, useState } from 'react';
 import { View, Text, TextInput, Button, StyleSheet, Alert, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native'; // Added TouchableOpacity
+import { Picker } from '@react-native-picker/picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import AuthService from '../Services/AuthService';
 import { NavigationProp, RouteProp } from '@react-navigation/native';
@@ -44,7 +45,26 @@ const PersonalDataScreen: React.FC<PersonalDataScreenProps> = ({ route, navigati
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [passwordError, setPasswordError] = useState('');
 
-  const canEdit = hasPermission("users.change_me");
+  // Fator RH options - usando valores em minúsculas conforme backend
+  const rhFactorOptions = [
+    { label: 'Selecione o Fator RH', value: '' },
+    { label: 'A+', value: 'a+' },
+    { label: 'A-', value: 'a-' },
+    { label: 'B+', value: 'b+' },
+    { label: 'B-', value: 'b-' },
+    { label: 'AB+', value: 'ab+' },
+    { label: 'AB-', value: 'ab-' },
+    { label: 'O+', value: 'o+' },
+    { label: 'O-', value: 'o-' },
+  ];
+
+  const canEdit = hasPermission("change_me");
+  const canView = hasPermission("view_user");
+
+  console.log("[PersonalDataScreen] Permissão change_me:", canEdit);
+  console.log("[PersonalDataScreen] Permissão view_user:", canView);
+  console.log("[PersonalDataScreen] Permissões disponíveis:", permissions);
+  console.log("[PersonalDataScreen] Estado de edição:", isEditing);
 
   useEffect(() => {
     const fetchPersonalData = async () => {
@@ -107,16 +127,35 @@ const PersonalDataScreen: React.FC<PersonalDataScreenProps> = ({ route, navigati
       if (!accessToken) throw new Error('Token de acesso ausente.');
       if (!account) throw new Error('Conta não encontrada.');
 
-      const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-      if (birthdate && !dateRegex.test(birthdate)) { // Allow empty birthdate
-        Alert.alert("Erro", "Data de nascimento deve estar no formato YYYY-MM-DD");
-        return;
+      // Validação melhorada de data
+      let validatedBirthdate: string | undefined = birthdate;
+      if (birthdate && birthdate.trim() !== '') {
+        // Remove caracteres não numéricos exceto hífens
+        const cleanDate = birthdate.replace(/[^0-9-]/g, '');
+
+        // Verifica se tem o formato correto
+        const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+        if (!dateRegex.test(cleanDate)) {
+          Alert.alert("Erro", "Data de nascimento deve estar no formato YYYY-MM-DD (ex: 1990-01-15)");
+          return;
+        }
+
+        // Valida se é uma data válida
+        const dateObj = new Date(cleanDate);
+        if (isNaN(dateObj.getTime())) {
+          Alert.alert("Erro", "Data de nascimento inválida");
+          return;
+        }
+
+        validatedBirthdate = cleanDate;
+      } else {
+        validatedBirthdate = undefined; // Permite data vazia
       }
 
       const updatedData = {
-        name,
-        birthdate,
-        rh_factor: rhFactor,
+        name: name.trim() || undefined,
+        birthdate: validatedBirthdate,
+        rh_factor: rhFactor.trim() || undefined,
       };
 
       console.log('Dados a serem enviados:', updatedData);
@@ -191,7 +230,7 @@ const PersonalDataScreen: React.FC<PersonalDataScreenProps> = ({ route, navigati
     );
   }
 
-  if (!hasPermission("users.view_user")) {
+  if (!canView) {
     return (
       <View style={styles.container}>
         <Text style={styles.errorText}>Você não tem permissão para visualizar seus dados.</Text>
@@ -219,10 +258,11 @@ const PersonalDataScreen: React.FC<PersonalDataScreenProps> = ({ route, navigati
       {/* Nome - Editável */}
       <Text style={styles.label}>Nome</Text>
       <TextInput
-        style={styles.input}
+        style={[styles.input, !isEditing && styles.disabledInput]}
         value={name}
         onChangeText={setName}
         placeholder="Nome"
+        placeholderTextColor="#666"
         editable={isEditing && canEdit}
       />
 
@@ -248,13 +288,20 @@ const PersonalDataScreen: React.FC<PersonalDataScreenProps> = ({ route, navigati
 
       {/* Fator RH - Editável */}
       <Text style={styles.label}>Fator RH</Text>
-      <TextInput
-        style={styles.input}
-        value={rhFactor}
-        onChangeText={setRhFactor}
-        editable={isEditing && canEdit}
-        placeholder="Fator RH"
-      />
+      <Picker
+        selectedValue={rhFactor}
+        onValueChange={(value) => setRhFactor(value)}
+        enabled={isEditing && canEdit}
+        style={[styles.picker, !isEditing && styles.disabledPicker]}
+      >
+        {rhFactorOptions.map((option) => (
+          <Picker.Item
+            key={option.value}
+            label={option.label}
+            value={option.value}
+          />
+        ))}
+      </Picker>
 
       {/* Data de Admissão - Não editável */}
       <Text style={styles.label}>Data de Admissão</Text>
@@ -263,18 +310,30 @@ const PersonalDataScreen: React.FC<PersonalDataScreenProps> = ({ route, navigati
       {/* Data de Nascimento - Editável */}
       <Text style={styles.label}>Data de Nascimento</Text>
       <TextInput
-        style={styles.input}
+        style={[styles.input, !isEditing && styles.disabledInput]}
         value={birthdate}
         onChangeText={(text: string) => {
-          let cleaned = text.replace(/[^0-9-]/g, '').slice(0, 10);
-          if (cleaned.length === 4 || cleaned.length === 7) {
-            if (birthdate.length < cleaned.length) cleaned += '-';
+          // Remove tudo exceto números e hífens
+          let cleaned = text.replace(/[^0-9-]/g, '');
+
+          // Limita a 10 caracteres (YYYY-MM-DD)
+          cleaned = cleaned.slice(0, 10);
+
+          // Adiciona hífens automaticamente
+          if (cleaned.length >= 4 && !cleaned.includes('-')) {
+            cleaned = cleaned.slice(0, 4) + '-' + cleaned.slice(4);
           }
+          if (cleaned.length >= 7 && cleaned.split('-').length === 2) {
+            cleaned = cleaned.slice(0, 7) + '-' + cleaned.slice(7);
+          }
+
           setBirthdate(cleaned);
         }}
-        placeholder="AAAA-MM-DD"
+        placeholder="AAAA-MM-DD (ex: 1990-01-15)"
+        placeholderTextColor="#666"
         keyboardType="numeric"
         editable={isEditing && canEdit}
+        maxLength={10}
       />
 
       {/* Group - Não editável */}
@@ -295,6 +354,7 @@ const PersonalDataScreen: React.FC<PersonalDataScreenProps> = ({ route, navigati
           onChangeText={setNewPassword}
           secureTextEntry
           placeholder="Nova Senha"
+          placeholderTextColor="#666"
         />
         <Text style={styles.label}>Confirmar Nova Senha</Text>
         <TextInput
@@ -303,9 +363,12 @@ const PersonalDataScreen: React.FC<PersonalDataScreenProps> = ({ route, navigati
           onChangeText={setConfirmNewPassword}
           secureTextEntry
           placeholder="Confirmar Nova Senha"
+          placeholderTextColor="#666"
         />
         {passwordError ? <Text style={styles.passwordErrorText}>{passwordError}</Text> : null}
-        <Button title="Alterar Senha" onPress={handleChangePassword} />
+        <TouchableOpacity style={styles.passwordButton} onPress={handleChangePassword}>
+          <Text style={styles.passwordButtonText}>Alterar Senha</Text>
+        </TouchableOpacity>
       </View>
     </ScrollView>
   );
@@ -338,6 +401,25 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     padding: 10,
     marginBottom: 10,
+    backgroundColor: '#fff',
+    color: '#333',
+  },
+  disabledInput: {
+    backgroundColor: '#f5f5f5',
+    color: '#666',
+  },
+  picker: {
+    borderWidth: 1,
+    borderColor: '#ccc',
+    borderRadius: 5,
+    marginBottom: 10,
+    backgroundColor: '#fff',
+    color: '#333',
+    height: 50,
+  },
+  disabledPicker: {
+    backgroundColor: '#f5f5f5',
+    color: '#666',
   },
   errorText: {
     fontSize: 16,
@@ -383,6 +465,18 @@ const styles = StyleSheet.create({
   passwordErrorText: {
     color: 'red',
     marginBottom: 10,
+  },
+  passwordButton: {
+    backgroundColor: '#007BFF',
+    padding: 12,
+    borderRadius: 5,
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  passwordButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
 

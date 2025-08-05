@@ -110,14 +110,61 @@ export default class ClientService {
       const endpoint = `${dynamicBaseUrl}/clients/${clientId}/contracts`;
       console.log("[ClientService] Obtendo contratos do cliente...");
       console.log("[ClientService] Endpoint:", endpoint);
+      console.log("[ClientService] Client ID:", clientId);
 
       const response = await apiClient.get(endpoint, {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
+
       console.log("[ClientService] Contratos do cliente recebidos:", response.data);
+      console.log("[ClientService] Estrutura da resposta:", {
+        hasResults: !!response.data.results,
+        resultsLength: response.data.results?.length || 0,
+        count: response.data.count,
+        isArray: Array.isArray(response.data.results)
+      });
+
+      // Log detalhado de cada contrato
+      if (response.data.results && Array.isArray(response.data.results)) {
+        response.data.results.forEach((contract: any, index: number) => {
+          console.log(`[ClientService] ===== CONTRATO ${index + 1} =====`);
+          console.log(`[ClientService] ID:`, contract.id);
+          console.log(`[ClientService] Start Date:`, contract.start_date, `(tipo: ${typeof contract.start_date})`);
+          console.log(`[ClientService] End Date:`, contract.end_date, `(tipo: ${typeof contract.end_date})`);
+          console.log(`[ClientService] Activity Frequency in Days:`, contract.activity_frequency_in_days, `(tipo: ${typeof contract.activity_frequency_in_days})`);
+
+          // Análise da frequência em dias
+          if (contract.activity_frequency_in_days) {
+            console.log(`[ClientService] ✅ Frequência em dias:`, contract.activity_frequency_in_days);
+          } else {
+            console.log(`[ClientService] ❌ Activity Frequency in Days é null/undefined/vazio`);
+          }
+
+          console.log(`[ClientService] ===== FIM CONTRATO ${index + 1} =====`);
+
+          // Validar e limpar dados se necessário
+          if (contract.start_date === null || contract.start_date === undefined || contract.start_date === "") {
+            console.warn(`[ClientService] ⚠️ Contrato ${index + 1} tem start_date inválido:`, contract.start_date);
+          }
+          if (contract.end_date === null || contract.end_date === undefined || contract.end_date === "") {
+            console.warn(`[ClientService] ⚠️ Contrato ${index + 1} tem end_date inválido:`, contract.end_date);
+          }
+          if (contract.activity_frequency_in_days === null || contract.activity_frequency_in_days === undefined) {
+            console.warn(`[ClientService] ⚠️ Contrato ${index + 1} tem activity_frequency_in_days inválido:`, contract.activity_frequency_in_days);
+          }
+        });
+      }
+
       return response.data;
     } catch (error: any) {
       console.error("[ClientService] Erro ao buscar contratos do cliente:", error);
+
+      // Se o erro for 404 (cliente não tem contratos), retorna estrutura vazia
+      if (error.response?.status === 404) {
+        console.log("[ClientService] Cliente não possui contratos");
+        return { results: [], count: 0 };
+      }
+
       throw new Error("Erro ao obter os contratos do cliente.");
     }
   }

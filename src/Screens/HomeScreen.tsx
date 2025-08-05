@@ -29,20 +29,43 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
 
   // Definir os itens do menu com seus nomes de tela e ícones
   const menuItems = [
-    { label: t('menu.roadmaps'), icon: "map", screen: null, implemented: false },
-    { label: t('menu.pmocs'), icon: "document-text", screen: "PmocListScreen", implemented: true },
-    { label: t('menu.serviceOrders'), icon: "hammer", screen: "ListOrderServiceScreen", implemented: true },
+    {
+      label: t('menu.pmocs'),
+      icon: "document-text",
+      screen: "ActivityHistoryScreen",
+      params: { activityTypeSlug: "pmoc", status: ["open", "pending"] },
+      implemented: true
+    },
+    {
+      label: t('menu.serviceOrders'),
+      icon: "hammer",
+      screen: "ActivityHistoryScreen",
+      params: { activityTypeSlug: "service_order", status: ["open", "pending"] },
+      implemented: true
+    },
     { label: "Roteiro", icon: "map", screen: "RoadmapScreen", implemented: true },
-    { label: t('menu.technicalAssistance'), icon: "headset", screen: "TechnicalAssistanceScreen", implemented: true },
-    { label: t('menu.installation'), icon: "cube", screen: null, implemented: false },
+    {
+      label: t('menu.technicalAssistance'),
+      icon: "headset",
+      screen: "ActivityHistoryScreen",
+      params: { activityTypeSlug: "technical_assistance", status: ["open", "pending"] },
+      implemented: true
+    },
+    {
+      label: t('menu.installation'),
+      icon: "cube",
+      screen: "ActivityHistoryScreen",
+      params: { activityTypeSlug: "instalation", status: ["open", "pending"] },
+      implemented: true
+    },
     { label: t('menu.technicalSupport'), icon: "help-circle", screen: null, implemented: false },
     { label: t('menu.equipmentQrCode'), icon: "qr-code", screen: "EquipmentQRCodeScreen", implemented: true },
     { label: t('menu.manuals'), icon: "book", screen: "ManualsScreen", implemented: true },
   ];
 
-  const navigateTo = (screenName: keyof RootStackParamList) => {
+  const navigateTo = (screenName: keyof RootStackParamList, params?: any) => {
     toggleMenu(); // Fecha o menu antes de navegar
-    navigation.navigate(screenName);
+    navigation.navigate(screenName, params);
   };
 
   return (
@@ -72,7 +95,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
                 <TouchableOpacity
                   key={index}
                   style={[styles.gridItem, !item.implemented && styles.gridItemDisabled]}
-                  onPress={() => item.implemented && navigateTo(item.screen as keyof RootStackParamList)}
+                  onPress={() => item.implemented && navigateTo(item.screen as keyof RootStackParamList, item.params)}
                   disabled={!item.implemented}
                 >
                   <Ionicons

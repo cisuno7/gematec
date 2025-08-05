@@ -151,12 +151,23 @@ const EquipamentScreen: React.FC<EquipamentScreenProps> = ({ route, navigation }
           clientId={clientId}
           subsectors={currentSectorSubsectors} // Passa os subsetores para o filtro
         />
-        <TouchableOpacity
-          style={styles.qrButton}
-          onPress={() => navigation.navigate("EquipmentQRCodeScreen", {})}
-        >
-          <FontAwesome name="qrcode" size={24} color="#fff" />
-        </TouchableOpacity>
+        <View style={styles.actionButtons}>
+          {hasPermission("add_equipment") && (
+            <TouchableOpacity
+              style={styles.createButton}
+              onPress={() => navigation.navigate("CreateEquipmentScreen")}
+            >
+              <FontAwesome name="plus" size={16} color="#fff" />
+              <Text style={styles.createButtonText}>Novo</Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity
+            style={styles.qrButton}
+            onPress={() => navigation.navigate("EquipmentQRCodeScreen", {})}
+          >
+            <FontAwesome name="qrcode" size={24} color="#fff" />
+          </TouchableOpacity>
+        </View>
       </View>
       {loading ? (
         <ActivityIndicator size="large" color="#007BFF" />
@@ -203,6 +214,25 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: 10,
+  },
+  actionButtons: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  createButton: {
+    backgroundColor: "#28a745",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 6,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  createButtonText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "600",
   },
   qrButton: {
     backgroundColor: "#007BFF",

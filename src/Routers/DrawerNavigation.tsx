@@ -69,6 +69,10 @@ const SLUG_TO_APP_DATA: { [key: string]: { titleKey: string; route?: keyof RootS
 const CustomDrawerHeader: React.FC = () => {
   const { username } = useUser();
   const { t } = useLanguage();
+
+  console.log("[CustomDrawerHeader] Username:", username);
+  console.log("[CustomDrawerHeader] Tradução welcome:", t('common.welcome'));
+
   return (
     <View>
       <Text style={styles.userName}>
@@ -147,7 +151,7 @@ const CustomDrawerContent = (props: any & { extraData: {} }) => {
       }
     };
     fetchMenu();
-  }, []);
+  }, [t]); // Adiciona dependência da função de tradução para recarregar quando a linguagem mudar
 
   const toggleSubmenu = (id: string) => {
     setSubmenuStates((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -261,7 +265,7 @@ const CustomDrawerContent = (props: any & { extraData: {} }) => {
       <CustomDrawerHeader />
       {/* Item Fixo: Meus Dados */}
       {(() => {
-        const hasViewUserPermission = hasPermission("users.view_user");
+        const hasViewUserPermission = hasPermission("view_user");
         console.log("[DrawerNavigation] Verificando permissão users.view_user:", hasViewUserPermission);
         return hasViewUserPermission && (
           <TouchableOpacity

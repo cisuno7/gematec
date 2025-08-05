@@ -83,6 +83,11 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
               await AsyncStorage.setItem("access_token", newAccessToken);
               console.log("[UserContext] Token renovado com sucesso.");
               setIsAuthenticated(true);
+
+              // Extrair username do novo token
+              const decoded: any = jwtDecode(newAccessToken);
+              setUsername(decoded.user_name || "");
+
               await loadUserPreferences(newAccessToken); // Carrega preferências após renovar
               console.log("[UserContext] Chamando loadPermissions após renovar token...");
               await loadPermissions(newAccessToken); // Carrega permissões após renovar
@@ -94,6 +99,11 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
           } else {
             console.log("[UserContext] Usuário logado encontrado.");
             setIsAuthenticated(true);
+
+            // Extrair username do token válido
+            const decoded: any = jwtDecode(accessToken);
+            setUsername(decoded.user_name || "");
+
             await loadUserPreferences(accessToken); // Carrega preferências se o token for válido
             console.log("[UserContext] Chamando loadPermissions com token válido...");
             await loadPermissions(accessToken); // Carrega permissões se o token for válido
@@ -163,20 +173,34 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = async () => {
+    console.log("[UserContext] === INÍCIO LOGOUT ===");
     try {
       const refreshToken = await AsyncStorage.getItem("refresh_token");
-      if (refreshToken && account) {
+      const currentAccount = await AsyncStorage.getItem("account");
+
+      console.log("[UserContext] Dados para logout:", {
+        hasRefreshToken: !!refreshToken,
+        account: currentAccount,
+        refreshTokenLength: refreshToken?.length || 0
+      });
+
+      if (refreshToken && currentAccount) {
         try {
-          await AuthService.revoke(refreshToken, account);
+          console.log("[UserContext] Tentando revogar token...");
+          await AuthService.revoke(refreshToken, currentAccount);
           console.log("[UserContext] Token revogado com sucesso no logout");
         } catch (revokeError) {
           console.error("[UserContext] Erro ao revogar token no logout:", revokeError);
+          // Continua o logout mesmo se a revogação falhar
         }
+      } else {
+        console.log("[UserContext] Não há refresh token ou account para revogar");
       }
 
-      // Limpar permissões do storage
+      console.log("[UserContext] Limpando permissões do storage...");
       await PermissionsService.clearPermissionsFromStorage();
 
+      console.log("[UserContext] Removendo dados do AsyncStorage...");
       await AsyncStorage.multiRemove([
         "access_token",
         "refresh_token",
@@ -186,8 +210,10 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
         "selectedClientId",
         "selectedSectorId",
         "selectedEquipmentId",
+        "username", // Adicionando username também
       ]);
 
+      console.log("[UserContext] Limpando estado da aplicação...");
       setIsAuthenticated(false);
       setUsername("");
       setClientId(null);
@@ -195,11 +221,16 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setEquipmentId(null);
       setAccount(null);
 
-      console.log("[UserContext] Logout realizado com sucesso");
+      console.log("[UserContext] === LOGOUT REALIZADO COM SUCESSO ===");
     } catch (error) {
       console.error("[UserContext] Erro durante logout:", error);
+      // Garante que o usuário seja deslogado mesmo se houver erro
       setIsAuthenticated(false);
       setAccount(null);
+      setUsername("");
+      setClientId(null);
+      setSectorId(null);
+      setEquipmentId(null);
     }
   };
 

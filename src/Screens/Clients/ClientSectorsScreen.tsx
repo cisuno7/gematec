@@ -52,7 +52,7 @@ const ClientSectorsScreen: React.FC<ClientSectorsScreenProps> = ({ route, naviga
         }
     };
 
-    if (!hasPermission("clients.list_sectors")) {
+    if (!hasPermission("list_sectors")) {
         return (
             <View style={styles.container}>
                 <Text style={styles.errorText}>Você não tem permissão para visualizar setores.</Text>
