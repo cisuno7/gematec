@@ -1,11 +1,12 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
-import { OfflineService } from './OfflineService';
+import OfflineService from './OfflineService';
 import { OfflineRequest } from '../Models/Offline';
 import { RoadmapService } from './RoadmapService';
 import ServiceOrderService from './ServiceOrderService';
 import PmocService from './PmocService';
 import TechnicalAssistanceService from './TechnicalAssistanceService';
+import ActivityService from './ActivityService';
 
 export class SyncService {
 
@@ -45,6 +46,19 @@ export class SyncService {
                         break;
                     case 'notes_update':
                         success = await this.handleNotesUpdateSync(request, token);
+                        break;
+                    case 'activity_answer':
+                        success = await this.handleActivityAnswerSync(request, token);
+                        break;
+                    case 'activity_status_update':
+                        success = await this.handleActivityStatusUpdateSync(request, token);
+                        break;
+                    case 'work_create':
+                    case 'work_update':
+                    case 'work_approve':
+                    case 'work_delete':
+                        // Ainda não implementado: sincronização de fila de Works
+                        success = true;
                         break;
                     default:
                         console.warn(`[SyncService] Tipo de requisição desconhecido: ${request.type}`);
@@ -171,6 +185,48 @@ export class SyncService {
             return true;
         } catch (error) {
             console.error('[SyncService] Erro ao sincronizar upload:', error);
+            return false;
+        }
+    }
+
+    private static async handleActivityAnswerSync(request: OfflineRequest, token: string): Promise<boolean> {
+        const payload = request.payload;
+        const context = payload.context;
+
+        try {
+            if (context.activityId && context.activityEquipmentId) {
+                // Resposta de questões de atividade
+                await ActivityService.postActivityAnswers(
+                    context.activityId,
+                    context.activityEquipmentId,
+                    payload.answers,
+                    token
+                );
+            }
+            return true;
+        } catch (error) {
+            console.error('[SyncService] Erro ao sincronizar resposta de atividade:', error);
+            return false;
+        }
+    }
+
+    private static async handleActivityStatusUpdateSync(request: OfflineRequest, token: string): Promise<boolean> {
+        const payload = request.payload;
+        const context = payload.context;
+
+        try {
+            if (context.activityId && context.activityEquipmentId) {
+                // Atualização de status de atividade
+                await ActivityService.patchActivityEquipment(
+                    context.activityId,
+                    context.activityEquipmentId,
+                    { status: payload.status },
+                    token
+                );
+            }
+            return true;
+        } catch (error) {
+            console.error('[SyncService] Erro ao sincronizar atualização de status de atividade:', error);
             return false;
         }
     }

@@ -5,8 +5,19 @@ import {
   DrawerContentScrollView,
   DrawerItemList,
 } from "@react-navigation/drawer";
-import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator } from "react-native";
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  Alert,
+  ActivityIndicator,
+  Dimensions,
+  Animated,
+  StatusBar
+} from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { FontAwesome } from "@expo/vector-icons";
 import HomeScreen from "../Screens/HomeScreen";
 import PersonalDataScreen from "../Screens/PersonalDataScreen";
 import ManualsScreen from "../Screens/ManualsScreen";
@@ -21,7 +32,7 @@ import ActivityHistoryScreen from "../Screens/Activity/ActivityHistoryScreen";
 import CreateEquipmentScreen from "../Screens/Equipaments/CreateEquipmentScreen";
 import { RootStackParamList } from "./AppRouter";
 import { useUser } from "../Context/UserContext";
-import { usePermissions } from "../Context/PermissionsContext"; // Certifique-se de que esta importação está correta
+import { usePermissions } from "../Context/PermissionsContext";
 import { useLanguage } from "../Context/LanguageContext";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import AuthService from "../Services/AuthService";
@@ -30,6 +41,7 @@ import { MenuItem } from "../Models/MenuItem";
 import PreferencesScreen from "../Screens/PreferencesScreen";
 
 const Drawer = createDrawerNavigator<RootStackParamList>();
+const { width } = Dimensions.get('window');
 
 // Mapeamento de slugs para dados do aplicativo
 const SLUG_TO_APP_DATA: { [key: string]: { titleKey: string; route?: keyof RootStackParamList; icon?: string; action?: 'logout' } } = {
@@ -70,14 +82,18 @@ const CustomDrawerHeader: React.FC = () => {
   const { username } = useUser();
   const { t } = useLanguage();
 
-  console.log("[CustomDrawerHeader] Username:", username);
-  console.log("[CustomDrawerHeader] Tradução welcome:", t('common.welcome'));
+  console.log("[CustomDrawerHeader] Username recebido:", username);
 
   return (
-    <View>
-      <Text style={styles.userName}>
-        {username ? `${t('common.welcome')}, ${username}` : t('common.welcome')}
-      </Text>
+    <View style={styles.headerContainer}>
+      <View style={styles.avatarContainer}>
+        <FontAwesome name="user-circle" size={60} color="#fff" />
+      </View>
+      <View style={styles.userInfo}>
+        <Text style={styles.welcomeText}>{t('common.welcome')}</Text>
+        <Text style={styles.userName}>{username || t('common.user')}</Text>
+      </View>
+      <View style={styles.headerDecoration} />
     </View>
   );
 };
@@ -89,9 +105,6 @@ const CustomDrawerContent = (props: any & { extraData: {} }) => {
   const [dynamicMenu, setDynamicMenu] = useState<MenuItem[]>([]);
   const [loadingMenu, setLoadingMenu] = useState(true);
   const [submenuStates, setSubmenuStates] = useState<{ [key: string]: boolean }>({});
-
-  // Função auxiliar para coletar permissões recursivamente
-
 
   // Função para processar e mapear os itens do menu do backend
   const processMenuItems = (items: MenuItem[]): MenuItem[] => {
@@ -140,7 +153,7 @@ const CustomDrawerContent = (props: any & { extraData: {} }) => {
         setLoadingMenu(true);
         const menuData = await MenuService.fetchDynamicMenu();
         console.log("[DrawerNavigation] Menu recebido do backend:", JSON.stringify(menuData, null, 2));
-        const processedData = processMenuItems(menuData); // Esta chamada agora também atualiza as permissões
+        const processedData = processMenuItems(menuData);
         console.log("[DrawerNavigation] Menu processado:", JSON.stringify(processedData, null, 2));
         setDynamicMenu(processedData);
       } catch (error: any) {
@@ -171,7 +184,6 @@ const CustomDrawerContent = (props: any & { extraData: {} }) => {
     console.log(`[DrawerNavigation] Renderizando item: ${item.slug}, permissões:`, item.required_permissions);
 
     // Verifica se o usuário tem ALGUMA das permissões necessárias para este item
-    // Se item.required_permissions for vazio, significa que nenhuma permissão específica é necessária, então é permitido.
     const hasRequiredPermissions = item.required_permissions
       ? item.required_permissions.some((perm) => hasPermission(perm))
       : true;
@@ -180,11 +192,11 @@ const CustomDrawerContent = (props: any & { extraData: {} }) => {
 
     if (!hasRequiredPermissions) {
       console.log(`[DrawerNavigation] Item ${item.slug} não será renderizado - sem permissões`);
-      return null; // Não renderiza o item se as permissões não forem atendidas
+      return null;
     }
 
     const isSubmenuExpanded = submenuStates[item.slug];
-    const paddingLeft = 16 + level * 16;
+    const paddingLeft = 20 + level * 20;
 
     if (item.items && item.items.length > 0) {
       return (
@@ -192,12 +204,21 @@ const CustomDrawerContent = (props: any & { extraData: {} }) => {
           <TouchableOpacity
             style={[styles.menuItem, { paddingLeft }]}
             onPress={() => toggleSubmenu(item.slug)}
+            activeOpacity={0.7}
           >
-            <View style={styles.menuMainText}>
-              {item.icon && <Ionicons name={item.icon as any} size={20} color="#333" style={styles.icon} />}
-              <Text style={styles.menuText}>{item.title}</Text>
+            <View style={styles.menuItemContent}>
+              <View style={styles.menuItemLeft}>
+                {item.icon && (
+                  <View style={styles.iconContainer}>
+                    <Ionicons name={item.icon as any} size={20} color="#007BFF" />
+                  </View>
+                )}
+                <Text style={styles.menuText}>{item.title}</Text>
+              </View>
+              <View style={[styles.expandIcon, isSubmenuExpanded && styles.expandIconRotated]}>
+                <Ionicons name="chevron-down" size={16} color="#007BFF" />
+              </View>
             </View>
-            <Text style={styles.expandText}>{isSubmenuExpanded ? "▲" : "▼"}</Text>
           </TouchableOpacity>
           {isSubmenuExpanded && (
             <View style={styles.submenu}>
@@ -219,15 +240,10 @@ const CustomDrawerContent = (props: any & { extraData: {} }) => {
               props.navigation.navigate(item.route as any, { clientId, sectorId });
             }
           } else if (item.route === "ActivityHistoryScreen") {
-            if (!equipmentId) {
-              Alert.alert("Erro", "Por favor, selecione um equipamento primeiro.");
-            } else {
-              props.navigation.navigate(item.route as any, { equipmentId });
-            }
+            props.navigation.navigate(item.route as any, {});
           } else if (item.route === "ListOrderServiceScreen") {
             props.navigation.navigate(item.route as any, { equipmentId: equipmentId || 0 });
-          }
-          else {
+          } else {
             console.log(`[DrawerNavigation] Navegando para: ${item.route}`);
             props.navigation.navigate(item.route as any, {});
           }
@@ -241,9 +257,18 @@ const CustomDrawerContent = (props: any & { extraData: {} }) => {
           key={item.slug}
           style={[styles.menuItem, { paddingLeft }]}
           onPress={onPressAction}
+          activeOpacity={0.7}
         >
-          {item.icon && <Ionicons name={item.icon as any} size={20} color="#333" style={styles.icon} />}
-          <Text style={styles.menuText}>{item.title}</Text>
+          <View style={styles.menuItemContent}>
+            <View style={styles.menuItemLeft}>
+              {item.icon && (
+                <View style={styles.iconContainer}>
+                  <Ionicons name={item.icon as any} size={20} color="#007BFF" />
+                </View>
+              )}
+              <Text style={styles.menuText}>{item.title}</Text>
+            </View>
+          </View>
         </TouchableOpacity>
       );
     }
@@ -252,54 +277,88 @@ const CustomDrawerContent = (props: any & { extraData: {} }) => {
   if (loadingMenu || permissionsLoading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#007BFF" />
-        <Text style={styles.loadingText}>
-          {permissionsLoading ? t('common.loading') + ' permissões...' : t('common.loading') + ' menu...'}
-        </Text>
+        <View style={styles.loadingContent}>
+          <ActivityIndicator size="large" color="#007BFF" />
+          <Text style={styles.loadingText}>
+            {permissionsLoading ? t('common.loading') + ' permissões...' : t('common.loading') + ' menu...'}
+          </Text>
+        </View>
       </View>
     );
   }
 
   return (
-    <DrawerContentScrollView {...props}>
-      <CustomDrawerHeader />
-      {/* Item Fixo: Meus Dados */}
-      {(() => {
-        const hasViewUserPermission = hasPermission("view_user");
-        console.log("[DrawerNavigation] Verificando permissão users.view_user:", hasViewUserPermission);
-        return hasViewUserPermission && (
+    <View style={styles.drawerContainer}>
+      <StatusBar backgroundColor="#2C3E50" barStyle="light-content" />
+      <DrawerContentScrollView
+        {...props}
+        style={styles.drawerScrollView}
+        showsVerticalScrollIndicator={false}
+      >
+        <CustomDrawerHeader />
+
+        <View style={styles.menuSection}>
+          {/* Item Fixo: Meus Dados */}
+          {(() => {
+            const hasViewUserPermission = hasPermission("view_user");
+            console.log("[DrawerNavigation] Verificando permissão users.view_user:", hasViewUserPermission);
+            return hasViewUserPermission && (
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => props.navigation.navigate("PersonalDataScreen" as any, {})}
+                activeOpacity={0.7}
+              >
+                <View style={styles.menuItemContent}>
+                  <View style={styles.menuItemLeft}>
+                    <View style={styles.iconContainer}>
+                      <Ionicons name="person" size={20} color="#007BFF" />
+                    </View>
+                    <Text style={styles.menuText}>{t('menu.personalData')}</Text>
+                  </View>
+                </View>
+              </TouchableOpacity>
+            );
+          })()}
+
+          {/* Menu Dinâmico */}
+          {dynamicMenu.map((item) => renderMenuItem(item))}
+
+          {/* Item Fixo: Preferências */}
           <TouchableOpacity
-            style={[styles.menuItem, { paddingLeft: 16 }]}
-            onPress={() => props.navigation.navigate("PersonalDataScreen" as any, {})}
+            style={styles.menuItem}
+            onPress={() => props.navigation.navigate("PreferencesScreen" as any, {})}
+            activeOpacity={0.7}
           >
-            <Ionicons name="person" size={20} color="#333" style={styles.icon} />
-            <Text style={styles.menuText}>{t('menu.personalData')}</Text>
+            <View style={styles.menuItemContent}>
+              <View style={styles.menuItemLeft}>
+                <View style={styles.iconContainer}>
+                  <Ionicons name="settings" size={20} color="#007BFF" />
+                </View>
+                <Text style={styles.menuText}>{t('menu.preferences')}</Text>
+              </View>
+            </View>
           </TouchableOpacity>
-        );
-      })()}
-      {dynamicMenu.map((item) => renderMenuItem(item))}
+        </View>
 
-      {/* Item Fixo: Preferências */}
-      <TouchableOpacity
-        style={[styles.menuItem, { paddingLeft: 16 }]}
-        onPress={() => props.navigation.navigate("PreferencesScreen" as any, {})}
-      >
-        <Ionicons name="settings" size={20} color="#333" style={styles.icon} />
-        <Text style={styles.menuText}>{t('menu.preferences')}</Text>
-      </TouchableOpacity>
-
-
-
-      {/* Item Fixo: Sair (sempre por último) */}
-      <TouchableOpacity
-        style={[styles.menuItem, styles.logoutButton, { paddingLeft: 16 }]}
-        onPress={handleLogout}
-      >
-        <Ionicons name="arrow-forward" size={20} color="#333" style={styles.icon} />
-        <Text style={styles.menuText}>{t('menu.logout')}</Text>
-      </TouchableOpacity>
-
-    </DrawerContentScrollView>
+        {/* Seção de Logout */}
+        <View style={styles.logoutSection}>
+          <TouchableOpacity
+            style={styles.logoutButton}
+            onPress={handleLogout}
+            activeOpacity={0.7}
+          >
+            <View style={styles.menuItemContent}>
+              <View style={styles.menuItemLeft}>
+                <View style={[styles.iconContainer, styles.logoutIconContainer]}>
+                  <Ionicons name="log-out" size={20} color="#E74C3C" />
+                </View>
+                <Text style={styles.logoutText}>{t('menu.logout')}</Text>
+              </View>
+            </View>
+          </TouchableOpacity>
+        </View>
+      </DrawerContentScrollView>
+    </View>
   );
 };
 
@@ -310,10 +369,21 @@ const DrawerNavigator: React.FC = () => {
       drawerContent={(props) => <CustomDrawerContent {...props} />}
       screenOptions={{
         headerShown: true,
-        headerStyle: { backgroundColor: "#007BFF" },
+        headerStyle: {
+          backgroundColor: "#2C3E50",
+          elevation: 0,
+          shadowOpacity: 0,
+        },
         headerTintColor: "#fff",
+        headerTitleStyle: {
+          fontWeight: '600',
+        },
+        drawerStyle: {
+          backgroundColor: '#F8F9FA',
+          width: width * 0.8,
+        },
         drawerActiveTintColor: "#007BFF",
-        drawerInactiveTintColor: "#333",
+        drawerInactiveTintColor: "#2C3E50",
       }}
     >
       <Drawer.Screen
@@ -331,75 +401,154 @@ const DrawerNavigator: React.FC = () => {
         component={PersonalDataScreen}
         options={{ title: t('menu.personalData') }}
       />
-
       <Drawer.Screen
-        name="PreferencesScreen" // Adicione a PreferencesScreen aqui também
+        name="PreferencesScreen"
         component={PreferencesScreen}
         options={{ title: t('menu.preferences') }}
       />
-
     </Drawer.Navigator>
   );
 };
 
 const styles = StyleSheet.create({
+  drawerContainer: {
+    flex: 1,
+    backgroundColor: '#F8F9FA',
+  },
+  drawerScrollView: {
+    flex: 1,
+  },
+  headerContainer: {
+    backgroundColor: '#2C3E50',
+    paddingTop: 40,
+    paddingBottom: 30,
+    paddingHorizontal: 20,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  avatarContainer: {
+    alignItems: 'center',
+    marginBottom: 15,
+  },
+  userInfo: {
+    alignItems: 'center',
+  },
+  welcomeText: {
+    color: '#BDC3C7',
+    fontSize: 14,
+    fontWeight: '500',
+    marginBottom: 5,
+  },
+  userName: {
+    color: '#FFFFFF',
+    fontSize: 20,
+    fontWeight: 'bold',
+    textAlign: 'center',
+  },
+  headerDecoration: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 4,
+    backgroundColor: '#007BFF',
+  },
+  menuSection: {
+    paddingTop: 20,
+    paddingBottom: 20,
+  },
   menuItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    padding: 16,
-    justifyContent: "space-between",
+    marginHorizontal: 10,
+    marginVertical: 2,
+    borderRadius: 12,
+    backgroundColor: 'transparent',
+  },
+  menuItemContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+  },
+  menuItemLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  iconContainer: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#E3F2FD',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  logoutIconContainer: {
+    backgroundColor: '#FFEBEE',
   },
   menuText: {
     fontSize: 16,
-    color: "#333",
+    color: '#2C3E50',
+    fontWeight: '500',
+    flex: 1,
   },
-  loadingText: {
-    marginTop: 10,
+  logoutText: {
     fontSize: 16,
-    color: "#666",
-  },
-  logoutButton: {
-    marginTop: 20,
-    borderTopWidth: 1,
-    borderTopColor: '#eee',
-  },
-  icon: {
-    marginRight: 10,
+    color: '#E74C3C',
+    fontWeight: '600',
+    flex: 1,
   },
   expandIcon: {
-    marginLeft: 8,
+    transform: [{ rotate: '0deg' }],
   },
-  expandText: {
-    fontSize: 16,
-    color: "#007BFF",
+  expandIconRotated: {
+    transform: [{ rotate: '180deg' }],
   },
-  menuMainText: {
-    flex: 1,
+  submenu: {
+    marginLeft: 20,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    marginHorizontal: 10,
+    marginTop: 2,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  logoutSection: {
+    marginTop: 'auto',
+    paddingTop: 20,
+    paddingBottom: 30,
+    borderTopWidth: 1,
+    borderTopColor: '#E9ECEF',
+    marginHorizontal: 10,
+  },
+  logoutButton: {
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
   },
   loadingContainer: {
     flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
+    backgroundColor: '#F8F9FA',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingContent: {
+    alignItems: 'center',
     padding: 20,
   },
-  userName: {
-    color: "#007BFF",
-    fontSize: 18,
-    fontWeight: "bold",
-    margin: 10,
-    textAlign: "center",
-  },
-  submenu: {
-    paddingLeft: 32,
-  },
-  submenuItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 8,
-  },
-  submenuText: {
-    fontSize: 14,
-    color: "#555",
+  loadingText: {
+    marginTop: 15,
+    fontSize: 16,
+    color: '#6C757D',
+    fontWeight: '500',
   },
 });
 

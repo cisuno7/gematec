@@ -17,6 +17,9 @@ const CustomPicker: React.FC<CustomPickerProps> = ({
     placeholder = "Selecione uma opção",
     style
 }) => {
+    // Filtrar o placeholder dos items para evitar duplicação
+    const validItems = items.filter(item => item.value !== "");
+
     return (
         <View style={[styles.container, style]}>
             <Picker
@@ -24,20 +27,21 @@ const CustomPicker: React.FC<CustomPickerProps> = ({
                 onValueChange={onValueChange}
                 style={styles.picker}
                 itemStyle={styles.pickerItem}
+                mode="dropdown"
             >
                 <Picker.Item
                     label={placeholder}
                     value=""
                     style={styles.pickerItem}
-                    color="#666"
+                    color="#333"
                 />
-                {items.map((item, index) => (
+                {validItems.map((item, index) => (
                     <Picker.Item
                         key={index}
                         label={item.label}
                         value={item.value}
                         style={styles.pickerItem}
-                        color="#333"
+                        color="#000"
                     />
                 ))}
             </Picker>
@@ -56,12 +60,13 @@ const styles = StyleSheet.create({
     picker: {
         height: 50,
         backgroundColor: '#fff',
-        color: '#333',
+        color: '#000',
+        fontSize: 14,
     },
     pickerItem: {
         backgroundColor: '#fff',
-        color: '#333',
-        fontSize: 16,
+        color: '#000',
+        fontSize: 14,
     },
 });
 

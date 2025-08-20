@@ -8,11 +8,11 @@ import {
     Alert,
     ScrollView,
 } from 'react-native';
-import { Picker } from '@react-native-picker/picker';
-import { DynamicField, EquipmentTemplate } from '../Models/EquipmentTemplate';
+import EquipmentTemplateModel, { DynamicField } from '../Models/EquipmentTemplate';
 import EquipmentService from '../Services/EquipamentService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import CustomPicker from './CustomPicker';
+import DatePickerInput from './DatePickerInput';
 
 interface DynamicEquipmentFieldsProps {
     onFieldsChange: (fields: { [key: string]: any }) => void;
@@ -23,7 +23,7 @@ const DynamicEquipmentFields: React.FC<DynamicEquipmentFieldsProps> = ({
     onFieldsChange,
     initialValues = {},
 }) => {
-    const [template, setTemplate] = useState<EquipmentTemplate | null>(null);
+    const [template, setTemplate] = useState<EquipmentTemplateModel | null>(null);
     const [loading, setLoading] = useState(true);
     const [fieldValues, setFieldValues] = useState<{ [key: string]: any }>(initialValues);
 
@@ -59,16 +59,20 @@ const DynamicEquipmentFields: React.FC<DynamicEquipmentFieldsProps> = ({
     };
 
     const renderField = (field: DynamicField) => {
-        const value = fieldValues[field.name] || field.default_value || '';
+        const fieldKey = field.key || field.name || '';
+        const fieldLabel = field.label || field.name || fieldKey;
+        const value = fieldValues[fieldKey] || field.default_value || '';
+        const justification = fieldValues[`${fieldKey}_justification`] || '';
 
         switch (field.type) {
             case 'text':
                 return (
                     <TextInput
                         style={[styles.input, field.required && styles.requiredInput]}
-                        placeholder={field.name}
+                        placeholder={fieldLabel}
+                        placeholderTextColor="#999"
                         value={value}
-                        onChangeText={(text) => handleFieldChange(field.name, text)}
+                        onChangeText={(text) => handleFieldChange(fieldKey, text)}
                     />
                 );
 
@@ -76,31 +80,94 @@ const DynamicEquipmentFields: React.FC<DynamicEquipmentFieldsProps> = ({
                 return (
                     <TextInput
                         style={[styles.input, field.required && styles.requiredInput]}
-                        placeholder={field.name}
+                        placeholder={fieldLabel}
+                        placeholderTextColor="#999"
                         value={value.toString()}
-                        onChangeText={(text) => handleFieldChange(field.name, parseFloat(text) || 0)}
+                        onChangeText={(text) => handleFieldChange(fieldKey, parseFloat(text) || 0)}
                         keyboardType="numeric"
                     />
+                );
+
+            case 'measure':
+                return (
+                    <View style={styles.measureContainer}>
+                        <TextInput
+                            style={[styles.measureInput, field.required && styles.requiredInput]}
+                            placeholder={fieldLabel}
+                            placeholderTextColor="#999"
+                            value={value.toString()}
+                            onChangeText={(text) => handleFieldChange(fieldKey, text)}
+                            keyboardType="numeric"
+                        />
+                        {field.unit && (
+                            <Text style={styles.measureUnit}>{field.unit}</Text>
+                        )}
+                    </View>
                 );
 
             case 'select':
                 return (
                     <CustomPicker
                         selectedValue={value}
-                        onValueChange={(itemValue) => handleFieldChange(field.name, itemValue)}
+                        onValueChange={(itemValue) => handleFieldChange(fieldKey, itemValue)}
                         items={field.options?.map((option) => ({ label: option, value: option })) || []}
-                        placeholder={`Selecione ${field.name}`}
-                        style={field.required && styles.requiredInput}
+                        placeholder={`Selecione ${fieldLabel}`}
+                        style={[styles.picker, field.required && styles.requiredInput]}
                     />
+                );
+
+            case 'radio':
+                return (
+                    <View style={styles.radioGroup}>
+                        {field.options?.map((option, idx) => (
+                            <TouchableOpacity
+                                key={idx}
+                                style={[styles.radioOption, value === option && styles.radioOptionSelected]}
+                                onPress={() => handleFieldChange(fieldKey, option)}
+                            >
+                                <Text style={value === option ? styles.radioTextSelected : styles.radioText}>
+                                    {option}
+                                </Text>
+                            </TouchableOpacity>
+                        ))}
+                    </View>
+                );
+
+            case 'radio_with_justification':
+                return (
+                    <View>
+                        <View style={styles.radioGroup}>
+                            {field.options?.map((option, idx) => (
+                                <TouchableOpacity
+                                    key={idx}
+                                    style={[styles.radioOption, value === option && styles.radioOptionSelected]}
+                                    onPress={() => handleFieldChange(fieldKey, option)}
+                                >
+                                    <Text style={value === option ? styles.radioTextSelected : styles.radioText}>
+                                        {option}
+                                    </Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+                        {/* Justificativa condicional */}
+                        {value === field.justification_target && (
+                            <TextInput
+                                style={[styles.input, styles.justificationInput]}
+                                placeholder="Justificativa"
+                                value={justification}
+                                onChangeText={(text) => handleFieldChange(`${fieldKey}_justification`, text)}
+                            />
+                        )}
+                    </View>
                 );
 
             case 'date':
                 return (
-                    <TextInput
-                        style={[styles.input, field.required && styles.requiredInput]}
-                        placeholder={`${field.name} (DD/MM/AAAA)`}
+                    <DatePickerInput
                         value={value}
-                        onChangeText={(text) => handleFieldChange(field.name, text)}
+                        onChangeText={(text) => handleFieldChange(fieldKey, text)}
+                        placeholder={`Selecione ${fieldLabel}`}
+                        style={[styles.input, field.required && styles.requiredInput]}
                     />
                 );
 
@@ -113,7 +180,7 @@ const DynamicEquipmentFields: React.FC<DynamicEquipmentFieldsProps> = ({
                                 value === true && styles.booleanButtonActive,
                                 field.required && styles.requiredInput,
                             ]}
-                            onPress={() => handleFieldChange(field.name, true)}
+                            onPress={() => handleFieldChange(fieldKey, true)}
                         >
                             <Text style={[styles.booleanButtonText, value === true && styles.booleanButtonTextActive]}>
                                 Sim
@@ -125,7 +192,7 @@ const DynamicEquipmentFields: React.FC<DynamicEquipmentFieldsProps> = ({
                                 value === false && styles.booleanButtonActive,
                                 field.required && styles.requiredInput,
                             ]}
-                            onPress={() => handleFieldChange(field.name, false)}
+                            onPress={() => handleFieldChange(fieldKey, false)}
                         >
                             <Text style={[styles.booleanButtonText, value === false && styles.booleanButtonTextActive]}>
                                 Não
@@ -138,9 +205,10 @@ const DynamicEquipmentFields: React.FC<DynamicEquipmentFieldsProps> = ({
                 return (
                     <TextInput
                         style={[styles.input, field.required && styles.requiredInput]}
-                        placeholder={field.name}
+                        placeholder={fieldLabel}
+                        placeholderTextColor="#999"
                         value={value}
-                        onChangeText={(text) => handleFieldChange(field.name, text)}
+                        onChangeText={(text) => handleFieldChange(fieldKey, text)}
                     />
                 );
         }
@@ -165,7 +233,7 @@ const DynamicEquipmentFields: React.FC<DynamicEquipmentFieldsProps> = ({
     return (
         <ScrollView style={styles.container}>
             <Text style={styles.sectionTitle}>Campos Dinâmicos</Text>
-            {template.getOrderedFields().map((field) => (
+            {template.getOrderedFields().map((field: DynamicField) => (
                 <View key={field.id} style={styles.fieldContainer}>
                     <Text style={styles.fieldLabel}>
                         {field.name}
@@ -219,11 +287,6 @@ const styles = StyleSheet.create({
         borderRadius: 8,
         backgroundColor: '#fff',
     },
-    picker: {
-        height: 50,
-        color: '#333',
-        backgroundColor: '#fff',
-    },
     booleanContainer: {
         flexDirection: 'row',
         gap: 8,
@@ -259,6 +322,61 @@ const styles = StyleSheet.create({
         color: '#dc3545',
         textAlign: 'center',
         marginVertical: 20,
+    },
+    measureContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+    },
+    measureInput: {
+        flex: 1,
+        borderWidth: 1,
+        borderColor: '#ddd',
+        borderRadius: 8,
+        padding: 12,
+        fontSize: 16,
+        backgroundColor: '#fff',
+        color: '#333',
+    },
+    measureUnit: {
+        fontSize: 16,
+        color: '#666',
+        fontWeight: '500',
+        minWidth: 40,
+    },
+    radioGroup: {
+        gap: 8,
+    },
+    radioOption: {
+        borderWidth: 1,
+        borderColor: '#ddd',
+        borderRadius: 8,
+        padding: 12,
+        backgroundColor: '#fff',
+    },
+    radioOptionSelected: {
+        backgroundColor: '#007BFF',
+        borderColor: '#007BFF',
+    },
+    radioText: {
+        fontSize: 16,
+        color: '#333',
+    },
+    radioTextSelected: {
+        fontSize: 16,
+        color: '#fff',
+        fontWeight: '500',
+    },
+    justificationInput: {
+        marginTop: 8,
+        borderColor: '#007BFF',
+    },
+    picker: {
+        borderWidth: 1,
+        borderColor: '#ddd',
+        borderRadius: 8,
+        backgroundColor: '#fff',
+        height: 50,
     },
 });
 

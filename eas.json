@@ -1,34 +1,18 @@
 {
   "cli": {
-    "version": ">= 16.6.2",
+    "version": ">= 16.17.4",
     "appVersionSource": "remote"
   },
   "build": {
     "development": {
-      "developmentClient": false,
-      "prebuildCommand": "npx expo prebuild --clean",
-      "distribution": "internal",
-      "android": {
-        "gradleCommand": ":app:assembleDebug",
-        "image": "latest",
-        "buildType": "apk"
-      }
+      "developmentClient": true,
+      "distribution": "internal"
     },
     "preview": {
-      "distribution": "internal",
-      "prebuildCommand": "npx expo prebuild --clean",
-      "android": {
-        "gradleCommand": ":app:assembleRelease",
-        "buildType": "apk"
-      }
+      "distribution": "internal"
     },
     "production": {
-      "prebuildCommand": "npx expo prebuild --clean",
-      "autoIncrement": true,
-      "android": {
-        "gradleCommand": ":app:assembleRelease",
-        "buildType": "app-bundle"
-      }
+      "autoIncrement": true
     }
   },
   "submit": {

@@ -14,6 +14,7 @@ import { RoadmapActivity } from '../../Models/Roadmap';
 import { RoadmapService } from '../../Services/RoadmapService';
 import OfflineService from '../../Services/OfflineService';
 import NetInfo from '@react-native-community/netinfo';
+import { useLanguage } from '../../Context/LanguageContext';
 
 interface RoadmapEquipmentScreenProps {
     navigation: any;
@@ -41,6 +42,7 @@ const RoadmapEquipmentScreen: React.FC<RoadmapEquipmentScreenProps> = ({
     route,
 }) => {
     const { activity } = route.params;
+    const { t } = useLanguage();
     const [equipment, setEquipment] = useState<Equipment[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
@@ -51,7 +53,7 @@ const RoadmapEquipmentScreen: React.FC<RoadmapEquipmentScreenProps> = ({
             const equipmentData = await RoadmapService.getActivityEquipment(activity.id);
             setEquipment(equipmentData);
         } catch (error: any) {
-            Alert.alert('Erro', error.message || 'Erro ao carregar equipamentos');
+            Alert.alert(t('common.error'), error.message || t('roadmapEquipment.loading'));
         } finally {
             setLoading(false);
         }
@@ -65,7 +67,7 @@ const RoadmapEquipmentScreen: React.FC<RoadmapEquipmentScreenProps> = ({
             await OfflineService.cacheData(cacheKey, null);
             await loadEquipment();
         } catch (error: any) {
-            Alert.alert('Erro', error.message || 'Erro ao atualizar equipamentos');
+            Alert.alert(t('common.error'), error.message || t('roadmapEquipment.loading'));
         } finally {
             setRefreshing(false);
         }
@@ -111,15 +113,18 @@ const RoadmapEquipmentScreen: React.FC<RoadmapEquipmentScreenProps> = ({
     };
 
     const handleEquipmentPress = (equipment: Equipment) => {
-        navigation.navigate('RoadmapEquipmentQuestionsScreen', {
-            activity,
-            equipment,
+        navigation.navigate('ActivityQuestionnaireScreen', {
+            activityId: activity.id,
+            activityEquipmentId: equipment.id,
+            equipmentId: equipment.id,
+            equipmentTag: equipment.name,
+            activityName: activity.title
         });
     };
 
     const renderEquipmentItem = ({ item }: { item: Equipment }) => {
         const progressPercentage = getProgressPercentage(item);
-        
+
         return (
             <TouchableOpacity
                 style={styles.equipmentItem}
@@ -184,7 +189,7 @@ const RoadmapEquipmentScreen: React.FC<RoadmapEquipmentScreenProps> = ({
         return (
             <View style={styles.loadingContainer}>
                 <ActivityIndicator size="large" color="#007BFF" />
-                <Text style={styles.loadingText}>Carregando equipamentos...</Text>
+                <Text style={styles.loadingText}>{t('roadmapEquipment.loading')}</Text>
             </View>
         );
     }
@@ -192,7 +197,7 @@ const RoadmapEquipmentScreen: React.FC<RoadmapEquipmentScreenProps> = ({
     return (
         <View style={styles.container}>
             <View style={styles.header}>
-                <Text style={styles.title}>Equipamentos</Text>
+                <Text style={styles.title}>{t('roadmapEquipment.title')}</Text>
                 <Text style={styles.subtitle}>{activity.title}</Text>
             </View>
 
@@ -212,9 +217,9 @@ const RoadmapEquipmentScreen: React.FC<RoadmapEquipmentScreenProps> = ({
                 ListEmptyComponent={
                     <View style={styles.emptyContainer}>
                         <Ionicons name="construct-outline" size={64} color="#6C757D" />
-                        <Text style={styles.emptyText}>Nenhum equipamento encontrado</Text>
+                        <Text style={styles.emptyText}>{t('roadmapEquipment.noneFound')}</Text>
                         <Text style={styles.emptySubtext}>
-                            Esta atividade não possui equipamentos associados
+                            {t('roadmapEquipment.noneAssociated')}
                         </Text>
                     </View>
                 }

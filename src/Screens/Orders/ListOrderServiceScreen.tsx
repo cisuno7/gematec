@@ -380,10 +380,12 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
         color: '#2c3e50',
         marginBottom: 4,
+        backgroundColor: 'transparent',
     },
     headerSubtitle: {
         fontSize: 16,
         color: '#7f8c8d',
+        backgroundColor: 'transparent',
     },
     refreshButton: {
         padding: 8,
@@ -412,6 +414,7 @@ const styles = StyleSheet.create({
         fontSize: 18,
         fontWeight: '600',
         color: '#2c3e50',
+        backgroundColor: 'transparent',
     },
     filtersContent: {
         paddingHorizontal: 20,
@@ -433,6 +436,7 @@ const styles = StyleSheet.create({
         height: 48,
         fontSize: 16,
         color: '#2c3e50',
+        backgroundColor: 'transparent',
     },
     statusFilters: {
         marginBottom: 8,
@@ -454,9 +458,11 @@ const styles = StyleSheet.create({
         fontSize: 14,
         color: '#6c757d',
         fontWeight: '500',
+        backgroundColor: 'transparent',
     },
     filterChipTextSelected: {
         color: '#fff',
+        backgroundColor: 'transparent',
     },
     listContainer: {
         paddingHorizontal: 16,
@@ -492,6 +498,7 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
         color: '#2c3e50',
         marginLeft: 8,
+        backgroundColor: 'transparent',
     },
     statusBadge: {
         flexDirection: 'row',
@@ -505,6 +512,7 @@ const styles = StyleSheet.create({
         fontSize: 12,
         fontWeight: '600',
         marginLeft: 4,
+        backgroundColor: 'transparent',
     },
     cardContent: {
         paddingHorizontal: 20,
@@ -520,6 +528,7 @@ const styles = StyleSheet.create({
         color: '#2c3e50',
         marginLeft: 12,
         flex: 1,
+        backgroundColor: 'transparent',
     },
     cardFooter: {
         paddingHorizontal: 20,
@@ -543,6 +552,7 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         color: '#007BFF',
         marginLeft: 8,
+        backgroundColor: 'transparent',
     },
     loadingContainer: {
         flex: 1,
@@ -553,6 +563,7 @@ const styles = StyleSheet.create({
         fontSize: 16,
         color: '#6c757d',
         marginTop: 16,
+        backgroundColor: 'transparent',
     },
     emptyContainer: {
         flex: 1,
@@ -566,12 +577,14 @@ const styles = StyleSheet.create({
         color: '#6c757d',
         marginTop: 16,
         marginBottom: 8,
+        backgroundColor: 'transparent',
     },
     emptySubtitle: {
         fontSize: 16,
         color: '#adb5bd',
         textAlign: 'center',
         paddingHorizontal: 40,
+        backgroundColor: 'transparent',
     },
     errorContainer: {
         flex: 1,
@@ -587,11 +600,13 @@ const styles = StyleSheet.create({
         marginTop: 16,
         marginBottom: 8,
         textAlign: 'center',
+        backgroundColor: 'transparent',
     },
     errorSubtitle: {
         fontSize: 16,
         color: '#6c757d',
         textAlign: 'center',
+        backgroundColor: 'transparent',
     },
     pagination: {
         flexDirection: 'row',
@@ -627,14 +642,17 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         color: '#007BFF',
         marginHorizontal: 4,
+        backgroundColor: 'transparent',
     },
     paginationButtonTextDisabled: {
         color: '#adb5bd',
+        backgroundColor: 'transparent',
     },
     paginationInfo: {
         fontSize: 14,
         color: '#6c757d',
         fontWeight: '500',
+        backgroundColor: 'transparent',
     },
 });
 

@@ -10,6 +10,8 @@ import {
     Dimensions,
     RefreshControl,
     TextInput,
+    Modal,
+    Alert,
 } from "react-native";
 import { RouteProp } from "@react-navigation/native";
 import { RootStackParamList } from "../../Routers/AppRouter";
@@ -18,6 +20,8 @@ import ActivityService from "../../Services/ActivityService";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { MaterialIcons, Ionicons } from "@expo/vector-icons";
 import { useLanguage } from "../../Context/LanguageContext";
+import WorkService from "../../Services/WorkService";
+import { usePermissions } from "../../Context/PermissionsContext";
 
 const { width } = Dimensions.get('window');
 
@@ -28,12 +32,13 @@ interface ActivityEquipmentListScreenProps {
 
 const ActivityEquipmentListScreen: React.FC<ActivityEquipmentListScreenProps> = ({ route, navigation }) => {
     const { t } = useLanguage();
+    const { hasPermission } = usePermissions();
 
     const STATUS_OPTIONS = [
-        { label: t('activityEquipmentList.all'), value: "all", icon: "list" },
-        { label: t('activityEquipmentList.created'), value: "created", icon: "add-circle" },
-        { label: t('activityEquipmentList.inProgress'), value: "in_progress", icon: "play-circle" },
-        { label: t('activityEquipmentList.completed'), value: "completed", icon: "checkmark-circle" },
+        { label: "Todos", value: "all", icon: "list" },
+        { label: "Pendente", value: "pending", icon: "pending" },
+        { label: "Aberto", value: "open", icon: "play-circle" },
+        { label: "Fechado", value: "closed", icon: "check" },
     ];
     const { activityId, activityName, clientId, clientName } = route.params;
     const [equipments, setEquipments] = useState<any[]>([]);
@@ -47,11 +52,19 @@ const ActivityEquipmentListScreen: React.FC<ActivityEquipmentListScreenProps> = 
     const [selectedSector, setSelectedSector] = useState<string>("all");
     const [subsectors, setSubsectors] = useState<any[]>([]);
     const [selectedSubsector, setSelectedSubsector] = useState<string>("all");
+    const [selectedEquipmentVersionIds, setSelectedEquipmentVersionIds] = useState<number[]>([]);
+    const [showCreateWorkModal, setShowCreateWorkModal] = useState<boolean>(false);
+    const [workName, setWorkName] = useState<string>("");
+    const [creatingWork, setCreatingWork] = useState<boolean>(false);
 
     useEffect(() => {
         fetchEquipments();
         fetchSectors();
     }, [selectedStatus, showOnlyStarted, selectedSector, selectedSubsector]);
+
+    useEffect(() => {
+        console.log('[ActivityEquipmentListScreen] Estado equipments mudou:', equipments.length, 'equipamentos');
+    }, [equipments]);
 
     const fetchEquipments = async () => {
         try {
@@ -63,17 +76,45 @@ const ActivityEquipmentListScreen: React.FC<ActivityEquipmentListScreenProps> = 
             console.log('[ActivityEquipmentListScreen] Buscando equipamentos da atividade:', activityId);
 
             const response = await ActivityService.fetchActivityEquipments(activityId, { token });
-            console.log('[ActivityEquipmentListScreen] Resposta recebida:', response);
+            console.log('[ActivityEquipmentListScreen] Resposta completa:', JSON.stringify(response, null, 2));
+            console.log('[ActivityEquipmentListScreen] Tipo da resposta:', typeof response);
+            console.log('[ActivityEquipmentListScreen] É array?', Array.isArray(response));
+            console.log('[ActivityEquipmentListScreen] Tem results?', response?.results);
+            console.log('[ActivityEquipmentListScreen] Tem data?', response?.data);
+            console.log('[ActivityEquipmentListScreen] Chaves da resposta:', Object.keys(response || {}));
 
-            let filteredEquipments = response.results || response || [];
+            // Verificar se a resposta tem a estrutura esperada
+            let filteredEquipments = [];
+            if (Array.isArray(response)) {
+                filteredEquipments = response;
+                console.log('[ActivityEquipmentListScreen] Usando resposta como array direto, quantidade:', response.length);
+            } else if (response && Array.isArray(response.results)) {
+                filteredEquipments = response.results;
+                console.log('[ActivityEquipmentListScreen] Usando response.results, quantidade:', response.results.length);
+            } else if (response && Array.isArray(response.data)) {
+                filteredEquipments = response.data;
+                console.log('[ActivityEquipmentListScreen] Usando response.data, quantidade:', response.data.length);
+            } else {
+                console.warn('[ActivityEquipmentListScreen] Estrutura de resposta inesperada:', response);
+                filteredEquipments = [];
+            }
+
+            console.log('[ActivityEquipmentListScreen] Equipamentos antes dos filtros:', filteredEquipments.length);
+            console.log('[ActivityEquipmentListScreen] Status selecionado:', selectedStatus);
+            console.log('[ActivityEquipmentListScreen] Mostrar apenas iniciados:', showOnlyStarted);
+            console.log('[ActivityEquipmentListScreen] Termo de busca:', searchTerm);
 
             // Aplicar filtros
             if (selectedStatus !== "all") {
+                const beforeFilter = filteredEquipments.length;
                 filteredEquipments = filteredEquipments.filter((eq: any) => eq.status === selectedStatus);
+                console.log('[ActivityEquipmentListScreen] Filtro de status aplicado:', beforeFilter, '->', filteredEquipments.length);
             }
 
             if (showOnlyStarted) {
-                filteredEquipments = filteredEquipments.filter((eq: any) => eq.status !== "created");
+                const beforeFilter = filteredEquipments.length;
+                filteredEquipments = filteredEquipments.filter((eq: any) => eq.status === "open" || eq.status === "pending");
+                console.log('[ActivityEquipmentListScreen] Filtro de iniciados aplicado:', beforeFilter, '->', filteredEquipments.length);
             }
 
             if (selectedSector !== "all") {
@@ -89,13 +130,21 @@ const ActivityEquipmentListScreen: React.FC<ActivityEquipmentListScreenProps> = 
             }
 
             if (searchTerm) {
+                const beforeFilter = filteredEquipments.length;
                 filteredEquipments = filteredEquipments.filter((eq: any) =>
+                    eq.equipment?.id?.toString().includes(searchTerm) ||
                     eq.equipment?.tag?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                    eq.equipment?.manufacturer?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                    eq.equipment?.brand?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
                     eq.equipment?.equipment_type?.name?.toLowerCase().includes(searchTerm.toLowerCase())
                 );
+                console.log('[ActivityEquipmentListScreen] Filtro de busca aplicado:', beforeFilter, '->', filteredEquipments.length, 'termo:', searchTerm);
             }
 
+
+
+            console.log('[ActivityEquipmentListScreen] Equipamentos filtrados finais:', filteredEquipments.length);
+            console.log('[ActivityEquipmentListScreen] Primeiro equipamento (exemplo):', filteredEquipments[0]);
+            console.log('[ActivityEquipmentListScreen] Definindo equipments com', filteredEquipments.length, 'itens');
             setEquipments(filteredEquipments);
         } catch (error: any) {
             console.error('[ActivityEquipmentListScreen] Erro ao buscar equipamentos:', error);
@@ -111,14 +160,39 @@ const ActivityEquipmentListScreen: React.FC<ActivityEquipmentListScreenProps> = 
             const token = await AsyncStorage.getItem("access_token");
             if (!token) return;
 
-            // Buscar setores do cliente
+            if (!clientId) {
+                console.warn('[ActivityEquipmentListScreen] clientId não fornecido, pulando busca de setores');
+                return;
+            }
+
+            console.log('[ActivityEquipmentListScreen] Buscando setores para clientId:', clientId);
+
+            // Buscar apenas setores pais (level 0) do cliente
             const response = await fetch(`${await import('../../config/apiConfig').then(m => m.buildApiUrlForAccount())}/clients/${clientId}/sectors`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
-            const data = await response.json();
+
+            console.log('[ActivityEquipmentListScreen] Status da resposta:', response.status);
+
+            if (!response.ok) {
+                console.warn('[ActivityEquipmentListScreen] Erro na resposta da API:', response.status, response.statusText);
+                return;
+            }
+
+            const text = await response.text();
+            console.log('[ActivityEquipmentListScreen] Resposta da API:', text.substring(0, 200) + '...');
+
+            if (!text) {
+                console.warn('[ActivityEquipmentListScreen] Resposta vazia da API');
+                return;
+            }
+
+            const data = JSON.parse(text);
+            console.log('[ActivityEquipmentListScreen] Setores encontrados:', data.results?.length || 0);
             setSectors(data.results || []);
         } catch (error) {
             console.error('[ActivityEquipmentListScreen] Erro ao buscar setores:', error);
+            setSectors([]);
         }
     };
 
@@ -130,41 +204,62 @@ const ActivityEquipmentListScreen: React.FC<ActivityEquipmentListScreenProps> = 
 
     const statusTranslations: { [key: string]: string } = {
         created: t('activityEquipmentList.created'),
-        in_progress: t('activityEquipmentList.inProgress'),
-        completed: t('activityEquipmentList.completed'),
+        pending: "Pendente",
+        open: "Aberto",
+        closed: "Fechado",
     };
 
     const statusColors: { [key: string]: string } = {
         created: "#6c757d",
-        in_progress: "#007bff",
-        completed: "#28a745",
+        pending: "#ffc107",
+        open: "#007bff",
+        closed: "#28a745",
     };
 
     const statusIcons: { [key: string]: string } = {
         created: "add-circle",
-        in_progress: "play-circle",
-        completed: "checkmark-circle",
+        pending: "pending",
+        open: "play-circle",
+        closed: "check-circle",
     };
 
     const renderEquipmentCard = ({ item }: { item: any }) => {
+        console.log('[ActivityEquipmentListScreen] Renderizando equipamento:', item.id, item.equipment?.tag);
         const equipment = item.equipment;
         const statusColor = statusColors[item.status] || "#6c757d";
         const statusIcon = statusIcons[item.status] || "help-circle";
+        const isSelected = selectedEquipmentVersionIds.includes(item.id);
 
         const navigateToDetails = () => {
             // Navegar para a tela de questionário da atividade
-            navigation.navigate("ActivityQuestionnaireScreen", {
+            const params = {
                 activityId: activityId,
                 activityEquipmentId: item.id,
                 equipmentId: equipment.id,
                 equipmentTag: equipment.tag,
                 activityName: activityName,
-            });
+            };
+
+            console.log('[ActivityEquipmentListScreen] Navegando para questionário com params:', params);
+
+            navigation.navigate("ActivityQuestionnaireScreen", params);
         };
 
         return (
             <TouchableOpacity style={styles.equipmentCard} onPress={navigateToDetails}>
                 <View style={styles.cardHeader}>
+                    <TouchableOpacity
+                        onPress={() => {
+                            setSelectedEquipmentVersionIds((prev) =>
+                                prev.includes(item.id)
+                                    ? prev.filter((id) => id !== item.id)
+                                    : [...prev, item.id]
+                            );
+                        }}
+                        style={{ marginRight: 12 }}
+                    >
+                        <MaterialIcons name={isSelected ? "check-box" : "check-box-outline-blank"} size={22} color={isSelected ? "#007bff" : "#666"} />
+                    </TouchableOpacity>
                     <View style={styles.equipmentInfo}>
                         <MaterialIcons name="build" size={20} color="#007bff" />
                         <Text style={styles.equipmentTag}>{equipment.tag}</Text>
@@ -179,16 +274,23 @@ const ActivityEquipmentListScreen: React.FC<ActivityEquipmentListScreenProps> = 
 
                 <View style={styles.cardContent}>
                     <View style={styles.infoRow}>
-                        <MaterialIcons name="business" size={16} color="#666" />
+                        <MaterialIcons name="person" size={16} color="#666" />
                         <Text style={styles.infoText}>
-                            {equipment.manufacturer?.name || "N/A"}
+                            {clientName || "N/A"}
                         </Text>
                     </View>
 
                     <View style={styles.infoRow}>
-                        <MaterialIcons name="location-on" size={16} color="#666" />
+                        <MaterialIcons name="build" size={16} color="#666" />
                         <Text style={styles.infoText}>
-                            {equipment.sector?.name || "N/A"}
+                            Tag: {equipment.tag || "N/A"}
+                        </Text>
+                    </View>
+
+                    <View style={styles.infoRow}>
+                        <MaterialIcons name="branding-watermark" size={16} color="#666" />
+                        <Text style={styles.infoText}>
+                            {equipment.brand?.name || equipment.manufacturer?.name || "N/A"}
                         </Text>
                     </View>
 
@@ -198,15 +300,6 @@ const ActivityEquipmentListScreen: React.FC<ActivityEquipmentListScreenProps> = 
                             {equipment.equipment_type?.name || "N/A"}
                         </Text>
                     </View>
-
-                    {equipment.subsector && (
-                        <View style={styles.infoRow}>
-                            <MaterialIcons name="subdirectory-arrow-right" size={16} color="#666" />
-                            <Text style={styles.infoText}>
-                                {equipment.subsector.name}
-                            </Text>
-                        </View>
-                    )}
                 </View>
 
                 <View style={styles.cardFooter}>
@@ -268,10 +361,13 @@ const ActivityEquipmentListScreen: React.FC<ActivityEquipmentListScreenProps> = 
                     <Text style={styles.filterLabel}>{t('activityEquipmentList.search')}</Text>
                     <TextInput
                         style={styles.searchInput}
-                        placeholder={t('activityEquipmentList.searchPlaceholder')}
+                        placeholder="Buscar por ID, Tag, Fabricante ou Tipo"
+                        placeholderTextColor="#999"
                         value={searchTerm}
                         onChangeText={setSearchTerm}
                     />
+
+
 
                     {/* Filtro de Status */}
                     <Text style={styles.filterLabel}>{t('activityEquipmentList.status')}</Text>
@@ -295,7 +391,7 @@ const ActivityEquipmentListScreen: React.FC<ActivityEquipmentListScreenProps> = 
                                     onPress={() => setSelectedSector("all")}
                                 >
                                     <Text style={[styles.filterChipText, selectedSector === "all" && styles.filterChipTextSelected]}>
-                                        {t('activityEquipmentList.all')}
+                                        Todos
                                     </Text>
                                 </TouchableOpacity>
                                 {sectors.map((sector) => (
@@ -348,25 +444,130 @@ const ActivityEquipmentListScreen: React.FC<ActivityEquipmentListScreenProps> = 
                                 <Text style={styles.retryButtonText}>{t('activityEquipmentList.retry')}</Text>
                             </TouchableOpacity>
                         </View>
-                    ) : equipments.length === 0 ? (
+                    ) : (() => {
+                        console.log('[ActivityEquipmentListScreen] Verificando condição de renderização: equipments.length =', equipments.length);
+                        return equipments.length === 0;
+                    })() ? (
                         <View style={styles.emptyContainer}>
                             <MaterialIcons name="build" size={64} color="#ccc" />
-                            <Text style={styles.emptyText}>{t('activityEquipmentList.noEquipmentsFound')}</Text>
+                            <Text style={styles.emptyText}>Nenhum equipamento vinculado</Text>
                             <Text style={styles.emptySubtext}>
-                                Tente ajustar os filtros ou verifique se há equipamentos vinculados
+                                Esta atividade ainda não possui equipamentos vinculados.{'\n'}
+                                Os equipamentos devem ser vinculados pelo administrador do sistema.
                             </Text>
+                            <View style={styles.emptyInfo}>
+                                <Text style={styles.emptyInfoText}>
+                                    • Atividade ID: {activityId}{'\n'}
+                                    • Nome: {activityName}{'\n'}
+                                    • Cliente: {clientName || 'N/A'}
+                                </Text>
+                            </View>
                         </View>
                     ) : (
-                        <FlatList
-                            data={equipments}
-                            keyExtractor={(item) => `${item.id}`}
-                            renderItem={renderEquipmentCard}
-                            scrollEnabled={false}
-                            showsVerticalScrollIndicator={false}
-                        />
+                        <>
+                            {console.log('[ActivityEquipmentListScreen] Renderizando FlatList com', equipments.length, 'equipamentos')}
+                            <FlatList
+                                data={equipments}
+                                keyExtractor={(item) => `${item.id}`}
+                                renderItem={renderEquipmentCard}
+                                scrollEnabled={false}
+                                showsVerticalScrollIndicator={false}
+                            />
+                        </>
                     )}
                 </View>
+
+                {/* Botão para Registrar Trabalho */}
+                {hasPermission('add_activitywork') && (
+                    <View style={{ marginHorizontal: 16, marginBottom: 24 }}>
+                        <TouchableOpacity
+                            style={[styles.registerButton, selectedEquipmentVersionIds.length === 0 && styles.registerButtonDisabled]}
+                            disabled={selectedEquipmentVersionIds.length === 0}
+                            onPress={() => setShowCreateWorkModal(true)}
+                        >
+                            <MaterialIcons name="assignment" size={20} color="#fff" />
+                            <Text style={styles.registerButtonText}>Registrar trabalho</Text>
+                        </TouchableOpacity>
+                    </View>
+                )}
+
+                {/* Botão para Listar Registros de Trabalho */}
+                {(hasPermission('list_activityworks') || hasPermission('list_me_activityworks')) && (
+                    <View style={{ marginHorizontal: 16, marginBottom: 24 }}>
+                        <TouchableOpacity
+                            style={styles.listButton}
+                            onPress={() => navigation.navigate('WorkListScreen', { activityId, activityName })}
+                        >
+                            <MaterialIcons name="list" size={20} color="#fff" />
+                            <Text style={styles.listButtonText}>Listar registros de trabalho</Text>
+                        </TouchableOpacity>
+                    </View>
+                )}
             </ScrollView>
+
+            {/* Modal de Criação de Trabalho */}
+            <Modal visible={showCreateWorkModal && hasPermission('add_activitywork')} transparent animationType="slide" onRequestClose={() => setShowCreateWorkModal(false)}>
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalContent}>
+                        <Text style={styles.modalTitle}>Criar Registro de Trabalho</Text>
+                        <Text style={styles.modalSubtitle}>Atividade: {activityName}</Text>
+                        <Text style={styles.inputLabel}>Nome do registro</Text>
+                        <TextInput
+                            style={styles.textInput}
+                            placeholder="Ex.: Trabalho diário"
+                            placeholderTextColor="#999"
+                            value={workName}
+                            onChangeText={setWorkName}
+                        />
+                        <Text style={[styles.inputLabel, { marginTop: 12 }]}>Equipamentos selecionados</Text>
+                        <View style={{ maxHeight: 160 }}>
+                            <ScrollView>
+                                {equipments
+                                    .filter((ev: any) => selectedEquipmentVersionIds.includes(ev.id))
+                                    .map((ev: any) => (
+                                        <View key={ev.id} style={styles.summaryRow}>
+                                            <MaterialIcons name="build" size={16} color="#666" />
+                                            <Text style={styles.summaryText}>#{ev.id} • {ev.equipment?.tag} • {ev.equipment?.equipment_type?.name}</Text>
+                                        </View>
+                                    ))}
+                            </ScrollView>
+                        </View>
+                        <View style={styles.modalActions}>
+                            <TouchableOpacity style={[styles.modalButton, styles.cancelButton]} onPress={() => setShowCreateWorkModal(false)} disabled={creatingWork}>
+                                <Text style={styles.cancelButtonText}>Cancelar</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={[styles.modalButton, styles.confirmButton]}
+                                onPress={async () => {
+                                    try {
+                                        if (!workName.trim()) {
+                                            Alert.alert("Nome obrigatório", "Informe um nome para o registro.");
+                                            return;
+                                        }
+                                        setCreatingWork(true);
+                                        const token = await AsyncStorage.getItem("access_token");
+                                        if (!token) throw new Error("Token não encontrado");
+                                        const created = await WorkService.create(activityId, {
+                                            name: workName.trim(),
+                                            activity_equipment_versions_ids: selectedEquipmentVersionIds,
+                                        }, token);
+                                        setShowCreateWorkModal(false);
+                                        setWorkName("");
+                                        navigation.navigate("WorkDetailScreen", { activityId, workId: created.id });
+                                    } catch (e: any) {
+                                        Alert.alert("Erro", e.message || "Falha ao criar registro de trabalho");
+                                    } finally {
+                                        setCreatingWork(false);
+                                    }
+                                }}
+                                disabled={creatingWork}
+                            >
+                                <Text style={styles.confirmButtonText}>{creatingWork ? "Salvando..." : "Salvar"}</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
         </View>
     );
 };
@@ -377,7 +578,7 @@ const styles = StyleSheet.create({
         backgroundColor: "#f8f9fa",
     },
     header: {
-        backgroundColor: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+        backgroundColor: "#667eea",
         paddingTop: 50,
         paddingBottom: 20,
         paddingHorizontal: 20,
@@ -440,6 +641,7 @@ const styles = StyleSheet.create({
         padding: 12,
         fontSize: 16,
         backgroundColor: "#fff",
+        color: "#000",
         marginBottom: 8,
     },
     filterScroll: {
@@ -540,6 +742,19 @@ const styles = StyleSheet.create({
         marginTop: 8,
         paddingHorizontal: 32,
     },
+    emptyInfo: {
+        marginTop: 16,
+        padding: 16,
+        backgroundColor: "#f8f9fa",
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: "#e9ecef",
+    },
+    emptyInfoText: {
+        fontSize: 12,
+        color: "#666",
+        lineHeight: 18,
+    },
     equipmentCard: {
         backgroundColor: "#fff",
         borderRadius: 12,
@@ -569,6 +784,7 @@ const styles = StyleSheet.create({
         fontWeight: "600",
         color: "#333",
         marginLeft: 8,
+        backgroundColor: "transparent",
     },
     statusBadge: {
         flexDirection: "row",
@@ -581,6 +797,7 @@ const styles = StyleSheet.create({
         fontSize: 12,
         fontWeight: "500",
         marginLeft: 4,
+        backgroundColor: "transparent",
     },
     cardContent: {
         padding: 16,
@@ -595,6 +812,7 @@ const styles = StyleSheet.create({
         color: "#333",
         marginLeft: 8,
         flex: 1,
+        backgroundColor: "transparent",
     },
     cardFooter: {
         padding: 16,
@@ -612,6 +830,112 @@ const styles = StyleSheet.create({
         color: "#007bff",
         fontWeight: "600",
         marginRight: 4,
+        backgroundColor: "transparent",
+    },
+    registerButton: {
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "center",
+        backgroundColor: "#28a745",
+        paddingVertical: 12,
+        borderRadius: 10,
+        gap: 8,
+    },
+    registerButtonDisabled: {
+        backgroundColor: "#98d4a5",
+    },
+    registerButtonText: {
+        color: "#fff",
+        fontSize: 16,
+        fontWeight: "600",
+    },
+    listButton: {
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "center",
+        backgroundColor: "#007bff",
+        paddingVertical: 12,
+        borderRadius: 10,
+        gap: 8,
+    },
+    listButtonText: {
+        color: "#fff",
+        fontSize: 16,
+        fontWeight: "600",
+    },
+    modalOverlay: {
+        flex: 1,
+        backgroundColor: "rgba(0,0,0,0.4)",
+        justifyContent: "center",
+        alignItems: "center",
+        padding: 16,
+    },
+    modalContent: {
+        width: "100%",
+        backgroundColor: "#fff",
+        borderRadius: 12,
+        padding: 16,
+    },
+    modalTitle: {
+        fontSize: 18,
+        fontWeight: "700",
+        color: "#333",
+        marginBottom: 4,
+    },
+    modalSubtitle: {
+        fontSize: 12,
+        color: "#666",
+        marginBottom: 12,
+    },
+    inputLabel: {
+        fontSize: 14,
+        fontWeight: "600",
+        color: "#333",
+        marginBottom: 6,
+    },
+    textInput: {
+        borderWidth: 1,
+        borderColor: "#ddd",
+        borderRadius: 8,
+        padding: 10,
+        backgroundColor: "#fff",
+        color: "#000",
+    },
+    summaryRow: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 8,
+        paddingVertical: 6,
+    },
+    summaryText: {
+        color: "#333",
+        fontSize: 14,
+    },
+    modalActions: {
+        flexDirection: "row",
+        gap: 8,
+        marginTop: 16,
+    },
+    modalButton: {
+        flex: 1,
+        alignItems: "center",
+        justifyContent: "center",
+        paddingVertical: 12,
+        borderRadius: 8,
+    },
+    cancelButton: {
+        backgroundColor: "#f1f3f5",
+    },
+    cancelButtonText: {
+        color: "#333",
+        fontWeight: "600",
+    },
+    confirmButton: {
+        backgroundColor: "#007bff",
+    },
+    confirmButtonText: {
+        color: "#fff",
+        fontWeight: "600",
     },
 });
 

@@ -76,6 +76,44 @@ export default class EquipmentService {
       throw new Error(error.response?.data?.message || "Falha ao buscar detalhes do equipamento.");
     }
   }
+
+  // Buscar equipamento por QR Code conforme documentação
+  static async fetchEquipmentByQRCode(qrCode: string, accessToken: string) {
+    try {
+      console.log("[EquipmentService] Buscando equipamento por QR Code:", qrCode);
+      console.log("[EquipmentService] Token disponível:", !!accessToken);
+
+      // Usar endpoint: /equipments/:uuid (o UUID é o código do QR code)
+      const url = `/equipments/${qrCode}`;
+      console.log("[EquipmentService] URL da requisição:", url);
+
+      const response = await apiClient.get(url, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+
+      console.log("[EquipmentService] Resposta do equipamento por QR Code:", response.data);
+      return response.data;
+    } catch (error: any) {
+      console.error("[EquipmentService] Erro ao buscar equipamento por QR Code:", error.message);
+      console.error("[EquipmentService] Status do erro:", error.response?.status);
+      console.error("[EquipmentService] Dados do erro:", error.response?.data);
+      console.error("[EquipmentService] URL que falhou:", error.config?.url);
+
+      if (error.response?.status === 404) {
+        throw new Error("Equipamento não encontrado. Verifique se o QR code é válido ou se o equipamento está cadastrado no sistema.");
+      } else if (error.response?.status === 401) {
+        throw new Error("Token de acesso inválido ou expirado. Faça login novamente.");
+      } else if (error.response?.status === 403) {
+        throw new Error("Sem permissão para acessar este equipamento.");
+      } else if (error.response?.status === 500) {
+        throw new Error("Erro interno do servidor. Tente novamente mais tarde.");
+      } else if (error.code === 'NETWORK_ERROR') {
+        throw new Error("Erro de conexão. Verifique sua internet.");
+      } else {
+        throw new Error(error.response?.data?.message || "Falha ao buscar equipamento por QR Code.");
+      }
+    }
+  }
   static async createEquipment(
     token: string,
     equipmentData: Partial<Equipment>
@@ -195,18 +233,32 @@ export default class EquipmentService {
   }
 
   static async getEquipmentTemplate(token: string): Promise<EquipmentTemplateModel> {
+    console.log("[EquipmentService] Buscando template de equipamentos (tentando plural -> singular)...");
+    // 1) Tenta endpoint plural (comportamento observado no servidor)
     try {
-      console.log("[EquipmentService] Buscando template de equipamentos...");
-      const response = await apiClient.get(`/equipment_templates/current`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+      const respPlural = await apiClient.get(`/equipment_templates/current`, {
+        headers: { Authorization: `Bearer ${token}` },
       });
-      console.log("[EquipmentService] Template de equipamentos recebido:", response.data);
-      return new EquipmentTemplateModel(response.data);
-    } catch (error: any) {
-      console.error("[EquipmentService] Erro ao buscar template de equipamentos:", error);
-      throw new Error(error.response?.data?.message || "Falha ao buscar template de equipamentos.");
+      console.log("[EquipmentService] Template (plural) recebido:", respPlural.data);
+      return new EquipmentTemplateModel(respPlural.data);
+    } catch (errPlural: any) {
+      if (errPlural?.response?.status !== 404) {
+        console.error("[EquipmentService] Falha no endpoint plural:", errPlural?.response?.status, errPlural?.message);
+      } else {
+        console.log("[EquipmentService] Endpoint plural 404. Tentando endpoint singular...");
+      }
+      // 2) Fallback: tenta endpoint singular (documentação)
+      try {
+        const respSingular = await apiClient.get(`/equipment_template/current`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        console.log("[EquipmentService] Template (singular) recebido:", respSingular.data);
+        return new EquipmentTemplateModel(respSingular.data);
+      } catch (errSingular: any) {
+        console.error("[EquipmentService] Falha no endpoint singular:", errSingular?.response?.status, errSingular?.message);
+        const serverMessage = errSingular?.response?.data?.message || errPlural?.response?.data?.message;
+        throw new Error(serverMessage || "Falha ao buscar template de equipamentos.");
+      }
     }
   }
 

@@ -55,7 +55,7 @@ const ClientSectorsScreen: React.FC<ClientSectorsScreenProps> = ({ route, naviga
     if (!hasPermission("list_sectors")) {
         return (
             <View style={styles.container}>
-                <Text style={styles.errorText}>Você não tem permissão para visualizar setores.</Text>
+                <Text style={styles.errorText}>{t('sectors.noPermission')}</Text>
             </View>
         );
     }
@@ -64,7 +64,7 @@ const ClientSectorsScreen: React.FC<ClientSectorsScreenProps> = ({ route, naviga
         return (
             <View style={styles.container}>
                 <ActivityIndicator size="large" color="#007BFF" />
-                <Text style={styles.loadingText}>Carregando setores...</Text>
+                <Text style={styles.loadingText}>{t('sectors.loading')}</Text>
             </View>
         );
     }
@@ -80,14 +80,14 @@ const ClientSectorsScreen: React.FC<ClientSectorsScreenProps> = ({ route, naviga
                     style={styles.actionButton}
                     onPress={() => navigation.navigate("EquipmentListScreen", { clientId, sectorId: item.id })}
                 >
-                    <Text style={styles.actionButtonText}>🔧 Listar Equipamentos</Text>
+                    <Text style={styles.actionButtonText}>{t('sectors.listEquipments')}</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
                     style={styles.actionButton}
                     onPress={() => navigation.navigate("SectorDetailScreen", { clientId, sectorId: item.id })}
                 >
-                    <Text style={styles.actionButtonText}>👁️ Visualizar Setor</Text>
+                    <Text style={styles.actionButtonText}>{t('sectors.viewSector')}</Text>
                 </TouchableOpacity>
             </View>
         </View>
@@ -96,7 +96,7 @@ const ClientSectorsScreen: React.FC<ClientSectorsScreenProps> = ({ route, naviga
     return (
         <View style={styles.container}>
             <View style={styles.header}>
-                <Text style={styles.title}>Setores Pais</Text>
+                <Text style={styles.title}>{t('sectors.rootTitle')}</Text>
             </View>
 
             {sectors.length > 0 ? (
@@ -108,7 +108,7 @@ const ClientSectorsScreen: React.FC<ClientSectorsScreenProps> = ({ route, naviga
                 />
             ) : (
                 <View style={styles.emptyContainer}>
-                    <Text style={styles.emptyText}>Nenhum setor pai encontrado para este cliente.</Text>
+                    <Text style={styles.emptyText}>{t('sectors.noRootFound')}</Text>
                 </View>
             )}
         </View>

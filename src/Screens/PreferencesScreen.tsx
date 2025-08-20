@@ -65,6 +65,16 @@ const PreferencesScreen: React.FC = () => {
         } catch (error: any) {
             console.error('Error saving preferences:', error);
 
+            // Se é um fallback aplicado com sucesso, trata como sucesso
+            if (error.isFallback && error.message === 'FALLBACK_APPLIED') {
+                Alert.alert(
+                    t('common.success'), 
+                    'Idioma alterado com sucesso! (Aplicado localmente pois o backend não suporta preferências)'
+                );
+                navigation.goBack();
+                return;
+            }
+
             // Mostrar erro mais detalhado
             let errorMessage = t('preferences.saveError');
             if (error.response?.status === 404) {
@@ -73,8 +83,8 @@ const PreferencesScreen: React.FC = () => {
                 errorMessage = 'Token de acesso inválido ou expirado. Faça login novamente.';
             } else if (error.response?.status === 403) {
                 errorMessage = 'Você não tem permissão para alterar preferências.';
-            } else if (error.response?.status === 405) {
-                errorMessage = 'Endpoint de preferências não implementado no backend. As preferências foram salvas localmente.';
+            } else if (error.response?.status === 405 || error.response?.status === 404 || error.response?.status === 501) {
+                errorMessage = 'Endpoint de preferências não implementado no backend. Preferência aplicada localmente.';
             } else if (error.response?.status) {
                 errorMessage = `Erro do servidor: ${error.response.status} - ${error.response.data?.detail || 'Erro desconhecido'}`;
             } else if (error.message) {

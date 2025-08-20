@@ -29,8 +29,8 @@ interface ActivityHistoryScreenProps {
 const STATUS_OPTIONS = [
     { label: "Todos", value: "all", icon: "list" },
     { label: "Aberto", value: "open", icon: "play-circle" },
-    { label: "Pendente", value: "pending", icon: "time" },
-    { label: "Fechado", value: "closed", icon: "checkmark-circle" },
+    { label: "Pendente", value: "pending", icon: "schedule" },
+    { label: "Fechado", value: "closed", icon: "check-circle" },
 ];
 
 const ACTIVITY_TYPES = [
@@ -39,6 +39,7 @@ const ACTIVITY_TYPES = [
     { label: "Ordem de Serviço", value: "service_order", icon: "assignment", color: "#28a745" },
     { label: "Assistência Técnica", value: "technical_assistance", icon: "support-agent", color: "#ffc107" },
     { label: "Instalação", value: "instalation", icon: "settings", color: "#dc3545" },
+    { label: "Atividade", value: "unknown", icon: "assignment", color: "#6c757d" },
 ];
 
 const ActivityHistoryScreen: React.FC<ActivityHistoryScreenProps> = ({ route, navigation }) => {
@@ -61,7 +62,15 @@ const ActivityHistoryScreen: React.FC<ActivityHistoryScreenProps> = ({ route, na
     const canViewServiceOrder = hasPermission("list_activities");
     const canViewTechnicalAssistance = hasPermission("list_activities");
 
+    console.log('[ActivityHistoryScreen] Permissões carregadas:', {
+        canViewPmoc,
+        canViewServiceOrder,
+        canViewTechnicalAssistance,
+        hasPermissionResult: hasPermission("list_activities")
+    });
+
     if (!canViewPmoc && !canViewServiceOrder && !canViewTechnicalAssistance) {
+        console.log('[ActivityHistoryScreen] Usuário sem permissões, mostrando tela de erro');
         return (
             <View style={styles.container}>
                 <View style={styles.errorContainer}>
@@ -101,13 +110,19 @@ const ActivityHistoryScreen: React.FC<ActivityHistoryScreenProps> = ({ route, na
                 console.log('[ActivityHistoryScreen] Parâmetros para equipamento:', params);
                 console.log('[ActivityHistoryScreen] Equipment ID:', equipmentId);
 
-                const response = await activityService.fetchActivities(equipmentId, params);
-                console.log('[ActivityHistoryScreen] Resposta recebida:', response);
-                console.log('[ActivityHistoryScreen] Número de atividades:', response.results?.length || 0);
-                console.log('[ActivityHistoryScreen] Total de atividades:', response.count || 0);
+                try {
+                    const response = await activityService.fetchActivities(equipmentId, params);
+                    console.log('[ActivityHistoryScreen] Resposta recebida:', response);
+                    console.log('[ActivityHistoryScreen] Número de atividades:', response.results?.length || 0);
+                    console.log('[ActivityHistoryScreen] Total de atividades:', response.count || 0);
 
-                setActivities(response.results || []);
-                setTotalPages(Math.ceil(response.count / perPage) || 1);
+                    setActivities(response.results || []);
+                    setTotalPages(Math.ceil(response.count / perPage) || 1);
+                } catch (error) {
+                    console.error('[ActivityHistoryScreen] Erro ao buscar atividades do equipamento:', error);
+                    setActivities([]);
+                    setTotalPages(1);
+                }
             } else {
                 // Listagem geral de atividades
                 const params = {
@@ -120,7 +135,34 @@ const ActivityHistoryScreen: React.FC<ActivityHistoryScreenProps> = ({ route, na
                 console.log('[ActivityHistoryScreen] Parâmetros gerais:', params);
                 const response = await ActivityService.fetchAllActivities(params);
                 console.log('[ActivityHistoryScreen] Resposta geral recebida:', response);
-                setActivities(response.results || []);
+                console.log('[ActivityHistoryScreen] Atividades recebidas:', response.results);
+                console.log('[ActivityHistoryScreen] Total de atividades:', response.count);
+
+                if (response.results && response.results.length > 0) {
+                    console.log('[ActivityHistoryScreen] Primeira atividade:', response.results[0]);
+                    console.log('[ActivityHistoryScreen] Tipos de atividades:', response.results.map(a => a.type));
+                    console.log('[ActivityHistoryScreen] Estrutura completa da primeira atividade:', JSON.stringify(response.results[0], null, 2));
+                }
+
+                console.log('[ActivityHistoryScreen] Definindo atividades no estado:', response.results?.length || 0);
+
+                // Verificar se as atividades têm os campos necessários
+                if (response.results && response.results.length > 0) {
+                    const validActivities = response.results.map((activity: any) => ({
+                        ...activity,
+                        id: activity.id || Math.random(),
+                        name: activity.name || activity.title || 'Atividade sem nome',
+                        type: activity.activity_type?.name || activity.type || 'unknown',
+                        status: activity.status || 'pending',
+                        created_at: activity.start_date || activity.created_at || new Date().toISOString(),
+                        end_date: activity.end_date || null
+                    }));
+                    console.log('[ActivityHistoryScreen] Atividades validadas:', validActivities.length);
+                    setActivities(validActivities);
+                } else {
+                    setActivities([]);
+                }
+
                 setTotalPages(Math.ceil(response.count / perPage) || 1);
             }
         } catch (error: any) {
@@ -137,6 +179,10 @@ const ActivityHistoryScreen: React.FC<ActivityHistoryScreenProps> = ({ route, na
                 errorMessage = "Endpoint de atividades não encontrado. Verifique se o backend está configurado corretamente.";
             } else if (error.response?.status === 500) {
                 errorMessage = "Erro interno no servidor ao buscar atividades. Tente novamente ou contate o suporte.";
+            } else if (error.response?.status === 401) {
+                errorMessage = "Token de acesso inválido ou expirado.";
+            } else if (error.response?.status === 403) {
+                errorMessage = "Sem permissão para acessar atividades.";
             } else if (error.message) {
                 errorMessage = error.message;
             }
@@ -169,21 +215,53 @@ const ActivityHistoryScreen: React.FC<ActivityHistoryScreenProps> = ({ route, na
 
     const statusIcons: { [key: string]: string } = {
         open: "play-circle",
-        closed: "checkmark-circle",
-        pending: "time",
+        closed: "check-circle",
+        pending: "schedule",
     };
 
     const getActivityTypeInfo = (type: string) => {
-        return ACTIVITY_TYPES.find(t => t.value === type) || ACTIVITY_TYPES[0];
+        const found = ACTIVITY_TYPES.find(t => t.value === type);
+        return found || ACTIVITY_TYPES[0];
+    };
+
+    // Função para formatar data em DD/MM/YYYY de forma robusta
+    const formatDate = (dateString: string | null | undefined): string => {
+        if (!dateString) return '';
+
+        try {
+            // Já está em DD/MM/YYYY
+            if (typeof dateString === 'string' && /^\d{2}\/\d{2}\/\d{4}$/.test(dateString)) {
+                return dateString;
+            }
+
+            // ISO: YYYY-MM-DD ou YYYY-MM-DDTHH:mm:ssZ
+            const isoMatch = typeof dateString === 'string' && dateString.match(/^(\d{4})-(\d{2})-(\d{2})/);
+            if (isoMatch) {
+                const [, y, m, d] = isoMatch as unknown as [string, string, string, string];
+                return `${d}/${m}/${y}`;
+            }
+
+            // Fallback com Date
+            const date = new Date(dateString);
+            if (isNaN(date.getTime())) {
+                console.warn('[ActivityHistoryScreen] Data inválida:', dateString);
+                return '';
+            }
+            const d = String(date.getDate()).padStart(2, '0');
+            const m = String(date.getMonth() + 1).padStart(2, '0');
+            const y = String(date.getFullYear());
+            return `${d}/${m}/${y}`;
+        } catch (error) {
+            console.warn('[ActivityHistoryScreen] Erro ao formatar data:', dateString, error);
+            return '';
+        }
     };
 
     const renderActivityCard = ({ item }: { item: any }) => {
-        const isPmoc = item.type === "pmoc" && canViewPmoc;
-        const isServiceOrder = item.type === "service_order" && canViewServiceOrder;
-        const isTechnicalAssistance = item.type === "technical_assistance" && canViewTechnicalAssistance;
-        const isInstalation = item.type === "instalation";
+        // Verificar se o usuário tem permissão geral para listar atividades
+        const hasGeneralPermission = canViewPmoc || canViewServiceOrder || canViewTechnicalAssistance;
 
-        if (!isPmoc && !isServiceOrder && !isTechnicalAssistance && !isInstalation) {
+        if (!hasGeneralPermission) {
             return null;
         }
 
@@ -197,7 +275,9 @@ const ActivityHistoryScreen: React.FC<ActivityHistoryScreenProps> = ({ route, na
             });
         };
 
-        const activityTypeInfo = getActivityTypeInfo(item.type);
+        // Verificar se o tipo da atividade existe, caso contrário usar um tipo padrão
+        const activityType = item.type || item.activity_type || 'unknown';
+        const activityTypeInfo = getActivityTypeInfo(activityType);
         const statusColor = statusColors[item.status] || "#6c757d";
         const statusIcon = statusIcons[item.status] || "help-circle";
 
@@ -223,6 +303,14 @@ const ActivityHistoryScreen: React.FC<ActivityHistoryScreenProps> = ({ route, na
                 </View>
 
                 <View style={styles.cardContent}>
+                    {/* Título da Atividade */}
+                    <View style={styles.infoRow}>
+                        <MaterialIcons name="title" size={16} color="#666" />
+                        <Text style={[styles.infoText, styles.activityTitle]}>
+                            {item.name || item.title || `${t('activity.title')} ${item.id}`}
+                        </Text>
+                    </View>
+
                     <View style={styles.infoRow}>
                         <MaterialIcons name="business" size={16} color="#666" />
                         <Text style={styles.infoText}>
@@ -230,18 +318,20 @@ const ActivityHistoryScreen: React.FC<ActivityHistoryScreenProps> = ({ route, na
                         </Text>
                     </View>
 
+                    {/* Data de Início e Fim */}
                     <View style={styles.infoRow}>
                         <MaterialIcons name="event" size={16} color="#666" />
                         <Text style={styles.infoText}>
-                            {new Date(item.created_at).toLocaleDateString('pt-BR')}
+                            {t('activityHistory.start')}: {formatDate(item.start_date || item.created_at)}
+                            {(item.end_date || item.closed_at) && ` | ${t('activityHistory.end')}: ${formatDate(item.end_date || item.closed_at)}`}
                         </Text>
                     </View>
 
-                    {item.deadline && (
+                    {item.deadline && formatDate(item.deadline) && (
                         <View style={styles.infoRow}>
                             <MaterialIcons name="schedule" size={16} color="#666" />
                             <Text style={styles.infoText}>
-                                Prazo: {new Date(item.deadline).toLocaleDateString('pt-BR')}
+                                {t('activityHistory.deadline')}: {formatDate(item.deadline)}
                             </Text>
                         </View>
                     )}
@@ -250,7 +340,7 @@ const ActivityHistoryScreen: React.FC<ActivityHistoryScreenProps> = ({ route, na
                         <View style={styles.infoRow}>
                             <MaterialIcons name="build" size={16} color="#666" />
                             <Text style={styles.infoText}>
-                                {item.equipment.equipment_type?.name || "Equipamento"}
+                                {item.equipment.equipment_type?.name || t('equipment.title')}
                             </Text>
                         </View>
                     )}
@@ -258,8 +348,15 @@ const ActivityHistoryScreen: React.FC<ActivityHistoryScreenProps> = ({ route, na
 
                 <View style={styles.cardFooter}>
                     <TouchableOpacity style={styles.detailsButton} onPress={navigateToDetails}>
-                        <Text style={styles.detailsButtonText}>Ver Detalhes</Text>
+                        <Text style={styles.detailsButtonText}>{t('activityHistory.viewDetails')}</Text>
                         <MaterialIcons name="arrow-forward" size={16} color="#007bff" />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        style={styles.detailsButton}
+                        onPress={() => navigation.navigate("WorkListScreen", { activityId: item.id, activityName: item.name || item.title || "Atividade" })}
+                    >
+                        <Text style={styles.detailsButtonText}>{t('activityHistory.viewWork')}</Text>
+                        <MaterialIcons name="assignment" size={16} color="#007bff" />
                     </TouchableOpacity>
                 </View>
             </TouchableOpacity>
@@ -310,10 +407,10 @@ const ActivityHistoryScreen: React.FC<ActivityHistoryScreenProps> = ({ route, na
                 </TouchableOpacity>
                 <View style={styles.headerContent}>
                     <Text style={styles.headerTitle}>
-                        {equipmentId ? "Histórico de Atividades" : "Atividades"}
+                        {equipmentId ? t('activityHistory.title') : t('activity.title')}
                     </Text>
                     <Text style={styles.headerSubtitle}>
-                        {equipmentId ? "Equipamento específico" : "Todas as atividades"}
+                        {equipmentId ? t('activityHistory.headerSubtitleEquipment') : t('activityHistory.headerSubtitleAll')}
                     </Text>
                 </View>
             </View>
@@ -326,10 +423,10 @@ const ActivityHistoryScreen: React.FC<ActivityHistoryScreenProps> = ({ route, na
             >
                 {/* Filtros */}
                 <View style={styles.filtersSection}>
-                    <Text style={styles.sectionTitle}>Filtros</Text>
+                    <Text style={styles.sectionTitle}>{t('activityHistory.filters')}</Text>
 
                     {/* Filtro de Tipo */}
-                    <Text style={styles.filterLabel}>Tipo de Atividade</Text>
+                    <Text style={styles.filterLabel}>{t('activityHistory.activityType')}</Text>
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
                         {ACTIVITY_TYPES.map((type) => (
                             renderFilterChip(
@@ -344,7 +441,7 @@ const ActivityHistoryScreen: React.FC<ActivityHistoryScreenProps> = ({ route, na
                     </ScrollView>
 
                     {/* Filtro de Status */}
-                    <Text style={styles.filterLabel}>Status</Text>
+                    <Text style={styles.filterLabel}>{t('activityHistory.status')}</Text>
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
                         {STATUS_OPTIONS.map((status) => (
                             renderFilterChip(
@@ -359,29 +456,30 @@ const ActivityHistoryScreen: React.FC<ActivityHistoryScreenProps> = ({ route, na
                 {/* Lista de Atividades */}
                 <View style={styles.activitiesSection}>
                     <Text style={styles.sectionTitle}>
-                        Atividades ({activities.length})
+                        {t('activity.title')} ({activities.length})
                     </Text>
 
                     {loading && !refreshing ? (
                         <View style={styles.loadingContainer}>
                             <ActivityIndicator size="large" color="#007bff" />
-                            <Text style={styles.loadingText}>Carregando atividades...</Text>
+                            <Text style={styles.loadingText}>{t('activityHistory.loading')}</Text>
                         </View>
                     ) : error ? (
                         <View style={styles.errorContainer}>
                             <MaterialIcons name="error-outline" size={48} color="#dc3545" />
                             <Text style={styles.errorText}>{error}</Text>
                             <TouchableOpacity style={styles.retryButton} onPress={fetchActivities}>
-                                <Text style={styles.retryButtonText}>Tentar Novamente</Text>
+                                <Text style={styles.retryButtonText}>{t('common.retry')}</Text>
                             </TouchableOpacity>
                         </View>
                     ) : activities.length === 0 ? (
                         <View style={styles.emptyContainer}>
                             <MaterialIcons name="assignment" size={64} color="#ccc" />
-                            <Text style={styles.emptyText}>Nenhuma atividade encontrada</Text>
+                            <Text style={styles.emptyText}>{t('activityHistory.noneFound')}</Text>
                             <Text style={styles.emptySubtext}>
-                                Tente ajustar os filtros ou verifique se há atividades disponíveis
+                                {t('activityHistory.tryAdjustFilters')}
                             </Text>
+
                         </View>
                     ) : (
                         <FlatList
@@ -390,6 +488,11 @@ const ActivityHistoryScreen: React.FC<ActivityHistoryScreenProps> = ({ route, na
                             renderItem={renderActivityCard}
                             scrollEnabled={false}
                             showsVerticalScrollIndicator={false}
+                            ListEmptyComponent={() => (
+                                <View style={styles.emptyContainer}>
+                                    <Text style={styles.emptyText}>Nenhuma atividade encontrada</Text>
+                                </View>
+                            )}
                         />
                     )}
                 </View>
@@ -437,7 +540,7 @@ const styles = StyleSheet.create({
         backgroundColor: "#f8f9fa",
     },
     header: {
-        backgroundColor: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+        backgroundColor: "#667eea",
         paddingTop: 50,
         paddingBottom: 20,
         paddingHorizontal: 20,
@@ -461,10 +564,12 @@ const styles = StyleSheet.create({
         fontWeight: "bold",
         color: "#fff",
         marginBottom: 4,
+        backgroundColor: "transparent",
     },
     headerSubtitle: {
         fontSize: 14,
         color: "rgba(255,255,255,0.8)",
+        backgroundColor: "transparent",
     },
     content: {
         flex: 1,
@@ -485,6 +590,7 @@ const styles = StyleSheet.create({
         fontWeight: "600",
         color: "#333",
         marginBottom: 16,
+        backgroundColor: "transparent",
     },
     filterLabel: {
         fontSize: 14,
@@ -492,6 +598,7 @@ const styles = StyleSheet.create({
         color: "#666",
         marginBottom: 8,
         marginTop: 16,
+        backgroundColor: "transparent",
     },
     filterScroll: {
         marginBottom: 8,
@@ -515,9 +622,11 @@ const styles = StyleSheet.create({
         color: "#007bff",
         marginLeft: 4,
         fontWeight: "500",
+        backgroundColor: "transparent",
     },
     filterChipTextSelected: {
         color: "#fff",
+        backgroundColor: "transparent",
     },
     activitiesSection: {
         margin: 16,
@@ -531,6 +640,7 @@ const styles = StyleSheet.create({
         marginTop: 16,
         fontSize: 16,
         color: "#666",
+        backgroundColor: "transparent",
     },
     errorContainer: {
         alignItems: "center",
@@ -542,6 +652,7 @@ const styles = StyleSheet.create({
         textAlign: "center",
         marginTop: 16,
         marginBottom: 16,
+        backgroundColor: "transparent",
     },
     retryButton: {
         backgroundColor: "#007bff",
@@ -553,6 +664,7 @@ const styles = StyleSheet.create({
         color: "#fff",
         fontSize: 14,
         fontWeight: "600",
+        backgroundColor: "transparent",
     },
     emptyContainer: {
         alignItems: "center",
@@ -563,6 +675,7 @@ const styles = StyleSheet.create({
         color: "#666",
         marginTop: 16,
         fontWeight: "600",
+        backgroundColor: "transparent",
     },
     emptySubtext: {
         fontSize: 14,
@@ -570,6 +683,7 @@ const styles = StyleSheet.create({
         textAlign: "center",
         marginTop: 8,
         paddingHorizontal: 32,
+        backgroundColor: "transparent",
     },
     activityCard: {
         backgroundColor: "#fff",
@@ -598,6 +712,8 @@ const styles = StyleSheet.create({
         fontSize: 14,
         fontWeight: "600",
         marginLeft: 8,
+        color: "#333",
+        backgroundColor: "transparent",
     },
     statusBadge: {
         flexDirection: "row",
@@ -610,6 +726,7 @@ const styles = StyleSheet.create({
         fontSize: 12,
         fontWeight: "500",
         marginLeft: 4,
+        backgroundColor: "transparent",
     },
     cardContent: {
         padding: 16,
@@ -624,10 +741,18 @@ const styles = StyleSheet.create({
         color: "#333",
         marginLeft: 8,
         flex: 1,
+        backgroundColor: "transparent",
+    },
+    activityTitle: {
+        fontSize: 16,
+        fontWeight: "600",
+        color: "#333",
+        marginBottom: 4,
     },
     activityText: {
         fontSize: 14,
         color: "#333",
+        backgroundColor: "transparent",
     },
     cardFooter: {
         padding: 16,
@@ -645,6 +770,7 @@ const styles = StyleSheet.create({
         color: "#007bff",
         fontWeight: "600",
         marginRight: 4,
+        backgroundColor: "transparent",
     },
     paginationContainer: {
         flexDirection: "row",
@@ -675,9 +801,11 @@ const styles = StyleSheet.create({
         fontSize: 14,
         color: "#007bff",
         fontWeight: "500",
+        backgroundColor: "transparent",
     },
     paginationButtonTextDisabled: {
         color: "#ccc",
+        backgroundColor: "transparent",
     },
     pageInfo: {
         alignItems: "center",
@@ -686,7 +814,9 @@ const styles = StyleSheet.create({
         fontSize: 14,
         color: "#666",
         fontWeight: "500",
+        backgroundColor: "transparent",
     },
+
 });
 
 export default ActivityHistoryScreen;

@@ -111,7 +111,7 @@ const ClientDetailScreen: React.FC<ClientDetailScreenProps> = ({ route, navigati
     if (!hasPermission("view_client")) {
         return (
             <View style={styles.container}>
-                <Text style={styles.errorText}>Você não tem permissão para visualizar clientes.</Text>
+                <Text style={styles.errorText}>{t('clients.noPermission')}</Text>
             </View>
         );
     }
@@ -120,7 +120,7 @@ const ClientDetailScreen: React.FC<ClientDetailScreenProps> = ({ route, navigati
         return (
             <View style={styles.container}>
                 <ActivityIndicator size="large" color="#007BFF" />
-                <Text style={styles.loadingText}>Carregando detalhes do cliente...</Text>
+                <Text style={styles.loadingText}>{t('clientDetails.loading')}</Text>
             </View>
         );
     }
@@ -128,7 +128,7 @@ const ClientDetailScreen: React.FC<ClientDetailScreenProps> = ({ route, navigati
     if (!client) {
         return (
             <View style={styles.container}>
-                <Text style={styles.errorText}>Cliente não encontrado.</Text>
+                <Text style={styles.errorText}>{t('clientDetails.notFound')}</Text>
             </View>
         );
     }
@@ -198,28 +198,8 @@ const ClientDetailScreen: React.FC<ClientDetailScreenProps> = ({ route, navigati
             return "N/A";
         }
 
-        // Converter dias para formato legível
-        let result: string;
-
-        if (frequencyInDays === 1) {
-            result = "Diário";
-        } else if (frequencyInDays === 7) {
-            result = "Semanal";
-        } else if (frequencyInDays === 15) {
-            result = "Quinzenal";
-        } else if (frequencyInDays === 30) {
-            result = "Mensal";
-        } else if (frequencyInDays === 60) {
-            result = "Bimestral";
-        } else if (frequencyInDays === 90) {
-            result = "Trimestral";
-        } else if (frequencyInDays === 180) {
-            result = "Semestral";
-        } else if (frequencyInDays === 365) {
-            result = "Anual";
-        } else {
-            result = `A cada ${frequencyInDays} dias`;
-        }
+        // Sempre mostrar "A cada X dias" conforme solicitado no tarefas.md
+        const result = `A cada ${frequencyInDays} dias`;
 
         console.log("[ClientDetailScreen] ✅ Frequência formatada:", frequencyInDays, "dias ->", result);
         console.log("[ClientDetailScreen] ===== FIM formatFrequency (sucesso) =====");
@@ -231,17 +211,17 @@ const ClientDetailScreen: React.FC<ClientDetailScreenProps> = ({ route, navigati
 
             {/* Informações Básicas */}
             <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Informações Básicas</Text>
+                <Text style={styles.sectionTitle}>{t('clientDetails.basicInfo')}</Text>
                 <View style={styles.infoRow}>
-                    <Text style={styles.label}>Nome:</Text>
+                    <Text style={styles.label}>{t('clients.name')}:</Text>
                     <Text style={styles.value}>{client.name}</Text>
                 </View>
                 <View style={styles.infoRow}>
-                    <Text style={styles.label}>Email:</Text>
+                    <Text style={styles.label}>{t('clients.email')}:</Text>
                     <Text style={styles.value}>{client.email}</Text>
                 </View>
                 <View style={styles.infoRow}>
-                    <Text style={styles.label}>Documento:</Text>
+                    <Text style={styles.label}>{t('clients.document')}:</Text>
                     <Text style={styles.value}>{client.document || "N/A"}</Text>
                 </View>
                 <View style={styles.infoRow}>
@@ -249,23 +229,23 @@ const ClientDetailScreen: React.FC<ClientDetailScreenProps> = ({ route, navigati
                     <Text style={styles.value}>{client.phone || "N/A"}</Text>
                 </View>
                 <View style={styles.infoRow}>
-                    <Text style={styles.label}>Nome Fantasia:</Text>
+                    <Text style={styles.label}>{t('clientDetails.fantasyName')}:</Text>
                     <Text style={styles.value}>{client.fantasy_name || "N/A"}</Text>
                 </View>
                 <View style={styles.infoRow}>
-                    <Text style={styles.label}>Registro Estadual:</Text>
+                    <Text style={styles.label}>{t('clientDetails.stateRegistration')}:</Text>
                     <Text style={styles.value}>{client.state_registration || "N/A"}</Text>
                 </View>
                 <View style={styles.infoRow}>
-                    <Text style={styles.label}>Data de Abertura:</Text>
+                    <Text style={styles.label}>{t('clientDetails.openingDate')}:</Text>
                     <Text style={styles.value}>{formatDate(client.opening_date || "")}</Text>
                 </View>
                 <View style={styles.infoRow}>
-                    <Text style={styles.label}>Total de Setores:</Text>
+                    <Text style={styles.label}>{t('clientDetails.totalSectors')}:</Text>
                     <Text style={styles.value}>{client.total_sectors || 0}</Text>
                 </View>
                 <View style={styles.infoRow}>
-                    <Text style={styles.label}>Total de Equipamentos:</Text>
+                    <Text style={styles.label}>{t('clientDetails.totalEquipments')}:</Text>
                     <Text style={styles.value}>{client.total_equipments || 0}</Text>
                 </View>
             </View>
@@ -280,7 +260,7 @@ const ClientDetailScreen: React.FC<ClientDetailScreenProps> = ({ route, navigati
                             style={styles.sectionHeader}
                             onPress={() => setShowContracts(!showContracts)}
                         >
-                            <Text style={styles.sectionTitle}>Contratos ({contracts.length})</Text>
+                            <Text style={styles.sectionTitle}>{t('clientDetails.contracts')} ({contracts.length})</Text>
                             <Ionicons
                                 name={showContracts ? "chevron-up" : "chevron-down"}
                                 size={20}
@@ -301,19 +281,19 @@ const ClientDetailScreen: React.FC<ClientDetailScreenProps> = ({ route, navigati
                                         return (
                                             <View key={contract.id} style={styles.listItem}>
                                                 <Text style={styles.listItemText}>
-                                                    <Text style={styles.bold}>Início:</Text> {formatDate(contract.start_date || "")}
+                                                    <Text style={styles.bold}>{t('clientDetails.start')}:</Text> {formatDate(contract.start_date || "")}
                                                 </Text>
                                                 <Text style={styles.listItemText}>
-                                                    <Text style={styles.bold}>Fim:</Text> {formatDate(contract.end_date || "")}
+                                                    <Text style={styles.bold}>{t('clientDetails.end')}:</Text> {formatDate(contract.end_date || "")}
                                                 </Text>
                                                 <Text style={styles.listItemText}>
-                                                    <Text style={styles.bold}>Frequência:</Text> {formatFrequency(contract.activity_frequency_in_days)}
+                                                    <Text style={styles.bold}>{t('clientDetails.frequency')}:</Text> {formatFrequency(contract.activity_frequency_in_days)}
                                                 </Text>
                                             </View>
                                         );
                                     })
                                 ) : (
-                                    <Text style={styles.emptyText}>Nenhum contrato encontrado.</Text>
+                                    <Text style={styles.emptyText}>{t('clientDetails.noContracts')}</Text>
                                 )}
                             </View>
                         )}
@@ -327,7 +307,7 @@ const ClientDetailScreen: React.FC<ClientDetailScreenProps> = ({ route, navigati
                     style={styles.sectionHeader}
                     onPress={() => setShowContacts(!showContacts)}
                 >
-                    <Text style={styles.sectionTitle}>Contatos ({contacts.length})</Text>
+                    <Text style={styles.sectionTitle}>{t('clientDetails.contacts')} ({contacts.length})</Text>
                     <Ionicons
                         name={showContacts ? "chevron-up" : "chevron-down"}
                         size={20}
@@ -341,10 +321,10 @@ const ClientDetailScreen: React.FC<ClientDetailScreenProps> = ({ route, navigati
                             contacts.map((contact) => (
                                 <View key={contact.id} style={styles.listItem}>
                                     <Text style={styles.listItemText}>
-                                        <Text style={styles.bold}>Nome:</Text> {String(contact.name || "N/A")}
+                                        <Text style={styles.bold}>{t('clients.name')}:</Text> {String(contact.name || "N/A")}
                                     </Text>
                                     <Text style={styles.listItemText}>
-                                        <Text style={styles.bold}>Email:</Text> {String(contact.email || "N/A")}
+                                        <Text style={styles.bold}>{t('clients.email')}:</Text> {String(contact.email || "N/A")}
                                     </Text>
                                     <Text style={styles.listItemText}>
                                         <Text style={styles.bold}>Telefone:</Text> {String(contact.phone || "N/A")}
@@ -352,7 +332,7 @@ const ClientDetailScreen: React.FC<ClientDetailScreenProps> = ({ route, navigati
                                 </View>
                             ))
                         ) : (
-                            <Text style={styles.emptyText}>Nenhum contato encontrado.</Text>
+                            <Text style={styles.emptyText}>{t('clientDetails.noContacts')}</Text>
                         )}
                     </View>
                 )}
@@ -364,7 +344,7 @@ const ClientDetailScreen: React.FC<ClientDetailScreenProps> = ({ route, navigati
                     style={styles.sectionHeader}
                     onPress={() => setShowAddresses(!showAddresses)}
                 >
-                    <Text style={styles.sectionTitle}>Endereços ({addresses.length})</Text>
+                    <Text style={styles.sectionTitle}>{t('clientDetails.addresses')} ({addresses.length})</Text>
                     <Ionicons
                         name={showAddresses ? "chevron-up" : "chevron-down"}
                         size={20}
@@ -378,24 +358,24 @@ const ClientDetailScreen: React.FC<ClientDetailScreenProps> = ({ route, navigati
                             addresses.map((address) => (
                                 <View key={address.id} style={styles.listItem}>
                                     <Text style={styles.listItemText}>
-                                        <Text style={styles.bold}>Cidade/Estado/País:</Text> {String(address.city || "N/A")}, {String(address.state || "N/A")}
+                                        <Text style={styles.bold}>{t('clientDetails.cityStateCountry')}:</Text> {String((typeof address.city === 'object' ? address.city?.name : address.city) || "N/A")}, {String((typeof address.state === 'object' ? address.state?.name : address.state) || address.state || "N/A")}
                                     </Text>
                                     <Text style={styles.listItemText}>
-                                        <Text style={styles.bold}>Bairro:</Text> {String(address.neighborhood || "N/A")}
+                                        <Text style={styles.bold}>{t('clientDetails.neighborhood')}:</Text> {String(address.neighborhood || "N/A")}
                                     </Text>
                                     <Text style={styles.listItemText}>
-                                        <Text style={styles.bold}>Endereço:</Text> {String(address.street || "N/A")}
+                                        <Text style={styles.bold}>{t('clientDetails.address')}:</Text> {String(address.street || "N/A")}
                                     </Text>
                                     <Text style={styles.listItemText}>
-                                        <Text style={styles.bold}>Número:</Text> {String(address.number || "N/A")}
+                                        <Text style={styles.bold}>{t('clientDetails.number')}:</Text> {String(address.number || "N/A")}
                                     </Text>
                                     <Text style={styles.listItemText}>
-                                        <Text style={styles.bold}>CEP:</Text> {String(address.postal_code || address.zip_code || "N/A")}
+                                        <Text style={styles.bold}>{t('clientDetails.postalCode')}:</Text> {String(address.postal_code || address.zip_code || "N/A")}
                                     </Text>
                                 </View>
                             ))
                         ) : (
-                            <Text style={styles.emptyText}>Nenhum endereço encontrado.</Text>
+                            <Text style={styles.emptyText}>{t('clientDetails.noAddresses')}</Text>
                         )}
                     </View>
                 )}
@@ -407,7 +387,7 @@ const ClientDetailScreen: React.FC<ClientDetailScreenProps> = ({ route, navigati
                     style={styles.listSectorsButton}
                     onPress={() => navigation.navigate("ClientSectorsScreen", { clientId })}
                 >
-                    <Text style={styles.listSectorsButtonText}>📁 Listar Setores</Text>
+                    <Text style={styles.listSectorsButtonText}>{t('clientDetails.listSectors')}</Text>
                 </TouchableOpacity>
             )}
         </ScrollView>

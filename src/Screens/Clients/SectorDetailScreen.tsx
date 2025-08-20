@@ -68,7 +68,7 @@ const SectorDetailScreen: React.FC<SectorDetailScreenProps> = ({ route, navigati
     if (!hasPermission("view_sector")) {
         return (
             <View style={styles.container}>
-                <Text style={styles.errorText}>Você não tem permissão para visualizar setores.</Text>
+                <Text style={styles.errorText}>{t('sectors.noPermission')}</Text>
             </View>
         );
     }
@@ -77,7 +77,7 @@ const SectorDetailScreen: React.FC<SectorDetailScreenProps> = ({ route, navigati
         return (
             <View style={styles.container}>
                 <ActivityIndicator size="large" color="#007BFF" />
-                <Text style={styles.loadingText}>Carregando detalhes do setor...</Text>
+                <Text style={styles.loadingText}>{t('sectors.loadingDetails')}</Text>
             </View>
         );
     }
@@ -85,7 +85,7 @@ const SectorDetailScreen: React.FC<SectorDetailScreenProps> = ({ route, navigati
     if (!sector) {
         return (
             <View style={styles.container}>
-                <Text style={styles.errorText}>Setor não encontrado.</Text>
+                <Text style={styles.errorText}>{t('sectors.notFound')}</Text>
             </View>
         );
     }
@@ -118,25 +118,25 @@ const SectorDetailScreen: React.FC<SectorDetailScreenProps> = ({ route, navigati
         <ScrollView style={styles.container}>
             {/* Informações do Setor */}
             <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Informações do Setor</Text>
+                <Text style={styles.sectionTitle}>{t('sectors.infoTitle')}</Text>
                 <View style={styles.infoRow}>
-                    <Text style={styles.label}>Nome:</Text>
+                    <Text style={styles.label}>{t('sectors.name')}:</Text>
                     <Text style={styles.value}>{sector.name}</Text>
                 </View>
                 <View style={styles.infoRow}>
-                    <Text style={styles.label}>Nome Completo:</Text>
+                    <Text style={styles.label}>{t('sectors.fullName')}:</Text>
                     <Text style={styles.value}>{sector.complete_name}</Text>
                 </View>
                 <View style={styles.infoRow}>
-                    <Text style={styles.label}>Nível:</Text>
+                    <Text style={styles.label}>{t('sectors.level')}:</Text>
                     <Text style={styles.value}>{sector.level}</Text>
                 </View>
                 <View style={styles.infoRow}>
-                    <Text style={styles.label}>Equipamentos:</Text>
+                    <Text style={styles.label}>{t('sectors.equipments')}:</Text>
                     <Text style={styles.value}>{sector.equipment_count || 0}</Text>
                 </View>
                 <View style={styles.infoRow}>
-                    <Text style={styles.label}>Subsetores:</Text>
+                    <Text style={styles.label}>{t('sectors.subsectors')}:</Text>
                     <Text style={styles.value}>{sector.subsector_count || 0}</Text>
                 </View>
             </View>
@@ -146,7 +146,7 @@ const SectorDetailScreen: React.FC<SectorDetailScreenProps> = ({ route, navigati
                 style={styles.listEquipmentButton}
                 onPress={() => navigation.navigate("EquipmentListScreen", { clientId, sectorId })}
             >
-                <Text style={styles.listEquipmentButtonText}>🔧 Listar Equipamentos</Text>
+                <Text style={styles.listEquipmentButtonText}>{t('sectors.listEquipments')}</Text>
             </TouchableOpacity>
 
             {/* Mensagem explicativa para setores pais */}
@@ -161,7 +161,7 @@ const SectorDetailScreen: React.FC<SectorDetailScreenProps> = ({ route, navigati
             {/* Lista de Subsetores (apenas para setores pais) */}
             {sector.level === 0 && subsectors.length > 0 && (
                 <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Subsetores ({subsectors.length})</Text>
+                    <Text style={styles.sectionTitle}>{t('sectors.subsectorsTitle')} ({subsectors.length})</Text>
                     <FlatList
                         data={subsectors}
                         keyExtractor={(item) => item.id.toString()}
@@ -173,8 +173,8 @@ const SectorDetailScreen: React.FC<SectorDetailScreenProps> = ({ route, navigati
 
             {sector.level === 0 && subsectors.length === 0 && (
                 <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Subsetores</Text>
-                    <Text style={styles.emptyText}>Nenhum subsetor encontrado.</Text>
+                    <Text style={styles.sectionTitle}>{t('sectors.subsectorsTitle')}</Text>
+                    <Text style={styles.emptyText}>{t('sectors.noSubsectors')}</Text>
                 </View>
             )}
         </ScrollView>

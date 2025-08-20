@@ -1,19 +1,27 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
-  Modal,
   ScrollView,
-  Dimensions, // Importar Dimensions para responsividade
+  Dimensions,
+  StatusBar,
+  Animated,
+  ActivityIndicator,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { FontAwesome } from "@expo/vector-icons";
+import { useFocusEffect } from '@react-navigation/native';
 import { RootStackParamList } from "../Routers/AppRouter";
 import { useLanguage } from "../Context/LanguageContext";
+import { useUser } from "../Context/UserContext";
+import { usePermissions } from "../Context/PermissionsContext";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import ActivityService from "../Services/ActivityService";
+import EquipmentService from "../Services/EquipamentService";
 
-// Obter a altura da tela para um modal responsivo
-const screenHeight = Dimensions.get("window").height;
+const { width, height } = Dimensions.get("window");
 
 interface HomeScreenProps {
   navigation: any;
@@ -21,11 +29,106 @@ interface HomeScreenProps {
 
 const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
   const { t } = useLanguage();
-  const [isMenuVisible, setMenuVisible] = useState(false);
+  const { username } = useUser();
+  const { hasPermission } = usePermissions();
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState({
+    pendingActivities: 0,
+    todayActivities: 0,
+    totalEquipment: 0,
+  });
 
-  const toggleMenu = () => {
-    setMenuVisible(!isMenuVisible);
+  // Animações
+  const fadeAnim = useState(new Animated.Value(0))[0];
+  const slideAnim = useState(new Animated.Value(50))[0];
+
+  useEffect(() => {
+    // Animar entrada
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 800,
+        useNativeDriver: true,
+      }),
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 800,
+        useNativeDriver: true,
+      }),
+    ]).start();
+
+    loadStats();
+  }, []);
+
+  // Recarregar estatísticas quando a tela receber foco
+  useFocusEffect(
+    React.useCallback(() => {
+      console.log("[HomeScreen] Tela recebeu foco, recarregando estatísticas...");
+      loadStats();
+    }, [])
+  );
+
+  const loadStats = async () => {
+    try {
+      setLoading(true);
+      const token = await AsyncStorage.getItem("access_token");
+      if (!token) {
+        console.error("Token não encontrado");
+        setLoading(false);
+        return;
+      }
+
+      console.log("[HomeScreen] Carregando estatísticas reais...");
+
+      // 1. Buscar atividades pendentes (status: pending)
+      const pendingActivitiesResponse = await ActivityService.fetchAllActivities({
+        page: 1,
+        per_page: 1, // Só precisamos do count
+        status: ["pending"],
+        token: token,
+      });
+
+      // 2. Buscar atividades abertas (status: open)
+      const openActivitiesResponse = await ActivityService.fetchAllActivities({
+        page: 1,
+        per_page: 1, // Só precisamos do count
+        status: ["open"],
+        token: token,
+      });
+
+      // 3. Buscar total de atividades (todas)
+      const totalActivitiesResponse = await ActivityService.fetchAllActivities({
+        page: 1,
+        per_page: 1, // Só precisamos do count
+        token: token,
+      });
+
+      console.log("[HomeScreen] Estatísticas carregadas:", {
+        pendingActivities: pendingActivitiesResponse.count,
+        openActivities: openActivitiesResponse.count,
+        totalActivities: totalActivitiesResponse.count,
+      });
+
+      setStats({
+        pendingActivities: pendingActivitiesResponse.count || 0,
+        todayActivities: openActivitiesResponse.count || 0, // Atividades abertas como "hoje"
+        totalEquipment: totalActivitiesResponse.count || 0, // Total de atividades como "equipamentos" por enquanto
+      });
+
+      setLoading(false);
+    } catch (error) {
+      console.error("[HomeScreen] Erro ao carregar estatísticas:", error);
+      // Em caso de erro, manter valores padrão
+      setStats({
+        pendingActivities: 0,
+        todayActivities: 0,
+        totalEquipment: 0,
+      });
+      setLoading(false);
+    }
   };
+
+
 
   // Definir os itens do menu com seus nomes de tela e ícones
   const menuItems = [
@@ -34,92 +137,203 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
       icon: "document-text",
       screen: "ActivityHistoryScreen",
       params: { activityTypeSlug: "pmoc", status: ["open", "pending"] },
-      implemented: true
+      implemented: true,
+      color: "#4CAF50",
+      description: "Gerenciar PMOCs"
     },
     {
       label: t('menu.serviceOrders'),
       icon: "hammer",
       screen: "ActivityHistoryScreen",
       params: { activityTypeSlug: "service_order", status: ["open", "pending"] },
-      implemented: true
+      implemented: true,
+      color: "#FF9800",
+      description: "Ordens de serviço"
     },
-    { label: "Roteiro", icon: "map", screen: "RoadmapScreen", implemented: true },
+    {
+      label: "Roteiro",
+      icon: "map",
+      screen: "RoadmapScreen",
+      implemented: true,
+      color: "#2196F3",
+      description: "Visualizar roteiros"
+    },
     {
       label: t('menu.technicalAssistance'),
       icon: "headset",
       screen: "ActivityHistoryScreen",
       params: { activityTypeSlug: "technical_assistance", status: ["open", "pending"] },
-      implemented: true
+      implemented: true,
+      color: "#9C27B0",
+      description: "Assistência técnica"
     },
     {
       label: t('menu.installation'),
       icon: "cube",
       screen: "ActivityHistoryScreen",
       params: { activityTypeSlug: "instalation", status: ["open", "pending"] },
-      implemented: true
+      implemented: true,
+      color: "#607D8B",
+      description: "Instalações"
     },
-    { label: t('menu.technicalSupport'), icon: "help-circle", screen: null, implemented: false },
-    { label: t('menu.equipmentQrCode'), icon: "qr-code", screen: "EquipmentQRCodeScreen", implemented: true },
-    { label: t('menu.manuals'), icon: "book", screen: "ManualsScreen", implemented: true },
+    {
+      label: t('menu.equipmentQrCode'),
+      icon: "qr-code",
+      screen: "EquipmentQRCodeScreen",
+      implemented: true,
+      color: "#795548",
+      description: "Scanner QR Code"
+    },
+    {
+      label: t('menu.manuals'),
+      icon: "book",
+      screen: "ManualsScreen",
+      implemented: true,
+      color: "#E91E63",
+      description: "Manuais técnicos"
+    },
+    {
+      label: "Equipamentos",
+      icon: "construct",
+      screen: "GeneralEquipmentListScreen",
+      implemented: true,
+      color: "#00BCD4",
+      description: "Lista de equipamentos"
+    },
   ];
 
   const navigateTo = (screenName: keyof RootStackParamList, params?: any) => {
-    toggleMenu(); // Fecha o menu antes de navegar
     navigation.navigate(screenName, params);
   };
 
+  const StatCard = ({ title, value, icon, color, onPress }: any) => (
+    <TouchableOpacity style={styles.statCard} onPress={onPress} activeOpacity={0.8}>
+      <View style={[styles.statIcon, { backgroundColor: color + '20' }]}>
+        <Ionicons name={icon} size={24} color={color} />
+      </View>
+      <View style={styles.statContent}>
+        <Text style={styles.statValue}>{value}</Text>
+        <Text style={styles.statTitle}>{title}</Text>
+      </View>
+    </TouchableOpacity>
+  );
+
+  const QuickActionCard = ({ item, onPress }: any) => (
+    <TouchableOpacity
+      style={styles.quickActionCard}
+      onPress={onPress}
+      activeOpacity={0.8}
+    >
+      <View style={[styles.actionIcon, { backgroundColor: item.color + '20' }]}>
+        <Ionicons name={item.icon as any} size={28} color={item.color} />
+      </View>
+      <Text style={styles.actionTitle}>{item.label}</Text>
+      <Text style={styles.actionDescription}>{item.description}</Text>
+    </TouchableOpacity>
+  );
+
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <StatusBar backgroundColor="#2C3E50" barStyle="light-content" />
+        <ActivityIndicator size="large" color="#007BFF" />
+        <Text style={styles.loadingText}>Carregando dashboard...</Text>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>{t('home.welcomeToSystem')}</Text>
+      <StatusBar backgroundColor="#2C3E50" barStyle="light-content" />
 
-      {/* Floating Action Button (FAB) */}
-      <TouchableOpacity style={styles.fab} onPress={toggleMenu}>
-        <Ionicons name="apps" size={30} color="#fff" /> {/* Ícone de grade para o menu */}
-      </TouchableOpacity>
-
-      {/* Modal estilo Bottom Sheet */}
-      <Modal
-        animationType="slide"
-        transparent={true}
-        visible={isMenuVisible}
-        onRequestClose={toggleMenu}
-      >
-        {/* Overlay clicável para fechar o modal */}
-        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPressOut={toggleMenu}>
-          {/* Conteúdo do modal, impede que o clique no conteúdo feche o modal */}
-          <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
-            <Text style={styles.modalTitle}>{t('home.quickActions')}</Text>
-
-            <ScrollView contentContainerStyle={styles.menuGrid}>
-              {menuItems.map((item, index) => (
-                <TouchableOpacity
-                  key={index}
-                  style={[styles.gridItem, !item.implemented && styles.gridItemDisabled]}
-                  onPress={() => item.implemented && navigateTo(item.screen as keyof RootStackParamList, item.params)}
-                  disabled={!item.implemented}
-                >
-                  <Ionicons
-                    name={item.icon as any} // Asserção de tipo para o nome do ícone
-                    size={40}
-                    color={item.implemented ? "#007BFF" : "#ccc"} // Cor do ícone
-                  />
-                  <Text style={[styles.gridItemText, !item.implemented && styles.gridItemTextDisabled]}>
-                    {item.label}
-                  </Text>
-                  {!item.implemented && (
-                    <Text style={styles.comingSoonText}>{t('home.comingSoon')}</Text>
-                  )}
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-
-            {/* Botão Fechar */}
-            <TouchableOpacity style={styles.closeButton} onPress={toggleMenu}>
-              <Text style={styles.closeButtonText}>{t('common.close')}</Text>
-            </TouchableOpacity>
+      {/* Header */}
+      <View style={styles.header}>
+        <View style={styles.headerContent}>
+          <View style={styles.userInfo}>
+            <FontAwesome name="user-circle" size={40} color="#fff" />
+            <View style={styles.userText}>
+              <Text style={styles.welcomeText}>{t('common.welcome')}</Text>
+              <Text style={styles.userName}>{username || t('common.user')}</Text>
+            </View>
           </View>
-        </TouchableOpacity>
-      </Modal>
+          <TouchableOpacity style={styles.notificationButton}>
+            <Ionicons name="notifications" size={24} color="#fff" />
+            <View style={styles.notificationBadge}>
+              <Text style={styles.notificationText}>3</Text>
+            </View>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+        <Animated.View
+          style={[
+            styles.content,
+            {
+              opacity: fadeAnim,
+              transform: [{ translateY: slideAnim }]
+            }
+          ]}
+        >
+          {/* Estatísticas */}
+          <View style={styles.statsSection}>
+            <Text style={styles.sectionTitle}>{t('dashboard.dailySummary')}</Text>
+            <View style={styles.statsGrid}>
+              <StatCard
+                title={t('dashboard.pendingActivities')}
+                value={stats.pendingActivities}
+                icon="time"
+                color="#FF6B6B"
+                onPress={() => navigation.navigate("ActivityHistoryScreen", { status: ["pending"] })}
+              />
+              <StatCard
+                title={t('dashboard.openActivities')}
+                value={stats.todayActivities}
+                icon="calendar"
+                color="#4ECDC4"
+                onPress={() => navigation.navigate("ActivityHistoryScreen", { status: ["open"] })}
+              />
+              <StatCard
+                title={t('dashboard.totalActivities')}
+                value={stats.totalEquipment}
+                icon="list"
+                color="#45B7D1"
+                onPress={() => navigation.navigate("ActivityHistoryScreen", {})}
+              />
+            </View>
+          </View>
+
+          {/* Ações Rápidas */}
+          <View style={styles.quickActionsSection}>
+            <Text style={styles.sectionTitle}>{t('dashboard.quickActions')}</Text>
+            <View style={styles.quickActionsGrid}>
+              {menuItems.slice(0, 4).map((item, index) => (
+                <QuickActionCard
+                  key={index}
+                  item={item}
+                  onPress={() => item.implemented && navigateTo(item.screen as keyof RootStackParamList, item.params)}
+                />
+              ))}
+            </View>
+          </View>
+
+          {/* Mais Opções */}
+          <View style={styles.moreOptionsSection}>
+            <Text style={styles.sectionTitle}>{t('dashboard.moreOptions')}</Text>
+            <View style={styles.moreOptionsGrid}>
+              {menuItems.slice(4).map((item, index) => (
+                <QuickActionCard
+                  key={index}
+                  item={item}
+                  onPress={() => item.implemented && navigateTo(item.screen as keyof RootStackParamList, item.params)}
+                />
+              ))}
+            </View>
+          </View>
+        </Animated.View>
+      </ScrollView>
+
+
     </View>
   );
 };
@@ -127,107 +341,168 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "#E0ECFF",
+    backgroundColor: '#F8F9FA',
   },
-  title: {
-    fontSize: 24,
-    fontWeight: "bold",
-    color: "#333",
-    marginBottom: 10,
-  },
-  fab: {
-    position: "absolute",
-    bottom: 30,
-    right: 30,
-    backgroundColor: "#007BFF", // Cor azul primária
-    borderRadius: 30, // Metade da largura/altura para um círculo perfeito
-    width: 60,
-    height: 60,
-    justifyContent: "center",
-    alignItems: "center",
-    elevation: 8, // Sombra para Android
-    shadowColor: "#000", // Sombra para iOS
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 5,
-  },
-  modalOverlay: {
+  loadingContainer: {
     flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.6)", // Overlay mais escuro
-    justifyContent: "flex-end", // Alinha o conteúdo na parte inferior
+    backgroundColor: '#F8F9FA',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  modalContent: {
-    backgroundColor: "#fff",
-    borderTopLeftRadius: 20, // Cantos superiores arredondados
-    borderTopRightRadius: 20,
-    padding: 20,
-    maxHeight: screenHeight * 0.7, // Altura máxima de 70% da tela
-    width: "100%",
-    elevation: 10, // Sombra para Android
-    shadowColor: "#000", // Sombra para iOS
-    shadowOffset: { width: 0, height: -5 }, // Sombra vindo de cima
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
+  loadingText: {
+    marginTop: 15,
+    fontSize: 16,
+    color: '#6C757D',
+    fontWeight: '500',
   },
-  modalTitle: {
-    fontSize: 22,
-    fontWeight: "bold",
-    marginBottom: 20,
-    textAlign: "center",
-    color: "#333",
+  header: {
+    backgroundColor: '#2C3E50',
+    paddingTop: 20,
+    paddingBottom: 20,
+    paddingHorizontal: 20,
   },
-  menuGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "space-around",
-    paddingBottom: 20, // Espaço para o indicador de rolagem
+  headerContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
-  gridItem: {
-    width: "30%", // Aproximadamente 3 itens por linha com algum espaçamento
-    marginVertical: 10,
-    marginHorizontal: "1.5%", // Para espaçamento entre os itens
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 10,
+  userInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  userText: {
+    marginLeft: 12,
+  },
+  welcomeText: {
+    color: '#BDC3C7',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  userName: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  notificationButton: {
+    position: 'relative',
+    padding: 8,
+  },
+  notificationBadge: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    backgroundColor: '#E74C3C',
     borderRadius: 10,
-    backgroundColor: "#f8f8f8", // Fundo claro para os itens
-    elevation: 2,
-    shadowColor: "#000",
+    width: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  notificationText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  scrollView: {
+    flex: 1,
+  },
+  content: {
+    padding: 20,
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#2C3E50',
+    marginBottom: 15,
+  },
+  statsSection: {
+    marginBottom: 30,
+  },
+  statsGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  statCard: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
+    marginHorizontal: 4,
+    elevation: 4,
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
-    shadowRadius: 3,
+    shadowRadius: 4,
   },
-  gridItemDisabled: {
-    opacity: 0.5, // Diminui a opacidade de itens não implementados
+  statIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12,
   },
-  gridItemText: {
-    fontSize: 14,
-    color: "#333",
-    textAlign: "center",
-    marginTop: 5,
+  statContent: {
+    alignItems: 'center',
   },
-  gridItemTextDisabled: {
-    color: "#666",
+  statValue: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#2C3E50',
   },
-  comingSoonText: {
-    fontSize: 10,
-    color: "#FF5733", // Laranja/vermelho para "Em Breve"
-    fontWeight: "bold",
-    marginTop: 2,
+  statTitle: {
+    fontSize: 12,
+    color: '#6C757D',
+    textAlign: 'center',
+    marginTop: 4,
   },
-  closeButton: {
-    backgroundColor: "#dc3545", // Cor vermelha para fechar
-    padding: 15,
-    borderRadius: 8,
-    marginTop: 20,
-    alignItems: "center",
+  quickActionsSection: {
+    marginBottom: 30,
   },
-  closeButtonText: {
-    color: "#fff",
-    fontSize: 18,
-    fontWeight: "bold",
+  quickActionsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
+  quickActionCard: {
+    width: '48%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 15,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  actionIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  actionTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#2C3E50',
+    marginBottom: 4,
+  },
+  actionDescription: {
+    fontSize: 12,
+    color: '#6C757D',
+    lineHeight: 16,
+  },
+  moreOptionsSection: {
+    marginBottom: 30,
+  },
+  moreOptionsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
   },
 });
 

@@ -5,6 +5,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios from "axios";
 import { API_BASE_URL, buildApiUrlForAccount } from "../config/apiConfig";
 import { Sector } from "../Models/Clientes";
+import CustomPicker from "./CustomPicker";
 
 interface EquipmentFiltersProps {
   onFilter: (filters: any) => void;
@@ -24,6 +25,7 @@ interface FiltersState {
 }
 
 const EquipmentFilters: React.FC<EquipmentFiltersProps> = ({ onFilter, sectorId, clientId, subsectors = [], resetKey = 0 }) => {
+  console.log("[EquipmentFilters] Componente montado com props:", { sectorId, clientId, subsectors: subsectors.length, resetKey });
   const [filters, setFilters] = useState<FiltersState>({
     brand: "",
     equipmentType: "",
@@ -37,8 +39,10 @@ const EquipmentFilters: React.FC<EquipmentFiltersProps> = ({ onFilter, sectorId,
   const [equipmentTypes, setEquipmentTypes] = useState([]);
   const [clients, setClients] = useState([]); // Novo estado para clientes
   const [sectors, setSectors] = useState([]);
+  const [subsectorsState, setSubsectorsState] = useState<Sector[]>([]);
   const [loadingClients, setLoadingClients] = useState(false);
   const [loadingSectors, setLoadingSectors] = useState(false);
+  const [loadingSubsectors, setLoadingSubsectors] = useState(false);
   const [loadingBrands, setLoadingBrands] = useState(false);
   const [loadingEquipmentTypes, setLoadingEquipmentTypes] = useState(false);
 
@@ -89,17 +93,81 @@ const EquipmentFilters: React.FC<EquipmentFiltersProps> = ({ onFilter, sectorId,
     }
   }, [filters.client_id]);
 
+  // Carregar setores quando clientId for fornecido via props
+  useEffect(() => {
+    if (clientId) {
+      console.log("[EquipmentFilters] Carregando setores para cliente via props:", clientId);
+      fetchSectors(clientId);
+    }
+  }, [clientId]);
+
+
+
+  // Inicializar filtros com valores pré-selecionados
+  useEffect(() => {
+    if (clientId || sectorId) {
+      console.log("[EquipmentFilters] Inicializando filtros com valores pré-selecionados:", { clientId, sectorId });
+      setFilters(prev => ({
+        ...prev,
+        client_id: clientId || prev.client_id,
+        sector_id: sectorId || prev.sector_id
+      }));
+    }
+  }, [clientId, sectorId]);
+
+  // Aplicar filtros automaticamente quando valores forem inicializados
+  useEffect(() => {
+    if (filters.client_id && filters.sector_id) {
+      console.log("[EquipmentFilters] Aplicando filtros automaticamente:", filters);
+      onFilter(filters);
+    }
+  }, [filters.client_id, filters.sector_id]);
+
+  // Buscar Subsetores quando setor mudar
+  useEffect(() => {
+    const loadSubsectors = async () => {
+      try {
+        setLoadingSubsectors(true);
+        setSubsectorsState([]);
+        if (!filters.client_id || !filters.sector_id) return;
+        const token = await AsyncStorage.getItem("access_token");
+        if (!token) return;
+        const ClientService = (await import('../Services/ClientService')).default;
+        const response = await ClientService.getClientSectors(filters.client_id.toString(), token, undefined, filters.sector_id);
+        const list = Array.isArray(response) ? response : (response?.results || []);
+        setSubsectorsState(list);
+      } catch (error) {
+        console.error('[EquipmentFilters] Erro ao buscar subsetores:', error);
+        setSubsectorsState([]);
+      } finally {
+        setLoadingSubsectors(false);
+      }
+    };
+    loadSubsectors();
+  }, [filters.client_id, filters.sector_id]);
+
   const fetchSectors = async (selectedClientId: number) => {
     setLoadingSectors(true);
     try {
       const token = await AsyncStorage.getItem("access_token");
-      const apiUrl = await buildApiUrlForAccount();
-      const res = await axios.get(`${apiUrl}/clients/${selectedClientId}/sectors`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setSectors(res.data.results || []);
+      console.log("[EquipmentFilters] Buscando setores para clientId:", selectedClientId);
+      console.log("[EquipmentFilters] Token presente:", !!token);
+
+      // Usar ClientService para buscar apenas setores pais (level 0)
+      const ClientService = (await import('../Services/ClientService')).default;
+      const response = await ClientService.getClientSectors(selectedClientId.toString(), token!, 0);
+
+      console.log("[EquipmentFilters] Resposta dos setores:", response);
+      const sectorList = Array.isArray(response) ? response : (response.results || []);
+      console.log("[EquipmentFilters] Lista de setores processada:", sectorList.length, "itens");
+      setSectors(sectorList);
     } catch (error) {
       console.error("[EquipmentFilters] Erro ao buscar setores:", error);
+      // Se der erro 404, é porque o cliente não tem setores cadastrados
+      if ((error as any)?.response?.status === 404 || (error as any)?.message?.includes("Erro ao obter os setores")) {
+        console.warn("[EquipmentFilters] Cliente não possui setores cadastrados (404).");
+        setSectors([]); // Lista vazia - sem setores disponíveis
+      }
     } finally {
       setLoadingSectors(false);
     }
@@ -107,17 +175,23 @@ const EquipmentFilters: React.FC<EquipmentFiltersProps> = ({ onFilter, sectorId,
 
   // Buscar Marcas
   useEffect(() => {
+    console.log("[EquipmentFilters] useEffect fetchBrands executado");
     fetchBrands();
   }, []);
 
   const fetchBrands = async () => {
+    console.log("[EquipmentFilters] fetchBrands iniciado");
     setLoadingBrands(true);
     try {
       const token = await AsyncStorage.getItem("access_token");
       const apiUrl = await buildApiUrlForAccount();
+      console.log("[EquipmentFilters] Fazendo requisição para:", `${apiUrl}/brands`);
       const res = await axios.get(`${apiUrl}/brands`, {
         headers: { Authorization: `Bearer ${token}` },
       });
+      console.log("[EquipmentFilters] Resposta da API brands:", res.data);
+      console.log("[EquipmentFilters] Marcas carregadas:", res.data.results?.length || 0);
+      console.log("[EquipmentFilters] Dados das marcas:", res.data.results);
       setBrands(res.data.results || []);
     } catch (error) {
       console.error("[EquipmentFilters] Erro ao buscar marcas:", error);
@@ -128,17 +202,23 @@ const EquipmentFilters: React.FC<EquipmentFiltersProps> = ({ onFilter, sectorId,
 
   // Buscar Tipos de Equipamento
   useEffect(() => {
+    console.log("[EquipmentFilters] useEffect fetchEquipmentTypes executado");
     fetchEquipmentTypes();
   }, []);
 
   const fetchEquipmentTypes = async () => {
+    console.log("[EquipmentFilters] fetchEquipmentTypes iniciado");
     setLoadingEquipmentTypes(true);
     try {
       const token = await AsyncStorage.getItem("access_token");
       const apiUrl = await buildApiUrlForAccount();
+      console.log("[EquipmentFilters] Fazendo requisição para:", `${apiUrl}/equipment_types`);
       const res = await axios.get(`${apiUrl}/equipment_types`, {
         headers: { Authorization: `Bearer ${token}` },
       });
+      console.log("[EquipmentFilters] Resposta da API equipment_types:", res.data);
+      console.log("[EquipmentFilters] Tipos de equipamento carregados:", res.data.results?.length || 0);
+      console.log("[EquipmentFilters] Dados dos tipos:", res.data.results);
       setEquipmentTypes(res.data.results || []);
     } catch (error) {
       console.error("[EquipmentFilters] Erro ao buscar tipos de equipamento:", error);
@@ -155,7 +235,7 @@ const EquipmentFilters: React.FC<EquipmentFiltersProps> = ({ onFilter, sectorId,
 
   const handleSectorChange = (value: string) => {
     const newSectorId = value ? parseInt(value) : null;
-    setFilters(prev => ({ ...prev, sector_id: newSectorId }));
+    setFilters(prev => ({ ...prev, sector_id: newSectorId, subsector_id: null }));
   };
 
   return (
@@ -167,34 +247,34 @@ const EquipmentFilters: React.FC<EquipmentFiltersProps> = ({ onFilter, sectorId,
       {loadingClients ? (
         <ActivityIndicator size="small" color="#007BFF" />
       ) : (
-        <Picker
+        <CustomPicker
           selectedValue={filters.client_id ? filters.client_id.toString() : ""}
           onValueChange={handleClientChange}
+          items={clients.map((c: any) => ({ label: c.name, value: c.id.toString() }))}
+          placeholder="Selecione um cliente"
           style={styles.picker}
-        >
-          <Picker.Item label="Selecione um cliente" value="" />
-          {clients.map((c: any) => (
-            <Picker.Item key={c.id} label={c.name} value={c.id.toString()} />
-          ))}
-        </Picker>
+        />
       )}
 
       {/* Filtro de Setor - Apenas Select */}
       <Text style={styles.label}>Setor</Text>
       {loadingSectors ? (
         <ActivityIndicator size="small" color="#007BFF" />
-      ) : (
-        <Picker
+      ) : sectors.length > 0 ? (
+        <CustomPicker
           selectedValue={filters.sector_id ? filters.sector_id.toString() : ""}
           onValueChange={handleSectorChange}
+          items={sectors.map((s: any) => ({ label: s.complete_name || s.name, value: s.id.toString() }))}
+          placeholder="Selecione um setor"
           style={styles.picker}
-          enabled={!!filters.client_id} // Habilitado apenas se um cliente for selecionado
-        >
-          <Picker.Item label="Selecione um setor" value="" />
-          {sectors.map((s: any) => (
-            <Picker.Item key={s.id} label={s.complete_name || s.name} value={s.id.toString()} />
-          ))}
-        </Picker>
+        />
+      ) : (
+        <TextInput
+          style={styles.input}
+          placeholder="Nenhum setor disponível para este cliente"
+          placeholderTextColor="#888"
+          editable={false}
+        />
       )}
 
       {/* Filtro de Patrimônio/Tag - Apenas Text */}
@@ -202,7 +282,7 @@ const EquipmentFilters: React.FC<EquipmentFiltersProps> = ({ onFilter, sectorId,
       <TextInput
         style={styles.input}
         placeholder="Busca por Tag ou Patrimônio"
-        placeholderTextColor="#888"
+        placeholderTextColor="#999"
         onChangeText={(text) => setFilters({ ...filters, search: text })}
         value={filters.search}
       />
@@ -211,66 +291,100 @@ const EquipmentFilters: React.FC<EquipmentFiltersProps> = ({ onFilter, sectorId,
       <Text style={styles.label}>Fabricante</Text>
       {loadingBrands ? (
         <ActivityIndicator size="small" color="#007BFF" />
+      ) : brands.length > 0 ? (
+        <>
+          {console.log("[EquipmentFilters] Renderizando filtro Fabricante - brands.length:", brands.length)}
+          {console.log("[EquipmentFilters] Brands data:", brands)}
+          <CustomPicker
+            selectedValue={filters.brand ? filters.brand.toString() : ""}
+            onValueChange={(value) => {
+              console.log("[EquipmentFilters] Fabricante selecionado:", value);
+              setFilters({ ...filters, brand: value || "" });
+            }}
+            items={brands.map((b: any) => {
+              console.log("[EquipmentFilters] Mapeando marca:", b);
+              return { label: b.name, value: b.id.toString() };
+            })}
+            placeholder="Selecione um fabricante"
+            style={styles.picker}
+          />
+        </>
       ) : (
-        <Picker
-          selectedValue={filters.brand ? filters.brand.toString() : ""}
-          onValueChange={(value) => setFilters({ ...filters, brand: value || "" })}
-          style={styles.picker}
-        >
-          <Picker.Item label="Selecione um fabricante" value="" />
-          {brands.map((b: any) => (
-            <Picker.Item key={b.id} label={b.name} value={b.id.toString()} />
-          ))}
-        </Picker>
+        <TextInput
+          style={styles.input}
+          placeholder="Nenhum fabricante disponível"
+          placeholderTextColor="#888"
+          editable={false}
+        />
+      )}
+      {!loadingBrands && brands.length === 0 && (
+        <Text style={styles.errorText}>Nenhum fabricante encontrado</Text>
       )}
 
       {/* Filtro de Tipo de Equipamento - Apenas Select */}
       <Text style={styles.label}>Tipo de Equipamento</Text>
       {loadingEquipmentTypes ? (
         <ActivityIndicator size="small" color="#007BFF" />
+      ) : equipmentTypes.length > 0 ? (
+        <>
+          {console.log("[EquipmentFilters] Renderizando filtro Tipo - equipmentTypes.length:", equipmentTypes.length)}
+          {console.log("[EquipmentFilters] EquipmentTypes data:", equipmentTypes)}
+          <CustomPicker
+            selectedValue={filters.equipmentType ? filters.equipmentType.toString() : ""}
+            onValueChange={(value) => {
+              console.log("[EquipmentFilters] Tipo de equipamento selecionado:", value);
+              setFilters({ ...filters, equipmentType: value || "" });
+            }}
+            items={equipmentTypes.map((t: any) => {
+              console.log("[EquipmentFilters] Mapeando tipo de equipamento:", t);
+              return { label: t.name, value: t.id.toString() };
+            })}
+            placeholder="Selecione um tipo"
+            style={styles.picker}
+          />
+        </>
       ) : (
-        <Picker
-          selectedValue={filters.equipmentType ? filters.equipmentType.toString() : ""}
-          onValueChange={(value) => setFilters({ ...filters, equipmentType: value || "" })}
-          style={styles.picker}
-        >
-          <Picker.Item label="Selecione um tipo" value="" />
-          {equipmentTypes.map((t: any) => (
-            <Picker.Item key={t.id} label={t.name} value={t.id.toString()} />
-          ))}
-        </Picker>
+        <TextInput
+          style={styles.input}
+          placeholder="Nenhum tipo disponível"
+          placeholderTextColor="#888"
+          editable={false}
+        />
+      )}
+      {!loadingEquipmentTypes && equipmentTypes.length === 0 && (
+        <Text style={styles.errorText}>Nenhum tipo de equipamento encontrado</Text>
       )}
 
       {/* Filtro de Status */}
       <Text style={styles.label}>Status</Text>
-      <Picker
+      <CustomPicker
         selectedValue={filters.status || ""}
         onValueChange={(value) => setFilters({ ...filters, status: value || "" })}
+        items={[
+          { label: "Ativo", value: "active" },
+          { label: "Inativo", value: "inactive" }
+        ]}
+        placeholder="Selecione um status"
         style={styles.picker}
-      >
-        <Picker.Item label="Selecione um status" value="" />
-        <Picker.Item label="Ativo" value="active" />
-        <Picker.Item label="Inativo" value="inactive" />
-      </Picker>
+      />
 
-      {/* Novo Picker para Subsetor - apenas se houver subsetores */}
-      {subsectors.length > 0 && (
+      {/* Subsetor */}
+      {loadingSubsectors ? (
+        <ActivityIndicator size="small" color="#007BFF" />
+      ) : (subsectorsState.length > 0 || subsectors.length > 0) ? (
         <>
           <Text style={styles.label}>Subsetor</Text>
-          <Picker
+          <CustomPicker
             selectedValue={filters.subsector_id?.toString() || ''}
             onValueChange={(itemValue: string) => {
               setFilters({ ...filters, subsector_id: itemValue ? parseInt(itemValue) : null });
             }}
+            items={(subsectorsState.length > 0 ? subsectorsState : subsectors).map((s: Sector) => ({ label: (s.complete_name || s.name), value: s.id.toString() }))}
+            placeholder="Selecione um Subsetor"
             style={styles.picker}
-          >
-            <Picker.Item label="Selecione um Subsetor" value="" />
-            {subsectors.map((s: Sector) => (
-              <Picker.Item key={s.id} label={s.name} value={s.id.toString()} />
-            ))}
-          </Picker>
+          />
         </>
-      )}
+      ) : null}
 
       <Button
         title="Filtrar"
@@ -319,6 +433,13 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     color: "#333",
     height: 50,
+    fontSize: 14,
+  },
+  errorText: {
+    color: "#dc3545",
+    fontSize: 12,
+    marginBottom: 12,
+    fontStyle: "italic",
   },
 });
 

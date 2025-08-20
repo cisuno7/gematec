@@ -6,6 +6,7 @@ import { jwtDecode } from "jwt-decode";
 import * as FileSystem from "expo-file-system";
 import * as Sharing from "expo-sharing";
 import * as Notifications from "expo-notifications";
+import * as Linking from "expo-linking";
 
 interface FetchManualsParams {
     accessToken: string;
@@ -113,6 +114,19 @@ export default class ManualService {
         }
     }
 
+    static async checkFileOpenCapability(fileExtension: string): Promise<boolean> {
+        try {
+            // Verificar se há aplicativos disponíveis para abrir o tipo de arquivo
+            const testUrl = `file://test.${fileExtension}`;
+            const canOpen = await Linking.canOpenURL(testUrl);
+            console.log(`[ManualService] Verificando capacidade de abrir arquivos .${fileExtension}:`, canOpen);
+            return canOpen;
+        } catch (error) {
+            console.warn(`[ManualService] Erro ao verificar capacidade de abrir .${fileExtension}:`, error);
+            return false;
+        }
+    }
+
     static async downloadManual(manualUrl: string, accessToken: string, manualName?: string): Promise<string> {
         try {
             // Construir URL completa se for relativa
@@ -140,7 +154,13 @@ export default class ManualService {
                 fullUrl,
                 fileUri,
                 {
-                    headers: { Authorization: `Bearer ${accessToken}` },
+                    headers: {
+                        Authorization: `Bearer ${accessToken}`,
+                        'User-Agent': 'Mozilla/5.0 (compatible; GematecApp/1.0)',
+                        'Accept': '*/*',
+                        'Accept-Encoding': 'gzip, deflate, br',
+                        'Connection': 'keep-alive'
+                    },
                 }
             );
 
@@ -159,22 +179,73 @@ export default class ManualService {
 
             console.log("[ManualService] Arquivo salvo com sucesso. Tamanho:", fileInfo.size, "bytes");
 
-            // Tentar compartilhar o arquivo
+            // Tentar abrir o arquivo com múltiplas estratégias
+            let fileOpened = false;
+
+            // Estratégia 1: Tentar compartilhar o arquivo
             try {
                 const isAvailable = await Sharing.isAvailableAsync();
                 if (isAvailable) {
-                    console.log("[ManualService] Compartilhando arquivo...");
+                    console.log("[ManualService] Tentando compartilhar arquivo...");
                     await Sharing.shareAsync(downloadResult.uri, {
                         mimeType: `application/${fileExtension}`,
                         dialogTitle: `Manual: ${manualName || 'Documento'}`,
                     });
                     console.log("[ManualService] Arquivo compartilhado com sucesso");
+                    fileOpened = true;
                 } else {
                     console.log("[ManualService] Compartilhamento não disponível nesta plataforma");
                 }
             } catch (shareError) {
                 console.warn("[ManualService] Erro ao compartilhar arquivo:", shareError);
-                // Não falha o download se o compartilhamento falhar
+            }
+
+            // Estratégia 2: Tentar abrir com aplicativo nativo
+            if (!fileOpened) {
+                try {
+                    console.log("[ManualService] Tentando abrir arquivo com aplicativo nativo...");
+                    const canOpen = await Linking.canOpenURL(downloadResult.uri);
+                    if (canOpen) {
+                        await Linking.openURL(downloadResult.uri);
+                        console.log("[ManualService] Arquivo aberto com aplicativo nativo");
+                        fileOpened = true;
+                    } else {
+                        console.log("[ManualService] Nenhum aplicativo disponível para abrir o arquivo");
+                    }
+                } catch (linkError) {
+                    console.warn("[ManualService] Erro ao abrir arquivo com aplicativo nativo:", linkError);
+                }
+            }
+
+            // Estratégia 3: Tentar abrir com file:// URL
+            if (!fileOpened) {
+                try {
+                    console.log("[ManualService] Tentando abrir com file:// URL...");
+                    const fileUrl = `file://${downloadResult.uri}`;
+                    const canOpen = await Linking.canOpenURL(fileUrl);
+                    if (canOpen) {
+                        await Linking.openURL(fileUrl);
+                        console.log("[ManualService] Arquivo aberto com file:// URL");
+                        fileOpened = true;
+                    } else {
+                        console.log("[ManualService] Não foi possível abrir com file:// URL");
+                    }
+                } catch (fileError) {
+                    console.warn("[ManualService] Erro ao abrir com file:// URL:", fileError);
+                }
+            }
+
+            // Se nenhuma estratégia funcionou, tentar abrir no navegador
+            if (!fileOpened) {
+                try {
+                    console.log("[ManualService] Tentando abrir arquivo no navegador...");
+                    await Linking.openURL(fullUrl);
+                    console.log("[ManualService] Arquivo aberto no navegador");
+                    fileOpened = true;
+                } catch (browserError) {
+                    console.warn("[ManualService] Erro ao abrir no navegador:", browserError);
+                    console.log("[ManualService] Nenhuma estratégia de abertura funcionou. Arquivo salvo em:", downloadResult.uri);
+                }
             }
 
             // Enviar notificação local

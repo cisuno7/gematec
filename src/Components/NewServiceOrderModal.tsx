@@ -55,7 +55,7 @@ const NewServiceOrderModal: React.FC<NewServiceOrderModalProps> = ({ visible, on
             setLoadingSectors(true);
             const token = await AsyncStorage.getItem("access_token");
             if (!token) throw new Error("Token não encontrado");
-            const response = await apiClient.post(`${API_BASE_URL}/clients/${clientId}/sectors`, { search: "" }, { headers: { Authorization: `Bearer ${token}` } });
+            const response = await apiClient.get(`${API_BASE_URL}/clients/${clientId}/sectors`, { headers: { Authorization: `Bearer ${token}` } });
             setSectors(response.data.results || []);
         } catch (error) {
             Alert.alert("Erro", "Não foi possível carregar os setores.");
@@ -177,10 +177,10 @@ const styles = StyleSheet.create({
     modalTitle: { fontSize: 20, fontWeight: "bold", marginBottom: 20, textAlign: "center", color: "#333" },
     filterSection: { marginBottom: 20 },
     label: { fontSize: 16, fontWeight: "bold", marginBottom: 5, color: "#555" },
-    picker: { 
-        borderWidth: 1, 
-        borderColor: "#ccc", 
-        borderRadius: 5, 
+    picker: {
+        borderWidth: 1,
+        borderColor: "#ccc",
+        borderRadius: 5,
         marginBottom: 10,
         backgroundColor: "#fff",
         color: "#333",

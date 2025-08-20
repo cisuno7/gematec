@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { View, Text, TextInput, FlatList, StyleSheet, ActivityIndicator, TouchableOpacity, Alert } from "react-native";
+import * as Linking from "expo-linking";
 import { Picker } from "@react-native-picker/picker";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { RouteProp } from "@react-navigation/native";
@@ -76,7 +77,7 @@ const ManualsScreen: React.FC<ManualsScreenProps> = ({ navigation }) => {
       if (!token) throw new Error("Token de acesso não encontrado.");
 
       // Usar content_url como campo principal, com fallback para file_url
-      const fileUrl = manual.content_url || manual.file_url;
+      const fileUrl = manual.content_url || manual.file_url || "";
 
       if (!fileUrl) {
         throw new Error(t('manuals.fileUrlNotAvailable'));
@@ -85,12 +86,42 @@ const ManualsScreen: React.FC<ManualsScreenProps> = ({ navigation }) => {
       console.log("[ManualsScreen] Iniciando download do manual:", manual.name);
       console.log("[ManualsScreen] URL do arquivo:", fileUrl);
 
-      const fileUri = await ManualService.downloadManual(fileUrl, token, manual.name);
-      
-      console.log("[ManualsScreen] Download concluído. Arquivo salvo em:", fileUri);
-      
-      // Não mostrar alerta de sucesso pois agora temos notificação e compartilhamento
-      // Alert.alert(t('common.success'), t('manuals.downloadSuccess'));
+      // Verificar extensão do arquivo
+      const fileExtension = fileUrl.split('.').pop()?.toLowerCase() || 'pdf';
+
+      // Verificar se há aplicativos disponíveis para abrir o arquivo
+      const canOpenFile = await ManualService.checkFileOpenCapability(fileExtension);
+
+      if (!canOpenFile) {
+        Alert.alert(
+          "Aviso",
+          `Não foi detectado um aplicativo para abrir arquivos .${fileExtension.toUpperCase()} no seu dispositivo.\n\nO arquivo será baixado, mas pode não abrir automaticamente.\n\nDeseja continuar mesmo assim?`,
+          [
+            { text: "Cancelar", style: "cancel" },
+            { text: "Continuar", onPress: () => proceedWithDownload() }
+          ]
+        );
+        return;
+      }
+
+      proceedWithDownload();
+
+      async function proceedWithDownload() {
+        try {
+          // Mensagem simples de progresso (sem expor URLs ou detalhes técnicos)
+          Alert.alert(t('common.loading'), `Baixando manual...`);
+
+          const fileUri = await ManualService.downloadManual(fileUrl, token, manual.name);
+
+          console.log("[ManualsScreen] Download concluído. Arquivo salvo em:", fileUri);
+
+          // Mensagem simples de sucesso
+          Alert.alert(t('common.success'), t('manuals.downloadSuccess'));
+        } catch (downloadError: any) {
+          console.error("[ManualsScreen] Erro ao baixar manual:", downloadError);
+          Alert.alert(t('common.error'), downloadError.message || t('manuals.downloadError'));
+        }
+      }
     } catch (error: any) {
       console.error("[ManualsScreen] Erro ao baixar manual:", error);
       Alert.alert(t('common.error'), error.message || t('manuals.downloadError'));
@@ -110,14 +141,49 @@ const ManualsScreen: React.FC<ManualsScreenProps> = ({ navigation }) => {
     fetchManuals();
   };
 
+  const handleOpenInBrowser = async (manual: Manual) => {
+    try {
+      const fileUrl = manual.content_url || manual.file_url || "";
+      if (!fileUrl) {
+        throw new Error(t('manuals.fileUrlNotAvailable'));
+      }
+
+      // Construir URL completa se for relativa
+      let fullUrl = fileUrl;
+      if (!fileUrl.startsWith('http')) {
+        const token = await AsyncStorage.getItem("access_token");
+        if (!token) throw new Error("Token de acesso não encontrado.");
+
+        // Usar a mesma lógica do ManualService para construir a URL
+        const accountName = await AsyncStorage.getItem("account") || "default";
+        const dynamicBaseUrl = await ManualService.getDynamicBaseUrl(token);
+        fullUrl = `${dynamicBaseUrl}${fileUrl.startsWith('/') ? '' : '/'}${fileUrl}`;
+      }
+
+      console.log("[ManualsScreen] Abrindo no navegador:", fullUrl);
+      await Linking.openURL(fullUrl);
+    } catch (error: any) {
+      console.error("[ManualsScreen] Erro ao abrir no navegador:", error);
+      Alert.alert(t('common.error'), "Erro ao abrir manual no navegador");
+    }
+  };
+
   const renderManualItem = ({ item }: { item: Manual }) => (
-    <TouchableOpacity
-      style={styles.itemContainer}
-      onPress={() => handleDownload(item)}
-    >
-      <Text style={styles.itemText}>{t('manuals.manual')}: {item.name}</Text>
-      <Text style={styles.itemText}>{t('manuals.category')}: {item.category.name}</Text>
-    </TouchableOpacity>
+    <View style={styles.itemContainer}>
+      <TouchableOpacity
+        style={styles.itemContent}
+        onPress={() => handleDownload(item)}
+      >
+        <Text style={styles.itemText}>{t('manuals.manual')}: {item.name}</Text>
+        <Text style={styles.itemText}>{t('manuals.category')}: {item.category.name}</Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={styles.browserButton}
+        onPress={() => handleOpenInBrowser(item)}
+      >
+        <Text style={styles.browserButtonText}>🌐</Text>
+      </TouchableOpacity>
+    </View>
   );
 
   return (
@@ -217,10 +283,25 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
   },
   itemContainer: {
+    flexDirection: "row",
+    alignItems: "center",
     padding: 15,
     borderBottomWidth: 1,
     borderColor: "#ccc",
     backgroundColor: "#fff",
+  },
+  itemContent: {
+    flex: 1,
+  },
+  browserButton: {
+    padding: 8,
+    marginLeft: 10,
+    backgroundColor: "#007BFF",
+    borderRadius: 5,
+  },
+  browserButtonText: {
+    fontSize: 16,
+    color: "#fff",
   },
   itemText: {
     fontSize: 14,

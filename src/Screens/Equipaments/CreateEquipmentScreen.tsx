@@ -19,10 +19,13 @@ import EquipmentService from "../../Services/EquipamentService";
 import ClientService from "../../Services/ClientService";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { FontAwesome, MaterialIcons, Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from 'expo-linear-gradient';
 import { DynamicField, EquipmentTemplate } from "../../Models/EquipmentTemplate";
 import { Equipment } from "../../Models/Equipament";
 import { setDynamicApiUrl } from "../../config/apiConfig";
 import apiClient from "../../Context/ApiClient";
+import CustomPicker from "../../Components/CustomPicker";
+import DynamicEquipmentFields from "../../Components/DynamicEquipmentFields";
 
 const { width } = Dimensions.get('window');
 
@@ -44,6 +47,12 @@ const CreateEquipmentScreen: React.FC<CreateEquipmentScreenProps> = ({
   const params = route.params as any;
   const preSelectedClientId = params?.clientId;
   const preSelectedSectorId = params?.sectorId;
+
+  console.log("[CreateEquipmentScreen] Parâmetros recebidos:", {
+    preSelectedClientId,
+    preSelectedSectorId,
+    params
+  });
 
   // Estados para campos fixos
   const [clientId, setClientId] = useState<string>(preSelectedClientId?.toString() || "");
@@ -78,14 +87,16 @@ const CreateEquipmentScreen: React.FC<CreateEquipmentScreenProps> = ({
         const template = await EquipmentService.getEquipmentTemplate(accessToken);
         setEquipmentTemplate(template);
 
-        // Inicializar campos dinâmicos com valores padrão
+        // Inicializar campos dinâmicos com valores padrão (com guarda)
         const dynamicData: { [key: string]: any } = {};
-        template.fields.forEach(field => {
-          const fieldKey = field.key || field.name || '';
-          if (fieldKey) {
-            dynamicData[fieldKey] = field.default_value || "";
-          }
-        });
+        if (template && Array.isArray((template as any).fields)) {
+          (template as any).fields.forEach((field: any) => {
+            const fieldKey = field.key || field.name || '';
+            if (fieldKey) {
+              dynamicData[fieldKey] = field.default_value || "";
+            }
+          });
+        }
         setDynamicFields(dynamicData);
 
         // Buscar dados dos selects
@@ -118,6 +129,12 @@ const CreateEquipmentScreen: React.FC<CreateEquipmentScreenProps> = ({
         const sectorsResponse = await ClientService.getClientSectors(clientId, accessToken);
         console.log("[CreateEquipmentScreen] Setores recebidos:", sectorsResponse.results);
         setSectors(sectorsResponse.results || []);
+
+        // Verificar se o setor pré-selecionado está na lista
+        if (preSelectedSectorId) {
+          const selectedSector = sectorsResponse.results?.find((s: any) => s.id === preSelectedSectorId);
+          console.log("[CreateEquipmentScreen] Setor pré-selecionado encontrado na lista:", selectedSector);
+        }
       } catch (error) {
         console.error("Erro ao buscar setores:", error);
         setSectors([]);
@@ -135,11 +152,61 @@ const CreateEquipmentScreen: React.FC<CreateEquipmentScreenProps> = ({
     }
   }, [preSelectedClientId]);
 
+  // Carregar setor automaticamente se foi pré-selecionado (após os setores serem carregados)
+  useEffect(() => {
+    if (preSelectedSectorId && preSelectedSectorId.toString() !== sectorId && sectors.length > 0) {
+      console.log("[CreateEquipmentScreen] Setor pré-selecionado detectado:", preSelectedSectorId);
+      setSectorId(preSelectedSectorId.toString());
+    }
+  }, [preSelectedSectorId, sectors]);
+
+  // Log para verificar se há contexto ou não
+  useEffect(() => {
+    if (preSelectedClientId && preSelectedSectorId) {
+      console.log("[CreateEquipmentScreen] ✅ Modo com contexto: Cliente e Setor pré-selecionados");
+    } else {
+      console.log("[CreateEquipmentScreen] ❌ Modo sem contexto: Usuário deve selecionar manualmente");
+    }
+  }, [preSelectedClientId, preSelectedSectorId]);
+
   const fetchSelectData = async (token: string) => {
     try {
       // Buscar clientes
-      const clientsResponse = await ClientService.getClients(false, 1, token, "");
-      setClients(clientsResponse.results);
+      let allClients: any[] = [];
+
+      if (preSelectedClientId) {
+        // Se há um cliente pré-selecionado, buscar todos os clientes (com e sem contrato)
+        console.log("[CreateEquipmentScreen] Buscando todos os clientes (com e sem contrato)");
+
+        try {
+          // Buscar clientes com contrato
+          const clientsWithContract = await ClientService.getClients(true, 1, token, "");
+          allClients.push(...clientsWithContract.results);
+          console.log("[CreateEquipmentScreen] Clientes com contrato encontrados:", clientsWithContract.results.length);
+        } catch (error) {
+          console.log("[CreateEquipmentScreen] Erro ao buscar clientes com contrato:", error);
+        }
+
+        try {
+          // Buscar clientes sem contrato
+          const clientsWithoutContract = await ClientService.getClients(false, 1, token, "");
+          allClients.push(...clientsWithoutContract.results);
+          console.log("[CreateEquipmentScreen] Clientes sem contrato encontrados:", clientsWithoutContract.results.length);
+        } catch (error) {
+          console.log("[CreateEquipmentScreen] Erro ao buscar clientes sem contrato:", error);
+        }
+
+        setClients(allClients);
+
+        // Verificar se o cliente pré-selecionado está na lista
+        const selectedClient = allClients.find(c => c.id === preSelectedClientId);
+        console.log("[CreateEquipmentScreen] Cliente pré-selecionado encontrado na lista:", selectedClient);
+      } else {
+        // Se não há cliente pré-selecionado, buscar clientes com contrato
+        console.log("[CreateEquipmentScreen] Buscando apenas clientes com contrato");
+        const clientsResponse = await ClientService.getClients(true, 1, token, "");
+        setClients(clientsResponse.results);
+      }
 
       // Buscar fabricantes
       try {
@@ -230,25 +297,50 @@ const CreateEquipmentScreen: React.FC<CreateEquipmentScreenProps> = ({
         is_active: isActive,
       };
 
-      // Adicionar campos dinâmicos com validação de tipo
+      // Adicionar campos dinâmicos como additional_fields
       if (equipmentTemplate) {
+        const additionalFields: { [key: string]: any } = {};
+
         equipmentTemplate.fields.forEach((field: DynamicField) => {
           const fieldKey = field.key || field.name || '';
-          if (fieldKey && dynamicFields[fieldKey] !== undefined) {
-            let value = dynamicFields[fieldKey];
+          if (!fieldKey) return;
 
-            // Converter valor baseado no tipo do campo
-            if (field.type === 'number') {
-              value = parseFloat(value) || 0;
-            } else if (field.type === 'boolean') {
-              value = Boolean(value);
-            } else if (field.type === 'text') {
-              value = String(value).trim();
-            }
+          const rawValue = dynamicFields[fieldKey];
+          if (rawValue === undefined) return;
 
-            payload[fieldKey] = value;
+          // radio_with_justification deve seguir o formato do backend
+          if (field.type === 'radio_with_justification') {
+            const justification = dynamicFields[`${fieldKey}_justification`] || '';
+            additionalFields[fieldKey] = {
+              label: field.label || field.name || fieldKey,
+              value: {
+                label: field.label || field.name || fieldKey,
+                value: String(rawValue),
+                justification: String(justification || ''),
+              },
+            };
+            return;
           }
+
+          // Demais tipos seguem como primitivo convertido
+          let value: any = rawValue;
+          if (field.type === 'number') {
+            value = parseFloat(value);
+            if (Number.isNaN(value)) value = null;
+          } else if (field.type === 'boolean') {
+            value = Boolean(value);
+          } else if (field.type === 'text' || field.type === 'measure' || field.type === 'select' || field.type === 'radio' || field.type === 'date') {
+            value = value !== null && value !== undefined ? String(value).trim() : '';
+          }
+
+          additionalFields[fieldKey] = value;
         });
+
+        // Adicionar additional_fields ao payload
+        payload.additional_fields = additionalFields;
+      } else {
+        // Se não há template, enviar additional_fields vazio
+        payload.additional_fields = {};
       }
 
       console.log("[CreateEquipmentScreen] Payload para criação:", payload);
@@ -269,6 +361,7 @@ const CreateEquipmentScreen: React.FC<CreateEquipmentScreenProps> = ({
     const fieldKey = field.key || field.name || '';
     const fieldLabel = field.label || field.name || fieldKey;
     const value = dynamicFields[fieldKey] || "";
+    const justification = dynamicFields[`${fieldKey}_justification`] || "";
 
     switch (field.type) {
       case 'text':
@@ -276,6 +369,7 @@ const CreateEquipmentScreen: React.FC<CreateEquipmentScreenProps> = ({
           <TextInput
             style={styles.textInput}
             placeholder={`Digite ${fieldLabel?.toLowerCase() || 'valor'}`}
+            placeholderTextColor="#999"
             value={value}
             onChangeText={(text) => setDynamicFields(prev => ({ ...prev, [fieldKey]: text }))}
           />
@@ -286,10 +380,28 @@ const CreateEquipmentScreen: React.FC<CreateEquipmentScreenProps> = ({
           <TextInput
             style={styles.textInput}
             placeholder={`Digite ${fieldLabel?.toLowerCase() || 'valor'}`}
+            placeholderTextColor="#999"
             value={value.toString()}
             onChangeText={(text) => setDynamicFields(prev => ({ ...prev, [fieldKey]: parseFloat(text) || 0 }))}
             keyboardType="numeric"
           />
+        );
+
+      case 'measure':
+        return (
+          <View style={styles.measureContainer}>
+            <TextInput
+              style={styles.measureInput}
+              placeholder={`Digite ${fieldLabel?.toLowerCase() || 'valor'}`}
+              placeholderTextColor="#999"
+              value={value.toString()}
+              onChangeText={(text) => setDynamicFields(prev => ({ ...prev, [fieldKey]: text }))}
+              keyboardType="numeric"
+            />
+            {field.unit && (
+              <Text style={styles.measureUnit}>{field.unit}</Text>
+            )}
+          </View>
         );
 
       case 'select':
@@ -305,6 +417,52 @@ const CreateEquipmentScreen: React.FC<CreateEquipmentScreenProps> = ({
                 <Picker.Item key={index} label={option} value={option} />
               ))}
             </Picker>
+          </View>
+        );
+
+      case 'radio':
+        return (
+          <View style={styles.radioGroup}>
+            {field.options?.map((option, idx) => (
+              <TouchableOpacity
+                key={idx}
+                style={[styles.radioOption, value === option && styles.radioOptionSelected]}
+                onPress={() => setDynamicFields(prev => ({ ...prev, [fieldKey]: option }))}
+              >
+                <Text style={value === option ? styles.radioTextSelected : styles.radioText}>
+                  {option}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        );
+
+      case 'radio_with_justification':
+        return (
+          <View>
+            <View style={styles.radioGroup}>
+              {field.options?.map((option, idx) => (
+                <TouchableOpacity
+                  key={idx}
+                  style={[styles.radioOption, value === option && styles.radioOptionSelected]}
+                  onPress={() => setDynamicFields(prev => ({ ...prev, [fieldKey]: option }))}
+                >
+                  <Text style={value === option ? styles.radioTextSelected : styles.radioText}>
+                    {option}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            {/* Justificativa condicional */}
+            {value === field.justification_target && (
+              <TextInput
+                style={styles.justificationInput}
+                placeholder="Justificativa"
+                placeholderTextColor="#999"
+                value={justification}
+                onChangeText={(text) => setDynamicFields(prev => ({ ...prev, [`${fieldKey}_justification`]: text }))}
+              />
+            )}
           </View>
         );
 
@@ -326,6 +484,7 @@ const CreateEquipmentScreen: React.FC<CreateEquipmentScreenProps> = ({
           <TextInput
             style={styles.textInput}
             placeholder={`Digite ${fieldLabel?.toLowerCase() || 'valor'}`}
+            placeholderTextColor="#999"
             value={value}
             onChangeText={(text) => setDynamicFields(prev => ({ ...prev, [fieldKey]: text }))}
           />
@@ -336,18 +495,13 @@ const CreateEquipmentScreen: React.FC<CreateEquipmentScreenProps> = ({
   const renderSelectField = (label: string, value: string, onValueChange: (value: string) => void, options: any[], placeholder: string) => (
     <View style={styles.inputGroup}>
       <Text style={styles.inputLabel}>{label}*</Text>
-      <View style={styles.pickerContainer}>
-        <Picker
-          selectedValue={value}
-          onValueChange={onValueChange}
-          style={styles.picker}
-        >
-          <Picker.Item label={placeholder} value="" />
-          {options.map((option) => (
-            <Picker.Item key={option.id} label={option.name} value={option.id.toString()} />
-          ))}
-        </Picker>
-      </View>
+      <CustomPicker
+        selectedValue={value}
+        onValueChange={onValueChange}
+        items={options.map((option) => ({ label: option.complete_name || option.name, value: option.id.toString() }))}
+        placeholder={placeholder}
+        style={styles.picker}
+      />
     </View>
   );
 
@@ -363,7 +517,12 @@ const CreateEquipmentScreen: React.FC<CreateEquipmentScreenProps> = ({
   return (
     <View style={styles.container}>
       {/* Header */}
-      <View style={styles.header}>
+      <LinearGradient
+        colors={["#667eea", "#764ba2"]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+        style={styles.header}
+      >
         <View style={styles.headerContent}>
           <TouchableOpacity
             style={styles.backButton}
@@ -376,7 +535,7 @@ const CreateEquipmentScreen: React.FC<CreateEquipmentScreenProps> = ({
             <Text style={styles.headerSubtitle}>Adicione um novo equipamento</Text>
           </View>
         </View>
-      </View>
+      </LinearGradient>
 
       <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>
         <View style={styles.content}>
@@ -392,6 +551,7 @@ const CreateEquipmentScreen: React.FC<CreateEquipmentScreenProps> = ({
               <TextInput
                 style={styles.textInput}
                 placeholder="Digite a tag do equipamento"
+                placeholderTextColor="#999"
                 value={tag}
                 onChangeText={setTag}
               />
@@ -479,7 +639,7 @@ const styles = StyleSheet.create({
     color: "#666",
   },
   header: {
-    backgroundColor: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+    backgroundColor: "#667eea",
     paddingTop: 50,
     paddingBottom: 20,
     paddingHorizontal: 20,
@@ -615,6 +775,61 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "bold",
     marginLeft: 8,
+  },
+  // Estilos para campos dinâmicos
+  measureContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  measureInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: "#ddd",
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    backgroundColor: "#f8f9fa",
+    color: "#333",
+  },
+  measureUnit: {
+    fontSize: 16,
+    color: "#666",
+    fontWeight: "500",
+    minWidth: 40,
+  },
+  radioGroup: {
+    gap: 8,
+  },
+  radioOption: {
+    borderWidth: 1,
+    borderColor: "#ddd",
+    borderRadius: 8,
+    padding: 12,
+    backgroundColor: "#f8f9fa",
+  },
+  radioOptionSelected: {
+    backgroundColor: "#007BFF",
+    borderColor: "#007BFF",
+  },
+  radioText: {
+    fontSize: 16,
+    color: "#333",
+  },
+  radioTextSelected: {
+    fontSize: 16,
+    color: "#fff",
+    fontWeight: "500",
+  },
+  justificationInput: {
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: "#007BFF",
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    backgroundColor: "#f8f9fa",
+    color: "#333",
   },
 });
 

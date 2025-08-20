@@ -166,7 +166,15 @@ export default class AuthService {
       }
     }
   }
-  static async updatePersonalData(accessToken: string, updatedData: { name?: string; birthdate?: string; rh_factor?: string; }) {
+  static async updatePersonalData(accessToken: string, updatedData: {
+    name?: string;
+    birthdate?: string;
+    rh_factor?: string;
+    document?: string;
+    rg?: string;
+    phone?: string;
+    ctps?: string;
+  }) {
     try {
       const accountName = await AsyncStorage.getItem("account") || "default";
       const dynamicBaseUrl = await setDynamicApiUrl(accountName);
@@ -189,6 +197,31 @@ export default class AuthService {
           status: error.response.status,
           data: error.response.data,
         });
+
+        // Tratar erros de validação específicos
+        if (error.response.status === 400 && error.response.data.errors) {
+          const validationErrors = error.response.data.errors;
+          console.error('Erros de validação:', validationErrors);
+
+          // Extrair mensagens de erro específicas
+          let errorMessages: string[] = [];
+          if (Array.isArray(validationErrors)) {
+            validationErrors.forEach((error: any) => {
+              if (error.attr && error.detail) {
+                errorMessages.push(`${error.attr}: ${error.detail}`);
+              } else if (error.field && error.message) {
+                errorMessages.push(`${error.field}: ${error.message}`);
+              } else if (typeof error === 'string') {
+                errorMessages.push(error);
+              }
+            });
+          }
+
+          if (errorMessages.length > 0) {
+            throw new Error(`Erros de validação:\n${errorMessages.join('\n')}`);
+          }
+        }
+
         throw new Error(`Erro: ${error.response.data.detail || 'Falha ao atualizar os dados.'}`);
       }
       throw new Error('Erro ao conectar ao servidor.');

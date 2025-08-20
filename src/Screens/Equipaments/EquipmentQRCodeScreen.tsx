@@ -40,28 +40,192 @@ const EquipmentQRCodeScreen: React.FC<EquipmentQRCodeScreenProps> = ({
       setScanning(false);
       console.log("Dados escaneados:", data);
 
-      // Validar formato UUID (simples validação)
-      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-      if (!uuidRegex.test(data)) {
-        throw new Error("QR Code inválido. O dado escaneado não é um UUID válido.");
+      // Verificar permissão para visualizar equipamentos
+      if (!hasPermission("view_equipment")) {
+        Alert.alert(
+          "🚫 Sem Permissão",
+          "Você não tem permissão para visualizar equipamentos.\n\nEntre em contato com o administrador.",
+          [
+            {
+              text: "OK",
+              style: "cancel"
+            }
+          ]
+        );
+        setLoading(false);
+        return;
       }
+
+      // Validar se o QR code não está vazio
+      if (!data || data.trim() === '') {
+        Alert.alert(
+          "⚠️ QR Code Inválido",
+          "O QR code escaneado está vazio ou é inválido.\n\nTente escanear novamente.",
+          [
+            {
+              text: "Tentar Novamente",
+              onPress: () => setScanning(true),
+            },
+            {
+              text: "Cancelar",
+              style: "cancel"
+            }
+          ]
+        );
+        setLoading(false);
+        return;
+      }
+
+      console.log("QR Code escaneado:", data);
+
+      // Extrair UUID do QR code (pode conter texto completo ou apenas UUID)
+      let uuid = data.trim();
+
+      // Se o QR code contém múltiplas linhas, extrair o UUID
+      if (data.includes('UUID:')) {
+        const uuidMatch = data.match(/UUID:\s*([a-f0-9-]+)/i);
+        if (uuidMatch) {
+          uuid = uuidMatch[1];
+          console.log("UUID extraído:", uuid);
+        } else {
+          Alert.alert(
+            "⚠️ QR Code Inválido",
+            "Não foi possível extrair o UUID do QR code.\n\nTente escanear novamente.",
+            [
+              {
+                text: "Tentar Novamente",
+                onPress: () => setScanning(true),
+              },
+              {
+                text: "Cancelar",
+                style: "cancel"
+              }
+            ]
+          );
+          setLoading(false);
+          return;
+        }
+      }
+
+      // Validar formato UUID
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(uuid)) {
+        Alert.alert(
+          "⚠️ UUID Inválido",
+          "O UUID extraído não está no formato correto.\n\nUUID: " + uuid,
+          [
+            {
+              text: "Tentar Novamente",
+              onPress: () => setScanning(true),
+            },
+            {
+              text: "Cancelar",
+              style: "cancel"
+            }
+          ]
+        );
+        setLoading(false);
+        return;
+      }
+
+      console.log("UUID válido para busca:", uuid);
 
       // Obter o token de acesso
       const token = await AsyncStorage.getItem("access_token");
-      if (!token) throw new Error("Token de acesso não encontrado.");
+      if (!token) {
+        Alert.alert(
+          "🔐 Sessão Expirada",
+          "Sua sessão expirou. Faça login novamente para continuar.",
+          [
+            {
+              text: "Fazer Login",
+              onPress: () => navigation.navigate("LoginScreen"),
+            }
+          ]
+        );
+        setLoading(false);
+        return;
+      }
 
-      // Buscar detalhes do equipamento usando UUID
-      const equipmentDetails = await EquipmentService.fetchEquipmentDetails(data, token);
+      // Buscar detalhes do equipamento usando QR Code conforme documentação
+      const equipmentDetails = await EquipmentService.fetchEquipmentByQRCode(uuid, token);
       if (!equipmentDetails) {
         throw new Error("Equipamento não encontrado.");
       }
 
-      // Redirecionar para a tela de detalhes do equipamento
-      navigation.navigate("EquipmentDetailsScreen", {
-        equipmentId: data, // Usar UUID como string
-      });
+      console.log("Detalhes do equipamento encontrado:", equipmentDetails);
+
+      // Mostrar alerta de sucesso
+      Alert.alert(
+        "✅ Equipamento Encontrado!",
+        `Equipamento: ${equipmentDetails.name || 'Nome não disponível'}\nStatus: ${equipmentDetails.status || 'Status não disponível'}`,
+        [
+          {
+            text: "Ver Detalhes",
+            onPress: () => {
+              // Redirecionar para a tela de detalhes do equipamento
+              console.log('[QRCode] Navegando para EquipmentDetailsScreen com ID:', equipmentDetails.id);
+              navigation.navigate("EquipmentDetailsScreen", {
+                equipmentId: equipmentDetails.id || data, // Usar ID do equipamento ou QR code como fallback
+              });
+            }
+          },
+          {
+            text: "Escanear Outro",
+            onPress: () => setScanning(true),
+            style: "cancel"
+          }
+        ]
+      );
     } catch (error: any) {
-      Alert.alert("Erro ao processar QR Code", error.message);
+      console.error("Erro ao processar QR Code:", error);
+
+      // Determinar o tipo de erro e mostrar alerta apropriado
+      let alertTitle = "❌ Erro ao Processar QR Code";
+      let alertMessage = error.message;
+      let alertButtons = [
+        {
+          text: "Tentar Novamente",
+          onPress: () => setScanning(true),
+        },
+        {
+          text: "Cancelar",
+          style: "cancel"
+        }
+      ];
+
+      // Tratamento específico para diferentes tipos de erro
+      if (error.message.includes("Equipamento não encontrado")) {
+        alertTitle = "🔍 Equipamento Não Encontrado";
+        alertMessage = "Este QR code não corresponde a um equipamento cadastrado no sistema.\n\nVerifique se:\n• O QR code está correto\n• O equipamento está cadastrado\n• Você tem permissão para acessar";
+        alertButtons = [
+          {
+            text: "Escanear Outro",
+            onPress: () => setScanning(true),
+          },
+          {
+            text: "Entendi",
+            style: "cancel"
+          }
+        ];
+      } else if (error.message.includes("Token de acesso")) {
+        alertTitle = "🔐 Erro de Autenticação";
+        alertMessage = "Sua sessão expirou. Faça login novamente.";
+        alertButtons = [
+          {
+            text: "OK",
+            onPress: () => navigation.navigate("LoginScreen"),
+          }
+        ];
+      } else if (error.message.includes("rede") || error.message.includes("conexão")) {
+        alertTitle = "📡 Erro de Conexão";
+        alertMessage = "Verifique sua conexão com a internet e tente novamente.";
+      } else if (error.message.includes("permissão")) {
+        alertTitle = "🚫 Sem Permissão";
+        alertMessage = "Você não tem permissão para acessar este equipamento.";
+      }
+
+      Alert.alert(alertTitle, alertMessage, alertButtons);
       setScanning(true); // Reativar scanner em caso de erro
     } finally {
       setLoading(false);

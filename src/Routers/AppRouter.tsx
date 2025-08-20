@@ -16,6 +16,7 @@ import EditEquipmentScreen from '../Screens/Equipaments/EditEquipmentScreen';
 import { ClientsAvulsosScreen, ClientsComContratoScreen } from "../Screens/Clients/Client";
 import RoadmapScreen from '../Screens/Roadmap/RoadmapScreen';
 import RoadmapActivityDetailsScreen from '../Screens/Roadmap/RoadmapdetailsScreen';
+
 import HomeScreen from '../Screens/HomeScreen';
 import DrawerNavigator from "./DrawerNavigation";
 import EquipamentScreen from '../Screens/Equipaments/EquipamentScreen';
@@ -28,6 +29,11 @@ import PmocEquipmentScreen from "../Screens/Pmoc/PmocEquipmentScreen";
 import ActivityHistoryScreen from "../Screens/Activity/ActivityHistoryScreen";
 import ActivityEquipmentListScreen from "../Screens/Activity/ActivityEquipmentListScreen";
 import ActivityQuestionnaireScreen from "../Screens/Activity/ActivityQuestionnaireScreen";
+import WorkListScreen from "../Screens/Work/WorkListScreen";
+import WorkDetailScreen from "../Screens/Work/WorkDetailScreen";
+import WorkCreateScreen from "../Screens/Work/WorkCreateScreen";
+import WorkEditScreen from "../Screens/Work/WorkEditScreen";
+import WorkApproveScreen from "../Screens/Work/WorkApproveScreen";
 import NewServiceOrderScreen from "../Screens/Orders/NewServiceOrderScreen";
 import TechnicalAssistanceScreen from '../Screens/TechnicalAssistance/TechnicalAssistanceScreen';
 import RespondOrderScreen from "../Screens/Orders/RespondOrderServiceScreen";
@@ -50,6 +56,8 @@ export type RootStackParamList = {
   EvaporatorTypesScreen: undefined;
   RoadmapScreen: undefined;
   RoadmapDetailsScreen: { activity: any };
+
+  RoadmapEquipmentQuestionsScreen: { activity: any; equipment: any };
   PhasesScreen: undefined;
   TechnologiesScreen: undefined;
   FunctionsScreen: undefined;
@@ -70,7 +78,7 @@ export type RootStackParamList = {
   AuthenticatedFlow: undefined;
   EquipamentScreen: { clientId: number; sectorId: number, subsectorId?: number };
   CreateServiceOrderScreen: { equipmentId: number; equipmentStatus: string };
-  CreateEquipmentScreen: undefined;
+  CreateEquipmentScreen: { clientId?: number; sectorId?: number };
   EquipmentDetailsScreen: { equipmentId: string };
   EquipmentQRCodeScreen: { equipmentId?: string };
   EditEquipmentScreen: { equipmentId: string };
@@ -83,6 +91,11 @@ export type RootStackParamList = {
   ActivityHistoryScreen: { equipmentId?: number, activityTypeSlug?: string, status?: string[] };
   ActivityEquipmentListScreen: { activityId: number; activityName: string; clientId?: number; clientName?: string };
   ActivityQuestionnaireScreen: { activityId: number; activityEquipmentId: number; equipmentId: number; equipmentTag: string; activityName: string };
+  WorkListScreen: { activityId: number; activityName?: string };
+  WorkDetailScreen: { activityId: number; workId: number };
+  WorkCreateScreen: { activityId: number };
+  WorkEditScreen: { activityId: number; workId: number };
+  WorkApproveScreen: { activityId: number; workId: number };
   NewServiceOrderScreen: { equipmentId: number };
   TechnicalAssistanceScreen: undefined;
   ListOrderServiceScreen: { equipmentId: number };
@@ -138,6 +151,11 @@ const AppRouter: React.FC = () => {
       <Stack.Screen name="ActivityHistoryScreen" component={ActivityHistoryScreen} options={{ headerTitle: t('menu.activities') }} />
       <Stack.Screen name="ActivityEquipmentListScreen" component={ActivityEquipmentListScreen} options={{ headerShown: false }} />
       <Stack.Screen name="ActivityQuestionnaireScreen" component={ActivityQuestionnaireScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="WorkListScreen" component={WorkListScreen} options={{ headerTitle: 'Registros de Trabalho' }} />
+      <Stack.Screen name="WorkDetailScreen" component={WorkDetailScreen} options={{ headerTitle: 'Detalhes do Registro' }} />
+      <Stack.Screen name="WorkCreateScreen" component={WorkCreateScreen} options={{ headerTitle: 'Criar Registro de Trabalho' }} />
+      <Stack.Screen name="WorkEditScreen" component={WorkEditScreen} options={{ headerTitle: 'Editar Registro de Trabalho' }} />
+      <Stack.Screen name="WorkApproveScreen" component={WorkApproveScreen} options={{ headerTitle: 'Aprovar Registro' }} />
       <Stack.Screen name="NewServiceOrderScreen" component={NewServiceOrderScreen} options={{ title: "Nova Ordem de Serviço" }} />
       <Stack.Screen name="ListOrderServiceScreen" component={ListOrderServiceScreen} options={{ title: t('menu.serviceOrders') }} />
       <Stack.Screen name="ManualsScreen" component={ManualsScreen} options={{ headerTitle: t('menu.manuals') }} />
@@ -150,6 +168,7 @@ const AppRouter: React.FC = () => {
       <Stack.Screen name="ClientSectorsScreen" component={ClientSectorsScreen} options={{ headerTitle: 'Setores do Cliente' }} />
       <Stack.Screen name="RoadmapScreen" component={RoadmapScreen} options={{ headerTitle: 'Roteiro' }} />
       <Stack.Screen name="RoadmapDetailsScreen" component={RoadmapActivityDetailsScreen} options={{ headerTitle: 'Detalhes da Atividade' }} />
+
       <Stack.Screen name="SectorDetailScreen" component={SectorDetailScreen} options={{ headerTitle: 'Detalhes do Setor' }} />
       <Stack.Screen name="PreferencesScreen" component={PreferencesScreen} options={{ headerTitle: t('menu.preferences') }} />
     </Stack.Navigator>

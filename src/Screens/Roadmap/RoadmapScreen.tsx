@@ -34,25 +34,24 @@ const RoadmapScreen: React.FC<RoadmapScreenProps> = ({ navigation }) => {
 
     const loadRoadmap = async () => {
         try {
+            console.log('[RoadmapScreen] === INICIANDO loadRoadmap ===');
             setLoading(true);
+
             const response = await RoadmapService.getCurrentRoadmap();
             console.log('[RoadmapScreen] Dados recebidos:', response);
-            console.log('[RoadmapScreen] Atividades:', response.activities);
+            console.log('[RoadmapScreen] Atividades recebidas:', response.activities);
+            console.log('[RoadmapScreen] Número de atividades:', response.activities?.length || 0);
 
-            // Validar e limpar dados
-            const validActivities = response.activities.map(activity => ({
-                ...activity,
-                status: activity.status || 'pending',
-                priority: activity.priority || 'medium',
-                type: activity.type || 'maintenance',
-                clientName: activity.clientName || 'Cliente não informado',
-                address: activity.address || 'Endereço não informado',
-                title: activity.title || 'Atividade sem título'
-            }));
+            // Os dados já foram processados no RoadmapService
+            const validActivities = response.activities;
 
+            console.log('[RoadmapScreen] Atividades validadas:', validActivities);
+            console.log('[RoadmapScreen] Número de atividades validadas:', validActivities.length);
             setActivities(validActivities);
         } catch (error: any) {
             console.error('[RoadmapScreen] Erro ao carregar roteiro:', error);
+            console.error('[RoadmapScreen] Tipo do erro:', typeof error);
+            console.error('[RoadmapScreen] Mensagem do erro:', error.message);
 
             // Se não há roteiros para o dia, não mostrar erro
             if (error.message && error.message.includes('Nenhum roteiro encontrado')) {
@@ -63,19 +62,30 @@ const RoadmapScreen: React.FC<RoadmapScreenProps> = ({ navigation }) => {
             }
         } finally {
             setLoading(false);
+            console.log('[RoadmapScreen] === FINALIZANDO loadRoadmap ===');
         }
     };
 
     const onRefresh = async () => {
         setRefreshing(true);
         try {
-            // Força a busca da API limpando o cache antes
-            await OfflineService.cacheData(CURRENT_ROADMAP_CACHE_KEY, null);
-            await loadRoadmap();
+            console.log('[RoadmapScreen] === INICIANDO REFRESH ===');
+            // Força a busca da API usando forceRefresh
+            const response = await RoadmapService.getCurrentRoadmap(true);
+            console.log('[RoadmapScreen] Dados do refresh recebidos:', response);
+            console.log('[RoadmapScreen] Atividades do refresh:', response.activities?.length || 0);
+
+            // Os dados já foram processados no RoadmapService
+            const validActivities = response.activities;
+
+            console.log('[RoadmapScreen] Atividades validadas do refresh:', validActivities.length);
+            setActivities(validActivities);
         } catch (error: any) {
+            console.error('[RoadmapScreen] Erro no refresh:', error);
             Alert.alert('Erro', error.message || 'Erro ao atualizar roteiro');
         } finally {
             setRefreshing(false);
+            console.log('[RoadmapScreen] === FINALIZANDO REFRESH ===');
         }
     };
 
@@ -85,8 +95,16 @@ const RoadmapScreen: React.FC<RoadmapScreenProps> = ({ navigation }) => {
 
     const getStatusColor = (status: RoadmapActivity['status']) => {
         switch (status) {
+            case 'created':
+                return '#6C757D';
+            case 'open':
+                return '#17A2B8';
             case 'pending':
                 return '#FFA500';
+            case 'close':
+                return '#28A745';
+            case 'archived':
+                return '#DC3545';
             case 'in_progress':
                 return '#007BFF';
             case 'completed':
@@ -100,8 +118,16 @@ const RoadmapScreen: React.FC<RoadmapScreenProps> = ({ navigation }) => {
 
     const getStatusText = (status: RoadmapActivity['status']) => {
         switch (status) {
+            case 'created':
+                return 'Criado';
+            case 'open':
+                return 'Aberto';
             case 'pending':
                 return t('roadmap.pending');
+            case 'close':
+                return 'Fechado';
+            case 'archived':
+                return 'Arquivado';
             case 'in_progress':
                 return t('roadmap.inProgress');
             case 'completed':
@@ -110,36 +136,11 @@ const RoadmapScreen: React.FC<RoadmapScreenProps> = ({ navigation }) => {
                 return t('roadmap.cancelled');
             default:
                 console.warn(`[RoadmapScreen] Status desconhecido: ${status}`);
-                return t('roadmap.pending'); // Fallback para pending
+                return 'Criado'; // Fallback para created
         }
     };
 
-    const getPriorityColor = (priority: RoadmapActivity['priority']) => {
-        switch (priority) {
-            case 'high':
-                return '#DC3545';
-            case 'medium':
-                return '#FFA500';
-            case 'low':
-                return '#28A745';
-            default:
-                return '#6C757D';
-        }
-    };
 
-    const getPriorityText = (priority: RoadmapActivity['priority']) => {
-        switch (priority) {
-            case 'high':
-                return t('roadmap.high');
-            case 'medium':
-                return t('roadmap.medium');
-            case 'low':
-                return t('roadmap.low');
-            default:
-                console.warn(`[RoadmapScreen] Prioridade desconhecida: ${priority}`);
-                return t('roadmap.medium'); // Fallback para medium
-        }
-    };
 
     const getTypeIcon = (type: RoadmapActivity['type']) => {
         switch (type) {
@@ -182,7 +183,7 @@ const RoadmapScreen: React.FC<RoadmapScreenProps> = ({ navigation }) => {
     };
 
     const handleActivityPress = (activity: RoadmapActivity) => {
-        navigation.navigate('RoadmapActivityDetails', { activity });
+        navigation.navigate('RoadmapDetailsScreen', { activity });
     };
 
     const renderActivityItem = ({ item }: { item: RoadmapActivity }) => (
@@ -248,17 +249,6 @@ const RoadmapScreen: React.FC<RoadmapScreenProps> = ({ navigation }) => {
             </View>
 
             <View style={styles.activityFooter}>
-                <View style={styles.priorityContainer}>
-                    <View
-                        style={[
-                            styles.priorityBadge,
-                            { backgroundColor: getPriorityColor(item.priority) }
-                        ]}
-                    >
-                        <Text style={styles.priorityText}>{getPriorityText(item.priority)}</Text>
-                    </View>
-                </View>
-
                 <View style={styles.typeContainer}>
                     <Text style={styles.typeText}>{getTypeText(item.type)}</Text>
                 </View>
@@ -288,13 +278,26 @@ const RoadmapScreen: React.FC<RoadmapScreenProps> = ({ navigation }) => {
     return (
         <View style={styles.container}>
             <View style={styles.header}>
-                <Text style={styles.headerTitle}>{t('roadmap.dayRoadmap')}</Text>
-                <Text style={styles.headerDate}>
-                    {format(currentDate, "EEEE, dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
-                </Text>
-                <Text style={styles.headerSubtitle}>
-                    {activities.length} {t('roadmap.activitiesCount')}
-                </Text>
+                <View style={styles.headerInfo}>
+                    <Text style={styles.headerTitle}>{t('roadmap.dayRoadmap')}</Text>
+                    <Text style={styles.headerDate}>
+                        {format(currentDate, "EEEE, dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
+                    </Text>
+                    <Text style={styles.headerSubtitle}>
+                        {activities.length} {t('roadmap.activitiesCount')}
+                    </Text>
+                </View>
+                <TouchableOpacity
+                    style={styles.refreshButton}
+                    onPress={onRefresh}
+                    disabled={refreshing}
+                >
+                    <Ionicons
+                        name="refresh"
+                        size={24}
+                        color="#007BFF"
+                    />
+                </TouchableOpacity>
             </View>
 
             <FlatList
@@ -327,28 +330,44 @@ const styles = StyleSheet.create({
         marginTop: 10,
         fontSize: 16,
         color: '#666',
+        backgroundColor: 'transparent',
     },
     header: {
         backgroundColor: '#007BFF',
         padding: 20,
         paddingTop: 40,
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'flex-start',
+    },
+    headerInfo: {
+        flex: 1,
+    },
+    refreshButton: {
+        padding: 8,
+        backgroundColor: 'rgba(255, 255, 255, 0.2)',
+        borderRadius: 8,
+        marginLeft: 10,
     },
     headerTitle: {
         fontSize: 24,
         fontWeight: 'bold',
         color: '#fff',
         marginBottom: 5,
+        backgroundColor: 'transparent',
     },
     headerDate: {
         fontSize: 16,
         color: '#fff',
         opacity: 0.9,
         marginBottom: 5,
+        backgroundColor: 'transparent',
     },
     headerSubtitle: {
         fontSize: 14,
         color: '#fff',
         opacity: 0.8,
+        backgroundColor: 'transparent',
     },
     listContainer: {
         padding: 16,
@@ -385,6 +404,7 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         color: '#333',
         flex: 1,
+        backgroundColor: 'transparent',
     },
     statusContainer: {
         alignItems: 'flex-end',
@@ -398,6 +418,7 @@ const styles = StyleSheet.create({
         fontSize: 12,
         fontWeight: '600',
         color: '#fff',
+        backgroundColor: 'transparent',
     },
     activityInfo: {
         marginBottom: 12,
@@ -412,6 +433,7 @@ const styles = StyleSheet.create({
         color: '#666',
         marginLeft: 8,
         flex: 1,
+        backgroundColor: 'transparent',
     },
     activityFooter: {
         flexDirection: 'row',
@@ -430,6 +452,7 @@ const styles = StyleSheet.create({
         fontSize: 12,
         fontWeight: '600',
         color: '#fff',
+        backgroundColor: 'transparent',
     },
     typeContainer: {
         alignItems: 'flex-end',
@@ -438,6 +461,7 @@ const styles = StyleSheet.create({
         fontSize: 12,
         color: '#666',
         fontStyle: 'italic',
+        backgroundColor: 'transparent',
     },
     emptyContainer: {
         flex: 1,
@@ -451,11 +475,13 @@ const styles = StyleSheet.create({
         color: '#666',
         marginTop: 16,
         marginBottom: 8,
+        backgroundColor: 'transparent',
     },
     emptySubtitle: {
         fontSize: 14,
         color: '#999',
         textAlign: 'center',
+        backgroundColor: 'transparent',
     },
 });
 

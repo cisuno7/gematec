@@ -193,7 +193,7 @@ const CreateServiceOrderScreen = ({ navigation }: { navigation: any }) => {
             onPress={() => setSelectedSector(item)}
         >
             <View style={styles.cardHeader}>
-                                 <Ionicons name="business" size={24} color={selectedSector?.id === item.id ? "#667eea" : "#666"} />
+                <Ionicons name="business" size={24} color={selectedSector?.id === item.id ? "#667eea" : "#666"} />
                 <Text style={[styles.cardTitle, selectedSector?.id === item.id && styles.cardTitleSelected]}>
                     {item.name}
                 </Text>
@@ -260,11 +260,11 @@ const CreateServiceOrderScreen = ({ navigation }: { navigation: any }) => {
                         <Text style={styles.summaryValue}>{selectedClient?.name}</Text>
                     </View>
 
-                                     <View style={styles.summaryRow}>
-                     <Ionicons name="business" size={16} color="#667eea" />
-                     <Text style={styles.summaryLabel}>Setor:</Text>
-                     <Text style={styles.summaryValue}>{selectedSector?.name}</Text>
-                 </View>
+                    <View style={styles.summaryRow}>
+                        <Ionicons name="business" size={16} color="#667eea" />
+                        <Text style={styles.summaryLabel}>Setor:</Text>
+                        <Text style={styles.summaryValue}>{selectedSector?.name}</Text>
+                    </View>
 
                     <View style={styles.summaryRow}>
                         <MaterialIcons name="build" size={16} color="#667eea" />
@@ -321,10 +321,10 @@ const CreateServiceOrderScreen = ({ navigation }: { navigation: any }) => {
                     {/* Step 2: Seleção de Setor */}
                     {selectedClient && (
                         <View style={styles.stepSection}>
-                                                     <View style={styles.stepHeader}>
-                             <Ionicons name="business" size={24} color="#667eea" />
-                             <Text style={styles.stepTitle}>Selecione um Setor</Text>
-                         </View>
+                            <View style={styles.stepHeader}>
+                                <Ionicons name="business" size={24} color="#667eea" />
+                                <Text style={styles.stepTitle}>Selecione um Setor</Text>
+                            </View>
 
                             {loading ? (
                                 <View style={styles.loadingContainer}>
@@ -339,7 +339,7 @@ const CreateServiceOrderScreen = ({ navigation }: { navigation: any }) => {
                                     scrollEnabled={false}
                                     ListEmptyComponent={
                                         <View style={styles.emptyContainer}>
-                                                                                         <MaterialIcons name="business" size={60} color="#ccc" />
+                                            <MaterialIcons name="business" size={60} color="#ccc" />
                                             <Text style={styles.emptyText}>Nenhum setor encontrado</Text>
                                         </View>
                                     }

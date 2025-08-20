@@ -1,5 +1,19 @@
 import React, { useContext, useEffect, useState } from 'react';
-import { View, Text, TextInput, Button, StyleSheet, Alert, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native'; // Added TouchableOpacity
+import {
+  View,
+  Text,
+  TextInput,
+  StyleSheet,
+  Alert,
+  ScrollView,
+  TouchableOpacity,
+  ActivityIndicator,
+  Modal,
+  KeyboardAvoidingView,
+  Platform,
+  Dimensions,
+  Animated
+} from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import AuthService from '../Services/AuthService';
@@ -8,44 +22,55 @@ import { RootStackParamList } from '../Routers/AppRouter';
 import { usePermissions } from "../Context/PermissionsContext";
 import { DrawerNavigationProp } from '@react-navigation/drawer';
 import { useUser } from '../Context/UserContext';
-import PersonalDataModel from '../Models/PersonalData'; // Import the updated model
+import PersonalDataModel from '../Models/PersonalData';
+import DatePickerInput from '../Components/DatePickerInput';
+import { FontAwesome } from '@expo/vector-icons';
 
 interface PersonalDataScreenProps {
   route: RouteProp<RootStackParamList, 'PersonalDataScreen'>;
   navigation: DrawerNavigationProp<RootStackParamList, 'PersonalDataScreen'>;
 }
 
+const { width, height } = Dimensions.get('window');
+
 const PersonalDataScreen: React.FC<PersonalDataScreenProps> = ({ route, navigation }) => {
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const { hasPermission, permissions } = usePermissions();
-  const { account, logout } = useUser(); // Added logout from useUser
+  const { account, logout, updateUserData } = useUser(); // Added updateUserData
   const [loading, setLoading] = useState(true);
-  const [personalData, setPersonalData] = useState<PersonalDataModel | null>(null); // State to hold fetched data
+  const [personalData, setPersonalData] = useState<PersonalDataModel | null>(null);
 
   // Editable fields
   const [name, setName] = useState('');
   const [birthdate, setBirthdate] = useState('');
   const [rhFactor, setRhFactor] = useState('');
 
-  // Non-editable fields (derived from personalData)
+  // Non-editable fields
   const [email, setEmail] = useState('');
   const [document, setDocument] = useState('');
   const [rg, setRg] = useState('');
   const [phone, setPhone] = useState('');
   const [ctps, setCtps] = useState('');
   const [admissionDate, setAdmissionDate] = useState('');
-  const [group, setGroup] = useState<any>(null); // Assuming 'any' for now, or define a Group interface
-  const [role, setRole] = useState<any>(null);   // Assuming 'any' for now, or define a Role interface
+  const [group, setGroup] = useState<any>(null);
+  const [role, setRole] = useState<any>(null);
 
   // Edit mode state
   const [isEditing, setIsEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
 
-  // Password change state
+  // Password change modal state
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [passwordError, setPasswordError] = useState('');
+  const [changingPassword, setChangingPassword] = useState(false);
 
-  // Fator RH options - usando valores em minúsculas conforme backend
+  // Animation values
+  const fadeAnim = useState(new Animated.Value(0))[0];
+  const slideAnim = useState(new Animated.Value(50))[0];
+
+  // Fator RH options
   const rhFactorOptions = [
     { label: 'Selecione o Fator RH', value: '' },
     { label: 'A+', value: 'a+' },
@@ -61,16 +86,26 @@ const PersonalDataScreen: React.FC<PersonalDataScreenProps> = ({ route, navigati
   const canEdit = hasPermission("change_me");
   const canView = hasPermission("view_user");
 
-  console.log("[PersonalDataScreen] Permissão change_me:", canEdit);
-  console.log("[PersonalDataScreen] Permissão view_user:", canView);
-  console.log("[PersonalDataScreen] Permissões disponíveis:", permissions);
-  console.log("[PersonalDataScreen] Estado de edição:", isEditing);
+  // Animate in on mount
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 500,
+        useNativeDriver: true,
+      }),
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 500,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, []);
 
   useEffect(() => {
     const fetchPersonalData = async () => {
       try {
         setLoading(true);
-        console.log('Buscando dados pessoais do usuário...');
         const token = await AsyncStorage.getItem('access_token');
         const currentAccount = await AsyncStorage.getItem('account');
 
@@ -79,12 +114,9 @@ const PersonalDataScreen: React.FC<PersonalDataScreenProps> = ({ route, navigati
 
         setAccessToken(token);
 
-        console.log('Conta:', currentAccount);
-        console.log('Token de acesso:', token);
-
         const fetchedData = await AuthService.getPersonalData(token, currentAccount);
-        const personalDataInstance = new PersonalDataModel(fetchedData); // Create instance
-        setPersonalData(personalDataInstance); // Store the instance
+        const personalDataInstance = new PersonalDataModel(fetchedData);
+        setPersonalData(personalDataInstance);
 
         // Update editable fields
         setName(personalDataInstance.name || '');
@@ -114,7 +146,6 @@ const PersonalDataScreen: React.FC<PersonalDataScreenProps> = ({ route, navigati
 
   const handleEditToggle = () => {
     setIsEditing(!isEditing);
-    // Reset editable fields if canceling edit
     if (isEditing && personalData) {
       setName(personalData.name || '');
       setBirthdate(personalData.birthdate || '');
@@ -124,47 +155,79 @@ const PersonalDataScreen: React.FC<PersonalDataScreenProps> = ({ route, navigati
 
   const handleUpdate = async () => {
     try {
+      setSaving(true);
       if (!accessToken) throw new Error('Token de acesso ausente.');
       if (!account) throw new Error('Conta não encontrada.');
 
-      // Validação melhorada de data
+      // Validação e conversão de data
       let validatedBirthdate: string | undefined = birthdate;
       if (birthdate && birthdate.trim() !== '') {
-        // Remove caracteres não numéricos exceto hífens
-        const cleanDate = birthdate.replace(/[^0-9-]/g, '');
+        try {
+          let dateObj: Date;
 
-        // Verifica se tem o formato correto
-        const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-        if (!dateRegex.test(cleanDate)) {
-          Alert.alert("Erro", "Data de nascimento deve estar no formato YYYY-MM-DD (ex: 1990-01-15)");
+          if (/^\d{4}-\d{2}-\d{2}$/.test(birthdate)) {
+            dateObj = new Date(birthdate);
+          } else if (/^\d{2}\/\d{2}\/\d{4}$/.test(birthdate)) {
+            const [day, month, year] = birthdate.split('/');
+            dateObj = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+          } else {
+            dateObj = new Date(birthdate);
+          }
+
+          if (isNaN(dateObj.getTime())) {
+            Alert.alert("Erro", "Data de nascimento inválida");
+            return;
+          }
+
+          const day = String(dateObj.getDate()).padStart(2, '0');
+          const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+          const year = dateObj.getFullYear();
+          validatedBirthdate = `${day}/${month}/${year}`;
+        } catch (error) {
+          Alert.alert("Erro", "Formato de data inválido");
           return;
         }
-
-        // Valida se é uma data válida
-        const dateObj = new Date(cleanDate);
-        if (isNaN(dateObj.getTime())) {
-          Alert.alert("Erro", "Data de nascimento inválida");
-          return;
-        }
-
-        validatedBirthdate = cleanDate;
-      } else {
-        validatedBirthdate = undefined; // Permite data vazia
       }
 
-      const updatedData = {
-        name: name.trim() || undefined,
-        birthdate: validatedBirthdate,
-        rh_factor: rhFactor.trim() || undefined,
-      };
+      // Preparar dados para envio
+      const updatedData: any = {};
 
-      console.log('Dados a serem enviados:', updatedData);
+      if (name.trim()) updatedData.name = name.trim();
+      if (validatedBirthdate) updatedData.birthdate = validatedBirthdate;
+      if (rhFactor.trim()) {
+        const cleanRhFactor = rhFactor.trim().toLowerCase().replace(/[^a-z+-]/g, '');
+        const validRhFactors = ['a+', 'a-', 'b+', 'b-', 'ab+', 'ab-', 'o+', 'o-'];
+        if (validRhFactors.includes(cleanRhFactor)) {
+          updatedData.rh_factor = cleanRhFactor;
+        }
+      }
+      if (document.trim()) updatedData.document = document.trim();
+      if (rg.trim()) updatedData.rg = rg.trim();
+      if (phone.trim()) {
+        const cleanPhone = phone.trim().replace(/\D/g, '');
+        if (cleanPhone.length >= 10) {
+          updatedData.phone = cleanPhone;
+        }
+      }
+      if (ctps.trim() && ctps.trim() !== "Não informado") {
+        const cleanCtps = ctps.trim().replace(/\D/g, '');
+        if (cleanCtps.length <= 11) {
+          updatedData.ctps = cleanCtps;
+        }
+      }
 
       const updatedPersonalData = await AuthService.updatePersonalData(accessToken, updatedData);
-      Alert.alert('Sucesso', 'Dados atualizados com sucesso.');
-      console.log('Dados atualizados:', updatedPersonalData);
-      setPersonalData(new PersonalDataModel(updatedPersonalData)); // Update the main personalData state
-      setIsEditing(false); // Exit edit mode
+
+      // Update local state
+      setPersonalData(new PersonalDataModel(updatedPersonalData));
+      setIsEditing(false);
+
+      // Update user data in context for menu lateral
+      if (updatedData.name) {
+        updateUserData({ name: updatedData.name });
+      }
+
+      Alert.alert('Sucesso', 'Dados atualizados com sucesso!');
     } catch (error: any) {
       console.error('Erro ao atualizar os dados pessoais:', error.message);
       let errorMessage = 'Erro ao atualizar os dados pessoais.';
@@ -174,6 +237,8 @@ const PersonalDataScreen: React.FC<PersonalDataScreenProps> = ({ route, navigati
         errorMessage = error.response.data.detail;
       }
       Alert.alert('Erro', errorMessage);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -192,7 +257,6 @@ const PersonalDataScreen: React.FC<PersonalDataScreenProps> = ({ route, navigati
       return;
     }
 
-    // Validação adicional de senha forte
     const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/;
     if (!passwordRegex.test(newPassword)) {
       setPasswordError('A senha deve conter pelo menos uma letra maiúscula, uma minúscula e um número.');
@@ -200,11 +264,15 @@ const PersonalDataScreen: React.FC<PersonalDataScreenProps> = ({ route, navigati
     }
 
     try {
+      setChangingPassword(true);
       if (!accessToken) throw new Error('Token de acesso ausente.');
       await AuthService.updatePassword(accessToken, newPassword, confirmNewPassword);
       Alert.alert('Sucesso', 'Senha alterada com sucesso. Por favor, faça login novamente.');
-      await logout(); // Logout the user
-      navigation.navigate('LoginScreen'); // Navigate to login screen
+      setShowPasswordModal(false);
+      setNewPassword('');
+      setConfirmNewPassword('');
+      await logout();
+      navigation.navigate('LoginScreen');
     } catch (error: any) {
       console.error('Erro ao alterar senha:', error.message);
       let errorMessage = 'Erro ao alterar a senha.';
@@ -218,8 +286,30 @@ const PersonalDataScreen: React.FC<PersonalDataScreenProps> = ({ route, navigati
         errorMessage = error.response.data.detail;
       }
       Alert.alert('Erro', errorMessage);
+    } finally {
+      setChangingPassword(false);
     }
   };
+
+  const renderField = (label: string, value: string, isEditable: boolean = false, onChangeText?: (text: string) => void, placeholder?: string) => (
+    <View style={styles.fieldContainer}>
+      <Text style={styles.fieldLabel}>{label}</Text>
+      {isEditable ? (
+        <TextInput
+          style={[styles.fieldInput, !isEditing && styles.disabledInput]}
+          value={value}
+          onChangeText={onChangeText}
+          placeholder={placeholder}
+          placeholderTextColor="#999"
+          editable={isEditing && canEdit}
+        />
+      ) : (
+        <View style={styles.fieldValue}>
+          <Text style={styles.fieldValueText}>{value}</Text>
+        </View>
+      )}
+    </View>
+  );
 
   if (loading) {
     return (
@@ -233,250 +323,508 @@ const PersonalDataScreen: React.FC<PersonalDataScreenProps> = ({ route, navigati
   if (!canView) {
     return (
       <View style={styles.container}>
-        <Text style={styles.errorText}>Você não tem permissão para visualizar seus dados.</Text>
+        <View style={styles.errorContainer}>
+          <FontAwesome name="exclamation-triangle" size={48} color="#FF6B6B" />
+          <Text style={styles.errorText}>Você não tem permissão para visualizar seus dados.</Text>
+        </View>
       </View>
     );
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.title}>Dados Pessoais</Text>
+    <KeyboardAvoidingView
+      style={styles.keyboardContainer}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    >
+      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+        <Animated.View
+          style={[
+            styles.container,
+            {
+              opacity: fadeAnim,
+              transform: [{ translateY: slideAnim }]
+            }
+          ]}
+        >
+          {/* Header */}
+          <View style={styles.header}>
+            <View style={styles.avatarContainer}>
+              <FontAwesome name="user-circle" size={60} color="#007BFF" />
+            </View>
+            <Text style={styles.title}>Meus Dados</Text>
+            <Text style={styles.subtitle}>Gerencie suas informações pessoais</Text>
+          </View>
 
-      {canEdit && (
-        <View style={styles.buttonContainer}>
-          {!isEditing ? (
-            <Button title="Editar Dados" onPress={handleEditToggle} />
-          ) : (
-            <>
-              <Button title="Salvar Alterações" onPress={handleUpdate} />
-              <Button title="Cancelar" onPress={handleEditToggle} color="red" />
-            </>
+          {/* Edit Button */}
+          {canEdit && (
+            <View style={styles.editButtonContainer}>
+              {!isEditing ? (
+                <TouchableOpacity style={styles.editButton} onPress={handleEditToggle}>
+                  <FontAwesome name="edit" size={16} color="#fff" />
+                  <Text style={styles.editButtonText}>Editar Dados</Text>
+                </TouchableOpacity>
+              ) : (
+                <View style={styles.editActions}>
+                  <TouchableOpacity
+                    style={[styles.actionButton, styles.saveButton]}
+                    onPress={handleUpdate}
+                    disabled={saving}
+                  >
+                    {saving ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <FontAwesome name="check" size={16} color="#fff" />
+                    )}
+                    <Text style={styles.actionButtonText}>
+                      {saving ? 'Salvando...' : 'Salvar'}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.actionButton, styles.cancelButton]}
+                    onPress={handleEditToggle}
+                  >
+                    <FontAwesome name="times" size={16} color="#fff" />
+                    <Text style={styles.actionButtonText}>Cancelar</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
           )}
-        </View>
-      )}
 
-      {/* Nome - Editável */}
-      <Text style={styles.label}>Nome</Text>
-      <TextInput
-        style={[styles.input, !isEditing && styles.disabledInput]}
-        value={name}
-        onChangeText={setName}
-        placeholder="Nome"
-        placeholderTextColor="#666"
-        editable={isEditing && canEdit}
-      />
+          {/* Personal Information Card */}
+          <View style={styles.card}>
+            <View style={styles.cardHeader}>
+              <FontAwesome name="user" size={20} color="#007BFF" />
+              <Text style={styles.cardTitle}>Informações Pessoais</Text>
+            </View>
 
-      {/* Email - Não editável */}
-      <Text style={styles.label}>Email</Text>
-      <Text style={styles.nonEditableField}>{email}</Text>
+            {renderField('Nome', name, true, setName, 'Digite seu nome')}
+            {renderField('Email', email)}
 
-      {/* Documento - Não editável */}
-      <Text style={styles.label}>Documento</Text>
-      <Text style={styles.nonEditableField}>{document}</Text>
+            {/* Data de Nascimento com DatePickerInput */}
+            <View style={styles.fieldContainer}>
+              <Text style={styles.fieldLabel}>Data de Nascimento</Text>
+              <DatePickerInput
+                value={birthdate}
+                onChangeText={setBirthdate}
+                placeholder="Selecione a data de nascimento"
+                style={[styles.fieldInput, !isEditing && styles.disabledInput]}
+                editable={isEditing && canEdit}
+              />
+            </View>
 
-      {/* RG - Não editável */}
-      <Text style={styles.label}>RG</Text>
-      <Text style={styles.nonEditableField}>{rg}</Text>
+            {/* Fator RH com Picker */}
+            <View style={styles.fieldContainer}>
+              <Text style={styles.fieldLabel}>Fator RH</Text>
+              <Picker
+                selectedValue={rhFactor}
+                onValueChange={(value) => setRhFactor(value)}
+                enabled={isEditing && canEdit}
+                style={[styles.fieldInput, !isEditing && styles.disabledInput]}
+              >
+                {rhFactorOptions.map((option) => (
+                  <Picker.Item
+                    key={option.value}
+                    label={option.label}
+                    value={option.value}
+                  />
+                ))}
+              </Picker>
+            </View>
+          </View>
 
-      {/* Telefone - Não editável */}
-      <Text style={styles.label}>Telefone</Text>
-      <Text style={styles.nonEditableField}>{phone}</Text>
+          {/* Documents Card */}
+          <View style={styles.card}>
+            <View style={styles.cardHeader}>
+              <FontAwesome name="id-card" size={20} color="#007BFF" />
+              <Text style={styles.cardTitle}>Documentos</Text>
+            </View>
 
-      {/* CTPS - Não editável */}
-      <Text style={styles.label}>CTPS</Text>
-      <Text style={styles.nonEditableField}>{ctps}</Text>
+            {renderField('CPF/CNPJ', document, true, setDocument, 'Digite seu documento')}
+            {renderField('RG', rg, true, setRg, 'Digite seu RG')}
+            {renderField('CTPS', ctps, true, setCtps, 'Digite sua CTPS')}
+          </View>
 
-      {/* Fator RH - Editável */}
-      <Text style={styles.label}>Fator RH</Text>
-      <Picker
-        selectedValue={rhFactor}
-        onValueChange={(value) => setRhFactor(value)}
-        enabled={isEditing && canEdit}
-        style={[styles.picker, !isEditing && styles.disabledPicker]}
+          {/* Contact Card */}
+          <View style={styles.card}>
+            <View style={styles.cardHeader}>
+              <FontAwesome name="phone" size={20} color="#007BFF" />
+              <Text style={styles.cardTitle}>Contato</Text>
+            </View>
+
+            {renderField('Telefone', phone, true, setPhone, 'Digite seu telefone')}
+          </View>
+
+          {/* Work Information Card */}
+          <View style={styles.card}>
+            <View style={styles.cardHeader}>
+              <FontAwesome name="briefcase" size={20} color="#007BFF" />
+              <Text style={styles.cardTitle}>Informações Profissionais</Text>
+            </View>
+
+            {renderField('Data de Admissão', admissionDate)}
+            {renderField('Grupo', group?.name || 'Não informado')}
+            {renderField('Função', role?.name || 'Não informado')}
+          </View>
+
+          {/* Password Change Card */}
+          <View style={styles.card}>
+            <View style={styles.cardHeader}>
+              <FontAwesome name="lock" size={20} color="#007BFF" />
+              <Text style={styles.cardTitle}>Segurança</Text>
+            </View>
+
+            <TouchableOpacity
+              style={styles.passwordButton}
+              onPress={() => setShowPasswordModal(true)}
+            >
+              <FontAwesome name="key" size={16} color="#007BFF" />
+              <Text style={styles.passwordButtonText}>Alterar Senha</Text>
+              <FontAwesome name="chevron-right" size={16} color="#007BFF" />
+            </TouchableOpacity>
+          </View>
+        </Animated.View>
+      </ScrollView>
+
+      {/* Password Change Modal */}
+      <Modal
+        visible={showPasswordModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowPasswordModal(false)}
       >
-        {rhFactorOptions.map((option) => (
-          <Picker.Item
-            key={option.value}
-            label={option.label}
-            value={option.value}
-          />
-        ))}
-      </Picker>
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <View style={styles.modalContainer}>
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <FontAwesome name="lock" size={24} color="#007BFF" />
+                <Text style={styles.modalTitle}>Alterar Senha</Text>
+                <TouchableOpacity
+                  style={styles.closeButton}
+                  onPress={() => {
+                    setShowPasswordModal(false);
+                    setNewPassword('');
+                    setConfirmNewPassword('');
+                    setPasswordError('');
+                  }}
+                >
+                  <FontAwesome name="times" size={20} color="#666" />
+                </TouchableOpacity>
+              </View>
 
-      {/* Data de Admissão - Não editável */}
-      <Text style={styles.label}>Data de Admissão</Text>
-      <Text style={styles.nonEditableField}>{admissionDate}</Text>
+              <View style={styles.modalBody}>
+                <View style={styles.fieldContainer}>
+                  <Text style={styles.fieldLabel}>Nova Senha</Text>
+                  <TextInput
+                    style={styles.fieldInput}
+                    value={newPassword}
+                    onChangeText={setNewPassword}
+                    secureTextEntry
+                    placeholder="Digite a nova senha"
+                    placeholderTextColor="#999"
+                  />
+                </View>
 
-      {/* Data de Nascimento - Editável */}
-      <Text style={styles.label}>Data de Nascimento</Text>
-      <TextInput
-        style={[styles.input, !isEditing && styles.disabledInput]}
-        value={birthdate}
-        onChangeText={(text: string) => {
-          // Remove tudo exceto números e hífens
-          let cleaned = text.replace(/[^0-9-]/g, '');
+                <View style={styles.fieldContainer}>
+                  <Text style={styles.fieldLabel}>Confirmar Nova Senha</Text>
+                  <TextInput
+                    style={styles.fieldInput}
+                    value={confirmNewPassword}
+                    onChangeText={setConfirmNewPassword}
+                    secureTextEntry
+                    placeholder="Confirme a nova senha"
+                    placeholderTextColor="#999"
+                  />
+                </View>
 
-          // Limita a 10 caracteres (YYYY-MM-DD)
-          cleaned = cleaned.slice(0, 10);
+                {passwordError ? (
+                  <View style={styles.modalErrorContainer}>
+                    <FontAwesome name="exclamation-circle" size={16} color="#FF6B6B" />
+                    <Text style={styles.modalErrorText}>{passwordError}</Text>
+                  </View>
+                ) : null}
 
-          // Adiciona hífens automaticamente
-          if (cleaned.length >= 4 && !cleaned.includes('-')) {
-            cleaned = cleaned.slice(0, 4) + '-' + cleaned.slice(4);
-          }
-          if (cleaned.length >= 7 && cleaned.split('-').length === 2) {
-            cleaned = cleaned.slice(0, 7) + '-' + cleaned.slice(7);
-          }
-
-          setBirthdate(cleaned);
-        }}
-        placeholder="AAAA-MM-DD (ex: 1990-01-15)"
-        placeholderTextColor="#666"
-        keyboardType="numeric"
-        editable={isEditing && canEdit}
-        maxLength={10}
-      />
-
-      {/* Group - Não editável */}
-      <Text style={styles.label}>Grupo</Text>
-      <Text style={styles.nonEditableField}>{group?.name || 'Não informado'}</Text>
-
-      {/* Role - Não editável */}
-      <Text style={styles.label}>Função</Text>
-      <Text style={styles.nonEditableField}>{role?.name || 'Não informado'}</Text>
-
-      {/* Seção de Alteração de Senha */}
-      <View style={styles.passwordSection}>
-        <Text style={styles.sectionTitle}>Alterar Senha</Text>
-        <Text style={styles.label}>Nova Senha</Text>
-        <TextInput
-          style={styles.input}
-          value={newPassword}
-          onChangeText={setNewPassword}
-          secureTextEntry
-          placeholder="Nova Senha"
-          placeholderTextColor="#666"
-        />
-        <Text style={styles.label}>Confirmar Nova Senha</Text>
-        <TextInput
-          style={styles.input}
-          value={confirmNewPassword}
-          onChangeText={setConfirmNewPassword}
-          secureTextEntry
-          placeholder="Confirmar Nova Senha"
-          placeholderTextColor="#666"
-        />
-        {passwordError ? <Text style={styles.passwordErrorText}>{passwordError}</Text> : null}
-        <TouchableOpacity style={styles.passwordButton} onPress={handleChangePassword}>
-          <Text style={styles.passwordButtonText}>Alterar Senha</Text>
-        </TouchableOpacity>
-      </View>
-    </ScrollView>
+                <TouchableOpacity
+                  style={[styles.modalButton, changingPassword && styles.disabledButton]}
+                  onPress={handleChangePassword}
+                  disabled={changingPassword}
+                >
+                  {changingPassword ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <FontAwesome name="check" size={16} color="#fff" />
+                  )}
+                  <Text style={styles.modalButtonText}>
+                    {changingPassword ? 'Alterando...' : 'Alterar Senha'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+    </KeyboardAvoidingView>
   );
 };
 
 const styles = StyleSheet.create({
+  keyboardContainer: {
+    flex: 1,
+    backgroundColor: '#f8f9fa',
+  },
+  scrollView: {
+    flex: 1,
+  },
   container: {
+    flex: 1,
     padding: 20,
+    backgroundColor: '#f8f9fa',
+  },
+  header: {
+    alignItems: 'center',
+    marginBottom: 30,
+    paddingTop: 20,
+  },
+  avatarContainer: {
+    marginBottom: 15,
   },
   title: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: 'bold',
-    marginBottom: 20,
+    color: '#2c3e50',
+    marginBottom: 5,
   },
-  label: {
+  subtitle: {
+    fontSize: 16,
+    color: '#7f8c8d',
+    textAlign: 'center',
+  },
+  editButtonContainer: {
+    marginBottom: 25,
+  },
+  editButton: {
+    backgroundColor: '#007BFF',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 15,
+    borderRadius: 12,
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  editButtonText: {
+    color: '#fff',
     fontSize: 16,
     fontWeight: '600',
-    marginBottom: 5,
-    marginTop: 10,
+    marginLeft: 8,
   },
-  emptyText: {
-    fontSize: 14,
-    color: "#666",
-    textAlign: "center",
-    marginVertical: 10,
+  editActions: {
+    flexDirection: 'row',
+    gap: 10,
   },
-  input: {
-    borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 5,
-    padding: 10,
-    marginBottom: 10,
+  actionButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 15,
+    borderRadius: 12,
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  saveButton: {
+    backgroundColor: '#28a745',
+  },
+  cancelButton: {
+    backgroundColor: '#dc3545',
+  },
+  actionButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  card: {
     backgroundColor: '#fff',
-    color: '#333',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 20,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 20,
+    paddingBottom: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f3f4',
+  },
+  cardTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#2c3e50',
+    marginLeft: 10,
+  },
+  fieldContainer: {
+    marginBottom: 20,
+  },
+  fieldLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#34495e',
+    marginBottom: 8,
+  },
+  fieldInput: {
+    borderWidth: 1,
+    borderColor: '#e1e8ed',
+    borderRadius: 12,
+    padding: 15,
+    fontSize: 16,
+    backgroundColor: '#fff',
+    color: '#2c3e50',
   },
   disabledInput: {
-    backgroundColor: '#f5f5f5',
-    color: '#666',
+    backgroundColor: '#f8f9fa',
+    color: '#6c757d',
+    borderColor: '#e9ecef',
   },
-  picker: {
+  fieldValue: {
+    backgroundColor: '#f8f9fa',
     borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 5,
-    marginBottom: 10,
-    backgroundColor: '#fff',
-    color: '#333',
-    height: 50,
+    borderColor: '#e9ecef',
+    borderRadius: 12,
+    padding: 15,
   },
-  disabledPicker: {
-    backgroundColor: '#f5f5f5',
-    color: '#666',
-  },
-  errorText: {
+  fieldValueText: {
     fontSize: 16,
-    color: "#FF0000",
-    textAlign: "center",
-    marginTop: 20,
+    color: '#495057',
   },
-  nonEditableField: {
-    fontSize: 16,
-    color: '#555',
-    padding: 10,
+  passwordButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#f8f9fa',
     borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 5,
-    backgroundColor: '#f9f9f9',
+    borderColor: '#e9ecef',
+    borderRadius: 12,
+    padding: 15,
+  },
+  passwordButtonText: {
+    fontSize: 16,
+    color: '#007BFF',
+    fontWeight: '600',
+    flex: 1,
+    marginLeft: 10,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: '#f8f9fa',
   },
   loadingText: {
-    marginTop: 10,
+    marginTop: 15,
     fontSize: 16,
-    color: '#666',
+    color: '#6c757d',
   },
-  buttonContainer: {
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#f8f9fa',
+  },
+  errorText: {
+    fontSize: 16,
+    color: '#dc3545',
+    textAlign: 'center',
+    marginTop: 15,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContainer: {
+    width: width * 0.9,
+    maxWidth: 400,
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: 25,
+    elevation: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+  },
+  modalHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
-    marginBottom: 20,
+    alignItems: 'center',
+    marginBottom: 25,
+    paddingBottom: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f3f4',
   },
-  passwordSection: {
-    marginTop: 30,
-    paddingTop: 20,
-    borderTopWidth: 1,
-    borderTopColor: '#eee',
-  },
-  sectionTitle: {
+  modalTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    marginBottom: 15,
+    color: '#2c3e50',
+    flex: 1,
+    marginLeft: 10,
   },
-  passwordErrorText: {
-    color: 'red',
-    marginBottom: 10,
+  closeButton: {
+    padding: 5,
   },
-  passwordButton: {
+  modalBody: {
+    gap: 20,
+  },
+  modalButton: {
     backgroundColor: '#007BFF',
-    padding: 12,
-    borderRadius: 5,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    padding: 15,
+    borderRadius: 12,
     marginTop: 10,
   },
-  passwordButtonText: {
+  disabledButton: {
+    backgroundColor: '#6c757d',
+  },
+  modalButtonText: {
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+    marginLeft: 8,
+  },
+  modalErrorContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff5f5',
+    borderWidth: 1,
+    borderColor: '#fed7d7',
+    borderRadius: 8,
+    padding: 12,
+    gap: 8,
+  },
+  modalErrorText: {
+    color: '#c53030',
+    fontSize: 14,
+    flex: 1,
   },
 });
 

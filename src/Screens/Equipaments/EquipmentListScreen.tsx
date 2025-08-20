@@ -22,6 +22,9 @@ import { RootStackParamList } from "../../Routers/AppRouter";
 import { Equipment } from "../../Models/Equipament";
 import { usePermissions } from "../../Context/PermissionsContext";
 import ClientService from "../../Services/ClientService";
+import CustomPicker from "../../Components/CustomPicker";
+import axios from "axios";
+import { buildApiUrlForAccount } from "../../config/apiConfig";
 
 interface EquipmentListScreenProps {
   route: RouteProp<RootStackParamList, "EquipmentListScreen">;
@@ -34,6 +37,13 @@ const EquipmentListScreen: React.FC<EquipmentListScreenProps> = ({
 }) => {
   const { clientId, sectorId, activityId } = route.params as any;
 
+  console.log("[EquipmentListScreen] Parâmetros recebidos:", {
+    clientId,
+    sectorId,
+    activityId,
+    routeParams: route.params
+  });
+
   const [equipmentList, setEquipmentList] = useState<Equipment[]>([]);
   const [loading, setLoading] = useState(false);
   const { hasPermission, permissions } = usePermissions();
@@ -45,23 +55,76 @@ const EquipmentListScreen: React.FC<EquipmentListScreenProps> = ({
   const [brandFilter, setBrandFilter] = useState("");
   const [equipmentTypeFilter, setEquipmentTypeFilter] = useState("");
   const [subsectorFilter, setSubsectorFilter] = useState<number | undefined>(undefined);
+  const [brands, setBrands] = useState([]);
+  const [equipmentTypes, setEquipmentTypes] = useState([]);
+  const [loadingBrands, setLoadingBrands] = useState(false);
+  const [loadingEquipmentTypes, setLoadingEquipmentTypes] = useState(false);
 
-  // Filtros extras para setor/subsetor/status
-  // ... (pode expandir para buscar setores/subsetores se necessário)
+  const [selectedClientId, setSelectedClientId] = useState(clientId || "");
+  const [selectedSectorId, setSelectedSectorId] = useState(sectorId || "");
+
+  // Log para verificar se as variáveis foram inicializadas corretamente
+  useEffect(() => {
+    console.log("[EquipmentListScreen] Estados inicializados:", {
+      clientId,
+      sectorId,
+      selectedClientId,
+      selectedSectorId
+    });
+  }, [clientId, sectorId, selectedClientId, selectedSectorId]);
+
+
+
+  // Carregar marcas e tipos de equipamento
+  const fetchBrands = async () => {
+    setLoadingBrands(true);
+    try {
+      const token = await AsyncStorage.getItem("access_token");
+      const apiUrl = await buildApiUrlForAccount();
+      console.log("[EquipmentListScreen] Fazendo requisição para brands:", `${apiUrl}/brands`);
+      const res = await axios.get(`${apiUrl}/brands`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      console.log("[EquipmentListScreen] Marcas carregadas:", res.data.results?.length || 0);
+      setBrands(res.data.results || []);
+    } catch (error) {
+      console.error("[EquipmentListScreen] Erro ao buscar marcas:", error);
+    } finally {
+      setLoadingBrands(false);
+    }
+  };
+
+  const fetchEquipmentTypes = async () => {
+    setLoadingEquipmentTypes(true);
+    try {
+      const token = await AsyncStorage.getItem("access_token");
+      const apiUrl = await buildApiUrlForAccount();
+      console.log("[EquipmentListScreen] Fazendo requisição para equipment_types:", `${apiUrl}/equipment_types`);
+      const res = await axios.get(`${apiUrl}/equipment_types`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      console.log("[EquipmentListScreen] Tipos de equipamento carregados:", res.data.results?.length || 0);
+      setEquipmentTypes(res.data.results || []);
+    } catch (error) {
+      console.error("[EquipmentListScreen] Erro ao buscar tipos de equipamento:", error);
+    } finally {
+      setLoadingEquipmentTypes(false);
+    }
+  };
 
   const fetchClientAndSectorNames = async () => {
     try {
       const token = await AsyncStorage.getItem("access_token");
       if (!token) return;
 
-      if (clientId) {
-        const clientDetails = await ClientService.getClientDetails(clientId, token);
+      if (selectedClientId) {
+        const clientDetails = await ClientService.getClientDetails(parseInt(selectedClientId), token);
         setClientName(clientDetails.name || "N/A");
       }
 
-      if (clientId && sectorId) {
-        const sectorsResponse = await ClientService.getClientSectors(clientId.toString(), token);
-        const sector = sectorsResponse.results?.find((s: any) => s.id === sectorId);
+      if (selectedClientId && selectedSectorId) {
+        const sectorsResponse = await ClientService.getClientSectors(selectedClientId, token);
+        const sector = sectorsResponse.results?.find((s: any) => s.id === parseInt(selectedSectorId));
         setSectorName(sector?.name || "N/A");
       }
     } catch (error) {
@@ -99,8 +162,8 @@ const EquipmentListScreen: React.FC<EquipmentListScreenProps> = ({
           page: page,
           per_page: 10,
         };
-        if (clientId) filters.client_id = clientId;
-        if (sectorId) filters.sector_id = sectorId;
+        if (selectedClientId) filters.client_id = parseInt(selectedClientId);
+        if (selectedSectorId) filters.sector_id = parseInt(selectedSectorId);
         const response = await EquipmentService.fetchEquipments(token, filters);
         setEquipmentList(response.results || []);
         setTotalPages(Math.ceil(response.count / 10) || 1);
@@ -115,7 +178,15 @@ const EquipmentListScreen: React.FC<EquipmentListScreenProps> = ({
   useEffect(() => {
     fetchClientAndSectorNames();
     fetchEquipments();
-  }, [clientId, sectorId, page, activityId, subsectorFilter, searchTerm, brandFilter, equipmentTypeFilter]);
+  }, [selectedClientId, selectedSectorId, page, activityId, subsectorFilter, searchTerm, brandFilter, equipmentTypeFilter]);
+
+  // Carregar dados iniciais
+  useEffect(() => {
+    fetchBrands();
+    fetchEquipmentTypes();
+  }, []);
+
+
 
   const handleRemoveEquipment = async (equipmentId: number) => {
     try {
@@ -137,17 +208,28 @@ const EquipmentListScreen: React.FC<EquipmentListScreenProps> = ({
         {/* Header com informações do cliente/setor */}
         <View style={styles.headerSection}>
           <View style={styles.headerInfo}>
-            {clientId && (
+            {selectedClientId && (
               <Text style={styles.headerText}>Cliente: {clientName}</Text>
             )}
-            {sectorId && (
+            {selectedSectorId && (
               <Text style={styles.headerText}>Setor: {sectorName}</Text>
             )}
           </View>
           {hasPermission("add_equipment") && (
             <TouchableOpacity
               style={styles.createButton}
-              onPress={() => navigation.navigate("CreateEquipmentScreen")}
+              onPress={() => {
+                console.log("[EquipmentListScreen] Clicando em Adicionar Equipamento com:", {
+                  selectedClientId,
+                  selectedSectorId,
+                  clientIdInt: parseInt(selectedClientId),
+                  sectorIdInt: parseInt(selectedSectorId)
+                });
+                navigation.navigate("CreateEquipmentScreen", {
+                  clientId: parseInt(selectedClientId),
+                  sectorId: parseInt(selectedSectorId)
+                });
+              }}
             >
               <FontAwesome name="plus" size={16} color="#fff" />
               <Text style={styles.createButtonText}>Adicionar Equipamento</Text>
@@ -159,9 +241,12 @@ const EquipmentListScreen: React.FC<EquipmentListScreenProps> = ({
         <View style={styles.filtersSection}>
           <Text style={styles.filtersTitle}>Filtros</Text>
 
+
+
           <TextInput
             style={styles.searchInput}
             placeholder="Buscar por Tag ou Patrimônio"
+            placeholderTextColor="#999"
             value={searchTerm}
             onChangeText={setSearchTerm}
           />
@@ -169,23 +254,39 @@ const EquipmentListScreen: React.FC<EquipmentListScreenProps> = ({
           {/* Filtro de Fabricante */}
           <View style={styles.filterRow}>
             <Text style={styles.filterLabel}>Fabricante:</Text>
-            <TextInput
-              style={styles.statusInput}
-              placeholder="Fabricante"
-              value={brandFilter || ""}
-              onChangeText={setBrandFilter}
-            />
+            {loadingBrands ? (
+              <ActivityIndicator size="small" color="#007BFF" />
+            ) : (
+              <CustomPicker
+                selectedValue={brandFilter}
+                onValueChange={(value) => {
+                  console.log("[EquipmentListScreen] Fabricante selecionado:", value);
+                  setBrandFilter(value || "");
+                }}
+                items={brands.map((b: any) => ({ label: b.name, value: b.id.toString() }))}
+                placeholder="Selecione um fabricante"
+                style={styles.picker}
+              />
+            )}
           </View>
 
           {/* Filtro de Tipo de Equipamento */}
           <View style={styles.filterRow}>
             <Text style={styles.filterLabel}>Tipo:</Text>
-            <TextInput
-              style={styles.statusInput}
-              placeholder="Tipo de Equipamento"
-              value={equipmentTypeFilter || ""}
-              onChangeText={setEquipmentTypeFilter}
-            />
+            {loadingEquipmentTypes ? (
+              <ActivityIndicator size="small" color="#007BFF" />
+            ) : (
+              <CustomPicker
+                selectedValue={equipmentTypeFilter}
+                onValueChange={(value) => {
+                  console.log("[EquipmentListScreen] Tipo de equipamento selecionado:", value);
+                  setEquipmentTypeFilter(value || "");
+                }}
+                items={equipmentTypes.map((t: any) => ({ label: t.name, value: t.id.toString() }))}
+                placeholder="Selecione um tipo"
+                style={styles.picker}
+              />
+            )}
           </View>
         </View>
 
@@ -340,6 +441,7 @@ const styles = StyleSheet.create({
     color: "#333",
     marginRight: 8,
     minWidth: 80,
+    backgroundColor: "transparent",
   },
   statusInput: {
     flex: 1,
@@ -349,6 +451,14 @@ const styles = StyleSheet.create({
     padding: 8,
     backgroundColor: "#fff",
     fontSize: 14,
+  },
+  picker: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: "#ddd",
+    borderRadius: 6,
+    backgroundColor: "#fff",
+    height: 40,
   },
   equipmentListContainer: {
     marginBottom: 20,
@@ -372,6 +482,7 @@ const styles = StyleSheet.create({
     color: "#333",
     marginBottom: 4,
     lineHeight: 20,
+    backgroundColor: "transparent",
   },
   actionButtons: {
     flexDirection: "row",
@@ -396,12 +507,14 @@ const styles = StyleSheet.create({
     color: "#666",
     textAlign: "center",
     marginVertical: 20,
+    backgroundColor: "transparent",
   },
   errorText: {
     fontSize: 16,
     color: "#FF0000",
     textAlign: "center",
     marginTop: 20,
+    backgroundColor: "transparent",
   },
   pagination: {
     flexDirection: "row",
@@ -414,6 +527,7 @@ const styles = StyleSheet.create({
   pageText: {
     fontSize: 14,
     color: "#333",
+    backgroundColor: "transparent",
   },
 });
 

@@ -13,7 +13,7 @@ import {
 import { FontAwesome } from "@expo/vector-icons";
 import EquipmentService from "../../Services/EquipamentService";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { RouteProp } from "@react-navigation/native";
+import { RouteProp, useFocusEffect } from "@react-navigation/native";
 import { DrawerNavigationProp } from "@react-navigation/drawer";
 import { RootStackParamList } from "../../Routers/AppRouter";
 import { Equipment } from "../../Models/Equipament";
@@ -65,7 +65,11 @@ const GeneralEquipmentListScreen: React.FC<GeneralEquipmentListScreenProps> = ({
             const token = await AsyncStorage.getItem("access_token");
             if (!token) throw new Error("Token de acesso não encontrado.");
 
-            const apiFilters = { ...filters, page, per_page: 10 };
+            const apiFilters: any = { ...filters, page, per_page: 10 };
+            // Se houver subsector_id selecionado, alguns backends esperam sector_id = subsector_id
+            if (filters.subsector_id) {
+                apiFilters.sector_id = filters.subsector_id;
+            }
             console.log("[GeneralEquipmentListScreen] Filtros para API:", apiFilters);
 
             const response = await EquipmentService.fetchEquipments(token, apiFilters);
@@ -86,6 +90,18 @@ const GeneralEquipmentListScreen: React.FC<GeneralEquipmentListScreenProps> = ({
     useEffect(() => {
         fetchEquipments();
     }, [page, filters, filterApplied]);
+
+    // Recarregar quando voltar do fluxo de criação/edição
+    useFocusEffect(
+        React.useCallback(() => {
+            const shouldRefresh = (route.params as any)?.refresh === true;
+            if (shouldRefresh) {
+                fetchEquipments();
+                // limpa o flag para não reler infinitamente
+                navigation.setParams({ ...(route.params as any), refresh: undefined } as any);
+            }
+        }, [route.params])
+    );
 
     const handleFilterChange = (newFilters: any) => {
         console.log("[GeneralEquipmentListScreen] Novos filtros recebidos:", newFilters);
@@ -157,7 +173,7 @@ const GeneralEquipmentListScreen: React.FC<GeneralEquipmentListScreenProps> = ({
                         {hasPermission("add_equipment") && (
                             <TouchableOpacity
                                 style={styles.createButton}
-                                onPress={() => navigation.navigate("CreateEquipmentScreen")}
+                                onPress={() => navigation.navigate("CreateEquipmentScreen", {})}
                             >
                                 <FontAwesome name="plus" size={16} color="#fff" />
                                 <Text style={styles.createButtonText}>Novo</Text>
@@ -186,7 +202,7 @@ const GeneralEquipmentListScreen: React.FC<GeneralEquipmentListScreenProps> = ({
                                     <Text style={styles.itemText}>Patrimônio: {item.patrimony || "N/A"}</Text>
                                     <Text style={styles.itemText}>Tipo: {item.equipment_type?.name || "N/A"}</Text>
                                     <Text style={styles.itemText}>Fabricante: {item.brand?.name || "N/A"}</Text>
-                                    <Text style={styles.itemText}>Subsetor: {item.subsector?.name || "N/A"}</Text>
+                                    <Text style={styles.itemText}>Setor: {item.sector?.name || item.sector?.complete_name || "N/A"}</Text>
                                 </View>
 
                                 <View style={styles.actionButtons}>

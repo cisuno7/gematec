@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Button, StyleSheet, Text, Alert } from 'react-native';
 import { Camera, CameraView } from 'expo-camera';
+import { BarcodeScanningResult } from 'expo-camera/build/Camera.types';
 
 interface QRScannerProps {
   onScanned: (data: string) => void;
@@ -18,11 +19,12 @@ const QRScanner: React.FC<QRScannerProps> = ({ onScanned }) => {
     })();
   }, []);
 
-  const handleBarCodeScanned = ({ data }: { data: string }) => {
+  const handleBarCodeScanned = ({ data }: BarcodeScanningResult) => {
     setScanned(true);
-    console.log('Dados do QR Code escaneado:', data);
-    onScanned(data);
-    Alert.alert('QR Code Escaneado', `Dados: ${data}`);
+    const payload = (data as any)?.data ?? data;
+    console.log('Dados do QR Code escaneado:', payload);
+    onScanned(String(payload));
+    Alert.alert('QR Code Escaneado', `Dados: ${payload}`);
     setTimeout(() => setScanned(false), 2000); // Permitir novo scan após 2s
   };
 
@@ -54,7 +56,7 @@ const QRScanner: React.FC<QRScannerProps> = ({ onScanned }) => {
       <CameraView
         style={styles.camera}
         barcodeScannerSettings={{
-          barcodeTypes: ['qr'], // Habilita apenas QR codes
+          barcodeTypes: ['qr'],
         }}
         onBarcodeScanned={scanned ? undefined : handleBarCodeScanned} // Liga o evento de escaneamento
       />

@@ -64,21 +64,25 @@ export default class PreferencesService {
                 console.log('[PreferencesService] GET falhou, mas continuando...', getError.response?.status);
             }
 
-            // Mapear valores para o formato correto aceito pelo backend
-            let mappedPreferences = { ...preferences };
+            // Mapear para o formato esperado pelo backend conforme documentação
+            const requestBody: any = {};
+
             if (preferences.language) {
-                // Mapear para os valores corretos do backend
-                if (preferences.language === 'pt') {
-                    mappedPreferences.language = 'pt-BR'; // Português com hífen
+                // O endpoint espera o campo "idioma" conforme especificação
+                if (preferences.language === 'pt-BR' || preferences.language === 'pt') {
+                    requestBody.idioma = 'pt'; // ou valor correto para português
+                } else if (preferences.language === 'en') {
+                    requestBody.idioma = 'en';
+                } else {
+                    requestBody.idioma = preferences.language;
                 }
-                // 'en' já está correto
             }
 
-            console.log('[PreferencesService] Preferências mapeadas:', mappedPreferences);
+            console.log('[PreferencesService] Corpo da requisição (conforme spec):', requestBody);
 
-            // Se não tem language, usar as preferências originais
-            console.log('[PreferencesService] Usando PATCH com preferências originais...');
-            const response = await apiClient.patch(endpoint, mappedPreferences, {
+            // Usar PUT conforme especificação do endpoint
+            console.log('[PreferencesService] Usando PUT conforme documentação...');
+            const response = await apiClient.put(endpoint, requestBody, {
                 headers: { Authorization: `Bearer ${accessToken}` },
             });
 

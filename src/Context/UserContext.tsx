@@ -21,6 +21,7 @@ interface UserContextType {
   isAuthenticated: boolean;
   login: (accessToken: string, refreshToken: string, account: string, keepLoggedIn: boolean) => Promise<void>;
   logout: () => Promise<void>;
+  updateUserData: (data: { name?: string }) => void;
   isLoading: boolean;
 }
 
@@ -102,6 +103,8 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
             // Extrair username do token válido
             const decoded: any = jwtDecode(accessToken);
+            console.log("[UserContext] Token decodificado:", decoded);
+            console.log("[UserContext] user_name do token:", decoded.user_name);
             setUsername(decoded.user_name || "");
 
             await loadUserPreferences(accessToken); // Carrega preferências se o token for válido
@@ -144,6 +147,8 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setIsAuthenticated(true);
 
       const decoded: any = jwtDecode(accessToken);
+      console.log("[UserContext] Login - Token decodificado:", decoded);
+      console.log("[UserContext] Login - user_name do token:", decoded.user_name);
       setUsername(decoded.user_name || "");
       // Não precisamos mais salvar permissões do token aqui, pois virão do /me/permissions
       // await AsyncStorage.setItem("permissions", decoded.permissions?.join(",") || "");
@@ -248,6 +253,13 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setAccount(accountName);
   };
 
+  const updateUserData = (data: { name?: string }) => {
+    if (data.name) {
+      setUsername(data.name);
+      AsyncStorage.setItem("username", data.name);
+    }
+  };
+
   return (
     <UserContext.Provider
       value={{
@@ -264,6 +276,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isAuthenticated,
         login,
         logout,
+        updateUserData,
         isLoading,
       }}
     >

@@ -11,7 +11,7 @@ import {
   TextInput,
   Dimensions,
 } from "react-native";
-import { Picker } from "@react-native-picker/picker";
+// import { Picker } from "@react-native-picker/picker";
 import { RouteProp } from "@react-navigation/native";
 import { DrawerNavigationProp } from "@react-navigation/drawer";
 import { RootStackParamList } from "../../Routers/AppRouter";
@@ -21,8 +21,11 @@ import { usePermissions } from "../../Context/PermissionsContext";
 import ActivityService from "../../Services/ActivityService";
 import EquipmentService from "../../Services/EquipamentService";
 import { FontAwesome, MaterialIcons, Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from 'expo-linear-gradient';
 import { EquipmentTemplate } from "../../Models/EquipmentTemplate";
 import DateMaskInput from "../../Components/DateMaskInput";
+import DatePickerInput from "../../Components/DatePickerInput";
+import CustomPicker from "../../Components/CustomPicker";
 
 const { width } = Dimensions.get('window');
 
@@ -44,14 +47,13 @@ const EquipmentDetailsScreen: React.FC<EquipmentDetailsScreenProps> = ({ route, 
     name: "",
     activity_type_id: undefined as number | undefined,
     start_date: new Date().toISOString().slice(0, 10),
-    end_date: new Date().toISOString().slice(0, 10), // Valor padrão igual à data de início
+    end_date: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10), // Data de fim = data de início + 1 dia
   });
 
-  // Função para gerar nome único para atividade
+  // Função para gerar nome da atividade: <nome_atividade> - <tag>
   const generateUniqueActivityName = (baseName: string, equipmentTag?: string) => {
-    const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
     const equipmentSuffix = equipmentTag ? ` - ${equipmentTag}` : '';
-    return `${baseName} ${timestamp}${equipmentSuffix}`;
+    return `${baseName}${equipmentSuffix}`;
   };
   const [creatingActivity, setCreatingActivity] = useState(false);
 
@@ -128,6 +130,15 @@ const EquipmentDetailsScreen: React.FC<EquipmentDetailsScreenProps> = ({ route, 
 
       if (!activityForm.end_date) {
         Alert.alert("Erro", "Data final é obrigatória.");
+        return;
+      }
+
+      // Validação: data de fim deve ser maior que data de início
+      const startDate = new Date(activityForm.start_date);
+      const endDate = new Date(activityForm.end_date);
+
+      if (endDate <= startDate) {
+        Alert.alert("Erro", "A data final deve ser maior que a data de início.");
         return;
       }
 
@@ -227,7 +238,12 @@ const EquipmentDetailsScreen: React.FC<EquipmentDetailsScreenProps> = ({ route, 
     <View style={styles.container}>
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* Header com gradiente */}
-        <View style={styles.header}>
+        <LinearGradient
+          colors={["#667eea", "#764ba2"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={styles.header}
+        >
           <View style={styles.headerContent}>
             <TouchableOpacity
               style={styles.backButton}
@@ -240,21 +256,19 @@ const EquipmentDetailsScreen: React.FC<EquipmentDetailsScreenProps> = ({ route, 
               <Text style={styles.headerSubtitle}>{equipment.tag || "Sem identificação"}</Text>
             </View>
           </View>
-        </View>
+        </LinearGradient>
 
         {/* Informações principais */}
         <View style={styles.content}>
           <InfoCard title="Informações Básicas" icon="info">
             <InfoRow label="Tag" value={equipment.tag || "N/A"} icon="pricetag" />
-            <InfoRow label="Patrimônio" value={equipment.patrimony || "N/A"} icon="card" />
-            <InfoRow label="Número de Série" value={equipment.serial_number || "N/A"} icon="barcode" />
             <InfoRow label="Fabricante" value={equipment.brand?.name || "N/A"} icon="business" />
             <InfoRow label="Tipo de Equipamento" value={equipment.equipment_type?.name || "N/A"} icon="settings" />
           </InfoCard>
 
           <InfoCard title="Localização" icon="location-on">
             <InfoRow label="Cliente" value={equipment.client?.name || "N/A"} icon="business" />
-            <InfoRow label="Setor" value={equipment.sector?.name || "N/A"} icon="location" />
+            <InfoRow label="Setor" value={equipment.sector?.complete_name || equipment.sector?.name || "N/A"} icon="location" />
             <InfoRow
               label="Status"
               value={equipment.is_active !== false ? "Ativo" : "Inativo"}
@@ -286,20 +300,84 @@ const EquipmentDetailsScreen: React.FC<EquipmentDetailsScreenProps> = ({ route, 
                   .map((field) => {
                     const fieldKey = field.key || field.name || '';
                     const fieldLabel = field.label || field.name || fieldKey;
-                    const value = equipment[fieldKey];
+
+                    // Buscar valor nos campos dinâmicos (additional_fields) primeiro, com fallback por label, depois no equipamento
+                    let value = equipment.additional_fields?.[fieldKey];
+                    if (value === undefined || value === null) {
+                      // Fallback: procurar por entrada cujo label (ou sublabel) corresponda ao do template (com normalização)
+                      const af = equipment.additional_fields;
+                      if (af && typeof af === 'object') {
+                        const normalizeText = (text: any) =>
+                          (text || '')
+                            .toString()
+                            .normalize('NFD')
+                            .replace(/[\u0300-\u036f]/g, '') // remove acentos
+                            .replace(/[^a-z0-9]/gi, '')
+                            .toLowerCase();
+                        const target = normalizeText(fieldLabel);
+                        const match = Object.values(af as any).find((entry: any) => {
+                          try {
+                            const candidates = [
+                              entry?.label,
+                              entry?.value?.label,
+                              entry?.name,
+                              entry?.value?.name,
+                            ];
+                            return candidates.some((c) => {
+                              const norm = normalizeText(c);
+                              return norm && (norm === target || norm.includes(target) || target.includes(norm));
+                            });
+                          } catch {
+                            return false;
+                          }
+                        });
+                        if (match) value = match as any;
+                      }
+                    }
+                    if (value === undefined || value === null) {
+                      value = equipment[fieldKey];
+                    }
+
                     console.log(`[EquipamentDetails] Campo ${fieldKey}:`, value, 'Tipo:', field.type);
                     let displayValue = "N/A";
                     let icon = "settings";
 
+                    const extractPrimitive = (val: any): any => {
+                      if (val === undefined || val === null) return null;
+                      if (typeof val !== 'object') return val;
+                      if (Array.isArray(val)) {
+                        const mapped = val.map((item) => extractPrimitive(item)).filter((v) => v !== null && v !== undefined && v !== '');
+                        return mapped.join(', ');
+                      }
+                      // Preferir sempre o 'value' e descer recursivamente
+                      if (Object.prototype.hasOwnProperty.call(val, 'value')) {
+                        return extractPrimitive((val as any).value);
+                      }
+                      if (Object.prototype.hasOwnProperty.call(val, 'label')) {
+                        return (val as any).label;
+                      }
+                      if (Object.prototype.hasOwnProperty.call(val, 'name')) {
+                        return (val as any).name;
+                      }
+                      if (Object.prototype.hasOwnProperty.call(val, 'id')) {
+                        return (val as any).id;
+                      }
+                      try { return JSON.stringify(val); } catch { return String(val); }
+                    };
+
                     if (value !== undefined && value !== null && value !== "") {
+                      let actualValue = extractPrimitive(value);
+
                       if (field.type === 'boolean') {
-                        displayValue = value ? "Sim" : "Não";
-                        icon = value ? "check-circle" : "cancel";
+                        const boolVal = Boolean(actualValue);
+                        displayValue = boolVal ? "Sim" : "Não";
+                        icon = boolVal ? "check-circle" : "cancel";
                       } else if (field.type === 'number') {
-                        displayValue = value.toString();
+                        displayValue = actualValue !== null && actualValue !== undefined ? String(actualValue) : "N/A";
                         icon = "calculate";
                       } else {
-                        displayValue = value.toString();
+                        // Para selects/radios (com ou sem justificativa), priorizar o valor efetivo extraído (ex.: "A"/"B")
+                        displayValue = actualValue !== null && actualValue !== undefined ? String(actualValue) : "N/A";
                         icon = "info";
                       }
                     }
@@ -375,6 +453,7 @@ const EquipmentDetailsScreen: React.FC<EquipmentDetailsScreenProps> = ({ route, 
                 <TextInput
                   style={styles.textInput}
                   placeholder="Digite o nome da atividade (será único automaticamente)"
+                  placeholderTextColor="#999"
                   value={activityForm.name}
                   onChangeText={text => setActivityForm(f => ({ ...f, name: text }))}
                 />
@@ -382,37 +461,35 @@ const EquipmentDetailsScreen: React.FC<EquipmentDetailsScreenProps> = ({ route, 
 
               <View style={styles.inputGroup}>
                 <Text style={styles.inputLabel}>Tipo de Atividade</Text>
-                <View style={styles.pickerContainer}>
-                  <Picker
-                    selectedValue={activityForm.activity_type_id}
-                    onValueChange={(v: number) => setActivityForm(f => ({ ...f, activity_type_id: v }))}
-                    style={styles.picker}
-                  >
-                    <Picker.Item label="Selecione um tipo..." value={undefined} />
-                    {activityTypes.map((t: any) => (
-                      <Picker.Item key={t.id} label={t.name} value={t.id} />
-                    ))}
-                  </Picker>
-                </View>
-              </View>
-
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Data de Início</Text>
-                <DateMaskInput
-                  style={styles.textInput}
-                  placeholder="AAAA-MM-DD"
-                  value={activityForm.start_date}
-                  onChangeText={text => setActivityForm(f => ({ ...f, start_date: text }))}
+                <CustomPicker
+                  selectedValue={activityForm.activity_type_id !== undefined ? String(activityForm.activity_type_id) : ''}
+                  onValueChange={(v: string) => {
+                    const parsed = parseInt(v, 10);
+                    setActivityForm(f => ({ ...f, activity_type_id: Number.isNaN(parsed) ? undefined : parsed }));
+                  }}
+                  items={activityTypes.map((t: any) => ({ label: t.name, value: String(t.id) }))}
+                  placeholder="Selecione um tipo..."
+                  style={styles.picker}
                 />
               </View>
 
               <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Data Final *</Text>
-                <DateMaskInput
+                <DatePickerInput
+                  label="Data de Início"
+                  value={activityForm.start_date}
+                  onChangeText={text => setActivityForm(f => ({ ...f, start_date: text }))}
+                  placeholder="Selecione a data de início"
                   style={styles.textInput}
-                  placeholder="AAAA-MM-DD"
+                />
+              </View>
+
+              <View style={styles.inputGroup}>
+                <DatePickerInput
+                  label="Data Final *"
                   value={activityForm.end_date}
                   onChangeText={text => setActivityForm(f => ({ ...f, end_date: text }))}
+                  placeholder="Selecione a data final"
+                  style={styles.textInput}
                 />
               </View>
             </View>
@@ -486,7 +563,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   header: {
-    backgroundColor: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+    backgroundColor: "#667eea",
     paddingTop: 50,
     paddingBottom: 20,
     paddingHorizontal: 20,
@@ -662,13 +739,14 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     padding: 12,
     fontSize: 16,
-    backgroundColor: "#f8f9fa",
+    backgroundColor: "#fff",
+    color: "#333",
   },
   pickerContainer: {
     borderWidth: 1,
     borderColor: "#ddd",
     borderRadius: 8,
-    backgroundColor: "#f8f9fa",
+    backgroundColor: "#fff",
   },
   picker: {
     height: 50,

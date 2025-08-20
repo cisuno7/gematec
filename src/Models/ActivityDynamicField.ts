@@ -14,6 +14,7 @@ export interface ActivityDynamicFieldRules {
 }
 
 export interface ActivityDynamicField {
+    id?: number; // ID real da questão na API
     label: string;
     key: string;
     type: ActivityDynamicFieldType;
@@ -22,4 +23,5 @@ export interface ActivityDynamicField {
     options?: string[]; // select, radio, radio_with_justification
     justification_target?: string; // radio_with_justification
     has_upload?: boolean;
+    unit?: string; // Para campos do tipo measure
 }

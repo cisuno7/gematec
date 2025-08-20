@@ -34,43 +34,223 @@ export class RoadmapService {
     /**
      * Valida se a resposta da API contém dados válidos
      */
-    private static validateRoadmapResponse(data: any): RoadmapResponse {
+    private static async validateRoadmapResponse(data: any): Promise<RoadmapResponse> {
+        console.log('[RoadmapService] === VALIDANDO RESPOSTA ===');
+        console.log('[RoadmapService] Tipo de data:', typeof data);
+        console.log('[RoadmapService] Data recebida:', JSON.stringify(data, null, 2));
+
         if (!data || typeof data !== 'object') {
+            console.error('[RoadmapService] Data inválida:', data);
             throw new Error('Resposta inválida da API');
         }
 
-        console.log('[RoadmapService] Estrutura da resposta:', JSON.stringify(data, null, 2));
+        // Função para mapear tipos de atividade do back-end para o front-end
+        const mapActivityType = (activityType: any): 'maintenance' | 'repair' | 'inspection' | 'installation' => {
+            console.log('[RoadmapService] Mapeando tipo de atividade:', activityType);
+
+            if (!activityType) {
+                console.log('[RoadmapService] Tipo de atividade vazio, usando default: maintenance');
+                return 'maintenance';
+            }
+
+            // Se for um objeto com slug (estrutura completa do tipo de atividade)
+            if (typeof activityType === 'object' && activityType.slug) {
+                console.log('[RoadmapService] Tipo de atividade é objeto com slug:', activityType.slug);
+                switch (activityType.slug) {
+                    case 'pmoc':
+                        return 'maintenance';
+                    case 'service_order':
+                        return 'repair';
+                    case 'technical_assistance':
+                        return 'inspection';
+                    case 'installation':
+                        return 'installation';
+                    case 'instalation':
+                        return 'installation';
+                    default:
+                        console.log('[RoadmapService] Slug desconhecido, usando default: maintenance');
+                        return 'maintenance';
+                }
+            }
+
+            // Se for uma string (slug direto)
+            if (typeof activityType === 'string') {
+                console.log('[RoadmapService] Tipo de atividade é string:', activityType);
+                switch (activityType) {
+                    case 'pmoc':
+                        return 'maintenance';
+                    case 'service_order':
+                        return 'repair';
+                    case 'technical_assistance':
+                        return 'inspection';
+                    case 'installation':
+                        return 'installation';
+                    case 'instalation':
+                        return 'installation';
+                    default:
+                        console.log('[RoadmapService] String desconhecida, usando default: maintenance');
+                        return 'maintenance';
+                }
+            }
+
+            // Se for um objeto com name (estrutura alternativa)
+            if (typeof activityType === 'object' && activityType.name) {
+                console.log('[RoadmapService] Tipo de atividade é objeto com name:', activityType.name);
+                const name = activityType.name.toLowerCase();
+                if (name.includes('pmoc')) return 'maintenance';
+                if (name.includes('serviço') || name.includes('service') || name.includes('ordem')) return 'repair';
+                if (name.includes('assistência') || name.includes('assistance') || name.includes('técnica')) return 'inspection';
+                if (name.includes('instalação') || name.includes('instalacao') || name.includes('installation') || name.includes('instala')) return 'installation';
+            }
+
+            console.log('[RoadmapService] Tipo de atividade não reconhecido, usando default: maintenance');
+            return 'maintenance';
+        };
+
+        // Função para processar e mapear atividades
+        const processActivities = (activities: any[]) => {
+            return activities.map(activity => {
+                // Verificar se os dados estão aninhados em um objeto 'activity'
+                const activityData = activity.activity || activity;
+
+                console.log('[RoadmapService] === PROCESSANDO ATIVIDADE ===');
+                console.log('[RoadmapService] Dados brutos da atividade:', JSON.stringify(activity, null, 2));
+                console.log('[RoadmapService] Dados extraídos:', {
+                    id: activityData.id,
+                    name: activityData.name,
+                    title: activityData.title,
+                    activity_type: activityData.activity_type,
+                    type: activityData.type,
+                    status: activityData.status,
+                    client: activityData.client,
+                    start_date: activityData.start_date,
+                    end_date: activityData.end_date
+                });
+
+                console.log('[RoadmapService] Mapeando tipo de atividade...');
+                console.log('[RoadmapService] activity_type:', activityData.activity_type);
+                console.log('[RoadmapService] type:', activityData.type);
+                const mappedType = mapActivityType(activityData.activity_type || activityData.type);
+                console.log('[RoadmapService] Tipo mapeado:', mappedType);
+
+                // Extrair o nome base da atividade (remover timestamp e tag do equipamento)
+                const extractBaseName = (fullName: string) => {
+                    if (!fullName) return 'Atividade sem título';
+
+                    console.log('[RoadmapService] Extraindo nome base de:', fullName);
+
+                    // Remover timestamp (formato: YYYY-MM-DDTHH-MM-SS)
+                    const withoutTimestamp = fullName.replace(/\s\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}/, '');
+                    console.log('[RoadmapService] Sem timestamp:', withoutTimestamp);
+
+                    // Remover tag do equipamento (formato: " - TAG")
+                    const withoutTag = withoutTimestamp.replace(/\s-\s[A-Z0-9]+$/, '');
+                    console.log('[RoadmapService] Sem tag:', withoutTag);
+
+                    const result = withoutTag.trim() || 'Atividade sem título';
+                    console.log('[RoadmapService] Nome base final:', result);
+
+                    return result;
+                };
+
+                console.log('[RoadmapService] Extraindo título...');
+                console.log('[RoadmapService] activityData.name:', activityData.name);
+                console.log('[RoadmapService] activityData.title:', activityData.title);
+                const mappedTitle = extractBaseName(activityData.name || activityData.title);
+                console.log('[RoadmapService] Título extraído:', mappedTitle);
+                const mappedStatus = activityData.status || 'created';
+
+                console.log('[RoadmapService] Atividade mapeada:', {
+                    id: activityData.id,
+                    title: mappedTitle,
+                    type: mappedType,
+                    status: mappedStatus
+                });
+
+                return {
+                    ...activity,
+                    id: activity.id, // Usar o ID do roadmap, não da atividade
+                    activityId: activityData.id, // ID da atividade original
+                    type: mappedType,
+                    title: mappedTitle,
+                    status: mappedStatus,
+                    clientName: activityData.client?.name || 'Cliente não informado',
+                    address: activityData.address || 'Endereço não informado',
+                    scheduledTime: activityData.start_date || activity.start_date || new Date().toISOString(),
+                    createdAt: activityData.created_at || new Date().toISOString(),
+                    updatedAt: activityData.updated_at || new Date().toISOString()
+                };
+            });
+        };
 
         // Verifica se é uma resposta paginada com roadmaps
         if (data.results && Array.isArray(data.results)) {
             console.log('[RoadmapService] Resposta paginada detectada');
+            console.log('[RoadmapService] Número de resultados:', data.results.length);
 
             // Se os resultados são roadmaps (não atividades), precisamos buscar as atividades
             if (data.results.length > 0 && data.results[0].start_date) {
                 console.log('[RoadmapService] Roadmaps encontrados, buscando atividades...');
+                console.log('[RoadmapService] Primeiro roadmap:', JSON.stringify(data.results[0], null, 2));
 
-                // Por enquanto, retorna uma estrutura vazia
-                // TODO: Implementar busca de atividades por roadmap
-                return {
-                    activities: [],
-                    total: 0,
-                    date: new Date().toISOString().split('T')[0]
-                } as RoadmapResponse;
+                // Buscar atividades do primeiro roadmap
+                try {
+                    const firstRoadmap = data.results[0];
+                    const activitiesResponse = await this.getRoadmapActivities(firstRoadmap.id);
+                    console.log('[RoadmapService] Atividades do roadmap obtidas:', activitiesResponse.activities.length);
+                    return activitiesResponse;
+                } catch (error) {
+                    console.error('[RoadmapService] Erro ao buscar atividades do roadmap:', error);
+                    // Retorna estrutura vazia se não conseguir buscar as atividades
+                    const emptyResponse = {
+                        activities: [],
+                        total: 0,
+                        date: new Date().toISOString().split('T')[0]
+                    } as RoadmapResponse;
+                    console.log('[RoadmapService] Retornando resposta vazia devido a erro');
+                    return emptyResponse;
+                }
             }
 
             // Se são atividades diretas
-            return {
-                activities: data.results,
+            console.log('[RoadmapService] Atividades diretas detectadas');
+            const processedActivities = processActivities(data.results);
+            const response = {
+                activities: processedActivities,
                 total: data.count || 0,
                 date: new Date().toISOString().split('T')[0]
             } as RoadmapResponse;
+            console.log('[RoadmapService] Retornando atividades processadas:', response.activities.length);
+            return response;
         }
 
         // Verifica se tem a estrutura direta com activities
         if (Array.isArray(data.activities)) {
-            return data as RoadmapResponse;
+            console.log('[RoadmapService] Estrutura direta com activities detectada');
+            console.log('[RoadmapService] Número de atividades:', data.activities.length);
+            console.log('[RoadmapService] Primeira atividade antes do processamento:', JSON.stringify(data.activities[0], null, 2));
+            const processedActivities = processActivities(data.activities);
+            console.log('[RoadmapService] Primeira atividade após processamento:', JSON.stringify(processedActivities[0], null, 2));
+            return {
+                ...data,
+                activities: processedActivities
+            } as RoadmapResponse;
         }
 
+        // Verifica se a resposta é um array direto de atividades
+        if (Array.isArray(data)) {
+            console.log('[RoadmapService] Array direto de atividades detectado');
+            console.log('[RoadmapService] Número de atividades:', data.length);
+            const processedActivities = processActivities(data);
+            return {
+                activities: processedActivities,
+                total: data.length,
+                date: new Date().toISOString().split('T')[0]
+            } as RoadmapResponse;
+        }
+
+        console.error('[RoadmapService] Estrutura de dados não reconhecida');
+        console.error('[RoadmapService] Chaves disponíveis:', Object.keys(data));
         throw new Error('Dados de atividades inválidos');
     }
 
@@ -78,13 +258,29 @@ export class RoadmapService {
      * Busca o roteiro atual do técnico para o dia.
      * Primeiro tenta buscar do cache, se não encontrar, busca na API e atualiza o cache.
      */
-    static async getCurrentRoadmap(): Promise<RoadmapResponse> {
+    static async getCurrentRoadmap(forceRefresh: boolean = false): Promise<RoadmapResponse> {
         try {
-            // Tenta obter do cache primeiro
-            const cachedRoadmap = await OfflineService.getCachedData<RoadmapResponse>(CURRENT_ROADMAP_CACHE_KEY);
-            if (cachedRoadmap) {
-                console.log('[RoadmapService] Roteiro atual carregado do cache.');
-                return this.validateRoadmapResponse(cachedRoadmap);
+            console.log('[RoadmapService] === INICIANDO getCurrentRoadmap ===');
+
+            // Tenta obter do cache primeiro (se não for forceRefresh)
+            if (!forceRefresh) {
+                const cachedRoadmap = await OfflineService.getCachedData<RoadmapResponse>(CURRENT_ROADMAP_CACHE_KEY);
+                if (cachedRoadmap && cachedRoadmap.activities && cachedRoadmap.activities.length > 0) {
+                    console.log('[RoadmapService] Roteiro atual carregado do cache.');
+                    console.log('[RoadmapService] Cache data:', JSON.stringify(cachedRoadmap, null, 2));
+                    // Sempre reprocessar os dados do cache para garantir mapeamento correto
+                    return await this.validateRoadmapResponse(cachedRoadmap);
+                } else if (cachedRoadmap) {
+                    console.log('[RoadmapService] Cache encontrado mas vazio, buscando da API...');
+                    // Limpa o cache vazio para forçar busca da API
+                    await OfflineService.cacheData(CURRENT_ROADMAP_CACHE_KEY, null);
+                } else {
+                    console.log('[RoadmapService] Cache não encontrado, buscando da API...');
+                }
+            } else {
+                console.log('[RoadmapService] Force refresh ativado, ignorando cache...');
+                // Limpa o cache para forçar busca da API
+                await OfflineService.cacheData(CURRENT_ROADMAP_CACHE_KEY, null);
             }
 
             // Se não houver cache, busca na API
@@ -94,33 +290,22 @@ export class RoadmapService {
 
             console.log('[RoadmapService] Buscando roteiro atual da API:', endpoint);
             console.log('[RoadmapService] Headers enviados:', headers);
+            console.log('[RoadmapService] API URL construída:', apiUrl);
 
             const response = await axios.get(endpoint, { headers });
 
+            console.log('[RoadmapService] Status da resposta:', response.status);
+            console.log('[RoadmapService] Headers da resposta:', response.headers);
             console.log('[RoadmapService] Resposta da API:', JSON.stringify(response.data, null, 2));
 
-            // Se a resposta contém roadmaps, busca as atividades do primeiro roadmap
-            if (response.data.results && response.data.results.length > 0) {
-                const firstRoadmap = response.data.results[0];
-                console.log('[RoadmapService] Buscando atividades do roadmap:', firstRoadmap.id);
+            // Valida a resposta da API
+            const validatedData = await this.validateRoadmapResponse(response.data);
 
-                const activitiesResponse = await this.getRoadmapActivities(firstRoadmap.id);
-                return activitiesResponse;
-            }
+            // Salva no cache
+            await OfflineService.cacheData(CURRENT_ROADMAP_CACHE_KEY, validatedData);
+            console.log('[RoadmapService] Roteiro salvo no cache.');
 
-            // Se não há roadmaps para o dia, retorna resposta vazia
-            console.log('[RoadmapService] Nenhum roadmap encontrado para o dia atual');
-            const emptyResponse: RoadmapResponse = {
-                activities: [],
-                total: 0,
-                date: new Date().toISOString().split('T')[0]
-            };
-
-            // Salva os dados vazios no cache para uso offline
-            await OfflineService.cacheData(CURRENT_ROADMAP_CACHE_KEY, emptyResponse);
-            console.log('[RoadmapService] Roteiro vazio salvo no cache.');
-
-            return emptyResponse;
+            return validatedData;
         } catch (error: any) {
             console.error('[RoadmapService] Erro ao buscar roteiro atual:', error);
 
@@ -128,7 +313,7 @@ export class RoadmapService {
             const cachedRoadmap = await OfflineService.getCachedData<RoadmapResponse>(CURRENT_ROADMAP_CACHE_KEY);
             if (cachedRoadmap) {
                 console.warn('[RoadmapService] Usando roteiro do cache como fallback devido a erro de rede.');
-                return this.validateRoadmapResponse(cachedRoadmap);
+                return await this.validateRoadmapResponse(cachedRoadmap);
             }
 
             this.handleApiError(error);
@@ -150,7 +335,7 @@ export class RoadmapService {
             console.log('[RoadmapService] Atividades do roadmap:', JSON.stringify(response.data, null, 2));
 
             // Valida e retorna as atividades
-            const validatedData = this.validateRoadmapResponse(response.data);
+            const validatedData = await this.validateRoadmapResponse(response.data);
 
             // Salva no cache
             await OfflineService.cacheData(CURRENT_ROADMAP_CACHE_KEY, validatedData);
@@ -179,7 +364,7 @@ export class RoadmapService {
             console.log('[RoadmapService] Endpoint de roteiro por data:', endpoint);
 
             const response = await axios.get(endpoint, { headers });
-            return this.validateRoadmapResponse(response.data);
+            return await this.validateRoadmapResponse(response.data);
         } catch (error: any) {
             console.error('[RoadmapService] Erro ao buscar roteiro por data:', error);
             this.handleApiError(error);
@@ -293,60 +478,68 @@ export class RoadmapService {
         }
     }
 
-    /**
-     * Adiciona notas a uma atividade do roteiro
-     */
-    static async addNotesToActivity(activityId: number, notes: string): Promise<RoadmapActivity> {
-        try {
-            // Valida os parâmetros
-            if (!activityId || activityId <= 0) {
-                throw new Error('ID da atividade inválido');
-            }
 
-            if (!notes || typeof notes !== 'string' || notes.trim().length === 0) {
-                throw new Error('Notas não podem estar vazias');
-            }
-
-            const apiUrl = await buildApiUrlForAccount();
-            const endpoint = `${apiUrl}/roadmaps/activities/${activityId}/notes`;
-            const headers = await this.getAuthHeaders();
-
-            console.log('[RoadmapService] Endpoint de adição de notas:', endpoint);
-
-            const response = await axios.patch(endpoint, { notes }, { headers });
-
-            // Limpa o cache do roteiro atual para forçar atualização
-            await OfflineService.clearCache();
-
-            return response.data;
-        } catch (error: any) {
-            console.error('[RoadmapService] Erro ao adicionar notas à atividade:', error);
-            this.handleApiError(error);
-        }
-    }
 
     /**
      * Atualiza o status de uma atividade do roteiro
      */
     static async updateActivityStatus(activityId: number, status: string): Promise<RoadmapActivity> {
         try {
+            console.log('[RoadmapService] === ATUALIZANDO STATUS ===');
+            console.log('[RoadmapService] Activity ID recebido:', activityId);
+            console.log('[RoadmapService] Status recebido:', status);
+
             // Valida os parâmetros
             if (!activityId || activityId <= 0) {
                 throw new Error('ID da atividade inválido');
             }
 
-            const validStatuses = ['pending', 'in_progress', 'completed', 'cancelled'];
+            const validStatuses = ['created', 'open', 'pending', 'close', 'archived', 'in_progress', 'completed', 'cancelled'];
             if (!validStatuses.includes(status)) {
                 throw new Error(`Status inválido. Use um dos seguintes: ${validStatuses.join(', ')}`);
             }
 
             const apiUrl = await buildApiUrlForAccount();
-            const endpoint = `${apiUrl}/roadmaps/activities/${activityId}/status`;
             const headers = await this.getAuthHeaders();
 
-            console.log('[RoadmapService] Endpoint de atualização de status:', endpoint);
+            // Tentar diferentes endpoints possíveis
+            const possibleEndpoints = [
+                `${apiUrl}/activities/${activityId}/status`,
+                `${apiUrl}/roadmaps/activities/${activityId}/status`,
+                `${apiUrl}/activities/${activityId}`,
+                `${apiUrl}/roadmaps/activities/${activityId}`
+            ];
 
-            const response = await axios.patch(endpoint, { status }, { headers });
+            console.log('[RoadmapService] Tentando endpoints possíveis:', possibleEndpoints);
+
+            let response;
+            let endpointUsed = '';
+
+            for (const endpoint of possibleEndpoints) {
+                try {
+                    console.log('[RoadmapService] Tentando endpoint:', endpoint);
+                    response = await axios.patch(endpoint, { status }, { headers });
+                    endpointUsed = endpoint;
+                    console.log('[RoadmapService] Endpoint funcionou:', endpoint);
+                    break;
+                } catch (error: any) {
+                    console.log('[RoadmapService] Endpoint falhou:', endpoint, 'Status:', error.response?.status);
+                    if (error.response?.status === 404) {
+                        continue; // Tentar próximo endpoint
+                    } else {
+                        throw error; // Outro erro, não continuar
+                    }
+                }
+            }
+
+            if (!response) {
+                throw new Error('Nenhum endpoint válido encontrado para atualização de status');
+            }
+
+            console.log('[RoadmapService] Endpoint usado:', endpointUsed);
+            console.log('[RoadmapService] Payload enviado:', { status });
+
+            console.log('[RoadmapService] Resposta da API:', response.data);
 
             // Limpa o cache do roteiro atual para forçar atualização
             await OfflineService.clearCache();

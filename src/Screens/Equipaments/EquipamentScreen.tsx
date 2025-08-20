@@ -155,7 +155,10 @@ const EquipamentScreen: React.FC<EquipamentScreenProps> = ({ route, navigation }
           {hasPermission("add_equipment") && (
             <TouchableOpacity
               style={styles.createButton}
-              onPress={() => navigation.navigate("CreateEquipmentScreen")}
+              onPress={() => navigation.navigate("CreateEquipmentScreen", {
+                clientId: clientId,
+                sectorId: sectorId
+              })}
             >
               <FontAwesome name="plus" size={16} color="#fff" />
               <Text style={styles.createButtonText}>Novo</Text>

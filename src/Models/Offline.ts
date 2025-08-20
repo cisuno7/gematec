@@ -14,7 +14,7 @@ export interface OfflineAnswer {
 
 export interface OfflineRequest {
     id: string; // ID único para a requisição, ex: timestamp
-    type: 'answer' | 'upload' | 'status_update' | 'notes_update'; // Tipos expandidos
+    type: 'answer' | 'upload' | 'status_update' | 'notes_update' | 'activity_answer' | 'activity_status_update' | 'work_create' | 'work_update' | 'work_approve' | 'work_delete'; // Tipos expandidos
     payload: OfflineAnswer | any; // Carga de dados
     timestamp: number;
 }

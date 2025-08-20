@@ -3,7 +3,7 @@ import { ServiceOrder, Answer, UploadedImage } from "../Models/ServiceOrder";
 import { setDynamicApiUrl } from "../config/apiConfig";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import NetInfo from '@react-native-community/netinfo';
-import { OfflineService } from './OfflineService';
+import OfflineService from './OfflineService';
 
 const SERVICE_ORDER_DETAILS_CACHE_KEY_PREFIX = 'service_order_details_';
 

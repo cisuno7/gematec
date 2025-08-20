@@ -15,6 +15,7 @@ import ClientService from "../Services/ClientService";
 import { usePermissions } from "../Context/PermissionsContext";
 import Client from "../Models/Clientes";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useLanguage } from "../Context/LanguageContext";
 
 interface ClientListProps {
   hasContract: boolean;
@@ -23,6 +24,7 @@ interface ClientListProps {
 
 const ClientList: React.FC<ClientListProps> = ({ hasContract, navigation }) => {
   const { hasPermission } = usePermissions();
+  const { t } = useLanguage();
   const [clients, setClients] = useState<Client[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [page, setPage] = useState(1);
@@ -32,7 +34,7 @@ const ClientList: React.FC<ClientListProps> = ({ hasContract, navigation }) => {
   if (!hasPermission("list_clients")) {
     return (
       <View style={styles.container}>
-        <Text style={styles.errorText}>Você não tem permissão para visualizar clientes.</Text>
+        <Text style={styles.errorText}>{t('clients.noPermission')}</Text>
       </View>
     );
   }
@@ -55,7 +57,7 @@ const ClientList: React.FC<ClientListProps> = ({ hasContract, navigation }) => {
       setTotalPages(Math.ceil(response.count / 10) || 1);
     } catch (error: any) {
       console.error("[ClientList] Erro ao buscar clientes:", error);
-      Alert.alert("Erro", "Não foi possível carregar os clientes.");
+      Alert.alert(t('common.error'), t('clients.loadError'));
     } finally {
       setLoading(false);
     }
@@ -73,9 +75,9 @@ const ClientList: React.FC<ClientListProps> = ({ hasContract, navigation }) => {
   const renderClientItem = ({ item }: { item: Client }) => (
     <View style={styles.itemContainer}>
       <View style={styles.clientInfo}>
-        <Text style={styles.itemText}>Nome: {item.name}</Text>
-        <Text style={styles.itemText}>Email: {item.email}</Text>
-        <Text style={styles.itemText}>Documento: {item.document || "N/A"}</Text>
+        <Text style={styles.itemText}>{t('clients.name')}: {item.name}</Text>
+        <Text style={styles.itemText}>{t('clients.email')}: {item.email}</Text>
+        <Text style={styles.itemText}>{t('clients.document')}: {item.document || "N/A"}</Text>
       </View>
 
       <View style={styles.actionButtons}>
@@ -84,7 +86,7 @@ const ClientList: React.FC<ClientListProps> = ({ hasContract, navigation }) => {
             style={styles.actionButton}
             onPress={() => navigation.navigate("ClientDetailScreen", { clientId: item.id })}
           >
-            <Text style={styles.actionButtonText}>👁️ Visualizar</Text>
+            <Text style={styles.actionButtonText}>👁️ {t('clients.view')}</Text>
           </TouchableOpacity>
         )}
 
@@ -93,7 +95,7 @@ const ClientList: React.FC<ClientListProps> = ({ hasContract, navigation }) => {
             style={styles.actionButton}
             onPress={() => navigation.navigate("ClientSectorsScreen", { clientId: item.id })}
           >
-            <Text style={styles.actionButtonText}>📁 Setores</Text>
+            <Text style={styles.actionButtonText}>📁 {t('clients.sectors')}</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -102,12 +104,12 @@ const ClientList: React.FC<ClientListProps> = ({ hasContract, navigation }) => {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>
-        {hasContract ? "Clientes com Contrato" : "Clientes Avulsos"}
+        {hasContract ? t('clients.title.withContract') : t('clients.title.withoutContract')}
       </Text>
 
       <TextInput
         style={styles.input}
-        placeholder="Pesquisar cliente (min 3 caracteres)"
+        placeholder={t('clients.searchPlaceholder')}
         placeholderTextColor="#666"
         value={searchQuery}
         onChangeText={setSearchQuery}
@@ -121,7 +123,7 @@ const ClientList: React.FC<ClientListProps> = ({ hasContract, navigation }) => {
           data={clients}
           keyExtractor={(item) => `${item.id}`}
           renderItem={renderClientItem}
-          ListEmptyComponent={<Text style={styles.emptyText}>Nenhum cliente encontrado.</Text>}
+          ListEmptyComponent={<Text style={styles.emptyText}>{t('clients.empty')}</Text>}
         />
       )}
 
@@ -131,15 +133,15 @@ const ClientList: React.FC<ClientListProps> = ({ hasContract, navigation }) => {
           onPress={() => setPage(page - 1)}
           style={[styles.pageButton, page === 1 && styles.disabledButton]}
         >
-          <Text style={styles.pageButtonText}>Anterior</Text>
+          <Text style={styles.pageButtonText}>{t('clients.previous')}</Text>
         </TouchableOpacity>
-        <Text style={styles.pageText}>Página {page} de {totalPages}</Text>
+        <Text style={styles.pageText}>{t('common.page')} {page} {t('common.of')} {totalPages}</Text>
         <TouchableOpacity
           disabled={page === totalPages}
           onPress={() => setPage(page + 1)}
           style={[styles.pageButton, page === totalPages && styles.disabledButton]}
         >
-          <Text style={styles.pageButtonText}>Próxima</Text>
+          <Text style={styles.pageButtonText}>{t('clients.next')}</Text>
         </TouchableOpacity>
       </View>
     </View>

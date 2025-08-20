@@ -115,7 +115,7 @@ export default class TechnicalAssistanceService {
     async fetchSectors(token: string, clientId: number, search: string): Promise<any> {
         const accountName = await AsyncStorage.getItem("account") || "default";
         const dynamicBaseUrl = await setDynamicApiUrl(accountName);
-        const endpoint = `${dynamicBaseUrl}/clients/${clientId}/sectors`; // fetchSectors
+        const endpoint = `${dynamicBaseUrl}/clients/${clientId}/sectors?level=0`; // fetchSectors - apenas setores pais
         try {
             const response = await apiClient.get(endpoint, {
                 headers: { Authorization: `Bearer ${token}` },

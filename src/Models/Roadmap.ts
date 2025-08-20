@@ -1,16 +1,15 @@
 export interface RoadmapActivity {
     id: number;
+    activityId?: number; // ID da atividade original
     title: string;
     description?: string;
     clientName: string;
     equipmentName?: string;
     address: string;
     scheduledTime: string;
-    status: 'pending' | 'in_progress' | 'completed' | 'cancelled';
-    priority: 'low' | 'medium' | 'high';
+    status: 'created' | 'open' | 'pending' | 'close' | 'archived' | 'in_progress' | 'completed' | 'cancelled';
     type: 'maintenance' | 'repair' | 'inspection' | 'installation';
     estimatedDuration?: number; // em minutos
-    notes?: string;
     createdAt: string;
     updatedAt: string;
 }

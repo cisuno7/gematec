@@ -26,7 +26,7 @@ export interface Equipment {
   equipment_type_id: number | null;
   brand_id: number | null;
   client_id: number | null;
-  sector: { id: number; name: string };  // Objeto completo
+  sector: { id: number; name: string; complete_name?: string };  // Objeto completo
   client: { id: number; name: string; email?: string; document?: string; phone?: string };  // Objeto completo
   brand: { id: number; name: string } | null;  // Permitir null
   technology_id?: number; // Alterado para technology_id

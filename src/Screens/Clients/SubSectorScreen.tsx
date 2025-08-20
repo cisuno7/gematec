@@ -59,7 +59,7 @@ const SubSectorScreen: React.FC<SubSectorScreenProps> = ({ route, navigation }) 
 
                 if (directSubSectors.length === 0) {
                     // Usar navigation.replace para navegação
-                    navigation.replace("EquipamentScreen", { // Caminho para EquipamentScreen
+                    navigation.replace("EquipmentListScreen", { // Caminho para EquipmentListScreen
                         clientId: clientId,
                         sectorId: parentSector.id,
                     });
@@ -125,7 +125,7 @@ const SubSectorScreen: React.FC<SubSectorScreenProps> = ({ route, navigation }) 
             <View style={styles.container}>
                 <Text style={styles.emptyText}>Nenhum sub-setor encontrado para este setor.</Text>
                 <Text style={styles.emptyText}>Redirecionando para equipamentos...</Text>
-                <TouchableOpacity onPress={() => navigation.replace("EquipamentScreen", { clientId, sectorId: parentSector.id })}>
+                <TouchableOpacity onPress={() => navigation.replace("EquipmentListScreen", { clientId, sectorId: parentSector.id })}>
                     <Text style={styles.linkText}>Clique aqui para ver equipamentos</Text>
                 </TouchableOpacity>
             </View>
