@@ -17,15 +17,17 @@
     "@react-native-async-storage/async-storage": "2.1.2",
     "@react-native-community/netinfo": "11.4.1",
     "@react-native-picker/picker": "2.11.1",
-    "@react-navigation/drawer": "7.5.3",
-    "@react-navigation/stack": "7.4.0",
+    "@react-navigation/drawer": "^7.5.7",
+    "@react-navigation/native": "^7.1.17",
+    "@react-navigation/stack": "^7.4.7",
     "axios": "^1.9.0",
     "date-fns": "^4.1.0",
-    "expo": "53.0.20",
+    "expo": "53.0.22",
     "expo-build-properties": "~0.14.8",
     "expo-camera": "~16.1.11",
     "expo-checkbox": "~4.1.1",
     "expo-file-system": "~18.1.11",
+    "expo-font": "~13.3.2",
     "expo-image-picker": "~16.1.1",
     "expo-linear-gradient": "~14.1.5",
     "expo-linking": "~7.1.7",
@@ -42,13 +44,13 @@
     "react-native-safe-area-context": "5.4.0",
     "react-native-screens": "~4.11.1",
     "react-native-signature-canvas": "^5.0.1",
-    "react-native-webview": "13.13.5"
+    "react-native-webview": "13.13.5",
+    "typescript": "~5.8.3"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
     "@types/jwt-decode": "^2.2.1",
-    "@types/react": "~19.0.10",
-    "typescript": "~5.8.3"
+    "@types/react": "~19.0.10"
   },
   "private": true
 }

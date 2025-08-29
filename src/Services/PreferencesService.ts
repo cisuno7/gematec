@@ -1,6 +1,6 @@
 import apiClient from "../Context/ApiClient";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { setDynamicApiUrl } from "../config/apiConfig";
+
 
 export interface UserPreferences {
     language: string;
@@ -10,19 +10,11 @@ export default class PreferencesService {
     static async getPreferences(accessToken: string): Promise<UserPreferences> {
         try {
             console.log('[PreferencesService] === INÍCIO getPreferences ===');
-            const accountName = await AsyncStorage.getItem("account") || "default";
-            console.log('[PreferencesService] Account name:', accountName);
-
-            const dynamicBaseUrl = await setDynamicApiUrl(accountName);
-            console.log('[PreferencesService] Dynamic base URL:', dynamicBaseUrl);
-
-            const endpoint = `${dynamicBaseUrl}/me/preferences`;
-            console.log('[PreferencesService] Endpoint completo:', endpoint);
+            console.log('[PreferencesService] Buscando preferências do usuário');
             console.log('[PreferencesService] Token presente:', !!accessToken);
 
-            const response = await apiClient.get(endpoint, {
-                headers: { Authorization: `Bearer ${accessToken}` },
-            });
+            // apiClient já configura automaticamente a URL dinâmica e Authorization
+            const response = await apiClient.get('/me/preferences');
 
             console.log('[PreferencesService] Resposta recebida:', response.data);
             return response.data;
@@ -43,22 +35,14 @@ export default class PreferencesService {
             console.log('[PreferencesService] === INÍCIO updatePreferences ===');
             console.log('[PreferencesService] Preferências a serem salvas:', preferences);
 
-            const accountName = await AsyncStorage.getItem("account") || "default";
-            console.log('[PreferencesService] Account name:', accountName);
-
-            const dynamicBaseUrl = await setDynamicApiUrl(accountName);
-            console.log('[PreferencesService] Dynamic base URL:', dynamicBaseUrl);
-
-            let endpoint = `${dynamicBaseUrl}/me/preferences`;
-            console.log('[PreferencesService] Endpoint completo:', endpoint);
+            console.log('[PreferencesService] Atualizando preferências do usuário');
             console.log('[PreferencesService] Token presente:', !!accessToken);
 
             // Primeiro, tentar GET para ver as preferências atuais e entender os valores válidos
             try {
                 console.log('[PreferencesService] Fazendo GET para ver preferências atuais...');
-                const currentPreferences = await apiClient.get(endpoint, {
-                    headers: { Authorization: `Bearer ${accessToken}` },
-                });
+                // apiClient já configura automaticamente a URL dinâmica e Authorization
+                const currentPreferences = await apiClient.get('/me/preferences');
                 console.log('[PreferencesService] Preferências atuais:', currentPreferences.data);
             } catch (getError: any) {
                 console.log('[PreferencesService] GET falhou, mas continuando...', getError.response?.status);
@@ -82,9 +66,8 @@ export default class PreferencesService {
 
             // Usar PUT conforme especificação do endpoint
             console.log('[PreferencesService] Usando PUT conforme documentação...');
-            const response = await apiClient.put(endpoint, requestBody, {
-                headers: { Authorization: `Bearer ${accessToken}` },
-            });
+            // apiClient já configura automaticamente a URL dinâmica e Authorization
+            const response = await apiClient.put('/me/preferences', requestBody);
 
             console.log('[PreferencesService] Resposta recebida:', response.data);
             return response.data;

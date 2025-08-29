@@ -285,6 +285,7 @@ const translations: { [language: string]: Translations } = {
         'activityQuestionnaire.completeSuccess': 'Atividade concluída com sucesso!',
         'activityQuestionnaire.completeError': 'Falha ao concluir atividade. Tente novamente.',
         'activityQuestionnaire.validationError': 'Por favor, preencha todos os campos obrigatórios.',
+        'activityQuestionnaire.noQuestions': 'Não há nenhuma questão do plano de atividades.',
 
         // Validation Messages
         'validation.required': 'Campo obrigatório',
@@ -731,6 +732,7 @@ const translations: { [language: string]: Translations } = {
         'activityQuestionnaire.completeSuccess': 'Activity completed successfully!',
         'activityQuestionnaire.completeError': 'Failed to complete activity. Try again.',
         'activityQuestionnaire.validationError': 'Please fill in all required fields.',
+        'activityQuestionnaire.noQuestions': 'There are no questions for this activity plan.',
 
         // Validation Messages
         'validation.required': 'Required field',

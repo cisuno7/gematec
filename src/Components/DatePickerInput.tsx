@@ -32,6 +32,22 @@ const DatePickerInput: React.FC<DatePickerInputProps> = ({
   const [selectedMonth, setSelectedMonth] = useState('01');
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
 
+  // Sincroniza o estado interno ao abrir com o valor atual
+  const syncFromValue = () => {
+    try {
+      if (!value) return;
+      const v = value.includes('/')
+        ? value.split('/').reverse().join('-')
+        : value;
+      const [y, m, d] = v.split('-');
+      if (y && m && d) {
+        setSelectedYear(y);
+        setSelectedMonth(m.padStart(2, '0'));
+        setSelectedDay(d.padStart(2, '0'));
+      }
+    } catch { }
+  };
+
   // Gerar arrays para dias, meses e anos
   const days = Array.from({ length: 31 }, (_, i) => String(i + 1).padStart(2, '0'));
   const months = Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0'));
@@ -79,7 +95,11 @@ const DatePickerInput: React.FC<DatePickerInputProps> = ({
       {label && <Text style={styles.label}>{label}</Text>}
       <TouchableOpacity
         style={[styles.input, style, !editable && styles.disabledInput]}
-        onPress={() => editable && setIsVisible(true)}
+        onPress={() => {
+          if (!editable) return;
+          syncFromValue();
+          setIsVisible(true);
+        }}
         disabled={!editable}
       >
         <Text style={[styles.inputText, !displayValue && styles.placeholderText]}>
@@ -110,6 +130,8 @@ const DatePickerInput: React.FC<DatePickerInputProps> = ({
                   selectedValue={selectedDay}
                   onValueChange={setSelectedDay}
                   style={styles.picker}
+                  dropdownIconColor={Platform.OS === 'android' ? '#333' : undefined}
+                  mode={Platform.OS === 'android' ? 'dropdown' : undefined}
                 >
                   {days.map((day) => (
                     <Picker.Item key={day} label={day} value={day} color="#333" />
@@ -123,6 +145,8 @@ const DatePickerInput: React.FC<DatePickerInputProps> = ({
                   selectedValue={selectedMonth}
                   onValueChange={setSelectedMonth}
                   style={styles.picker}
+                  dropdownIconColor={Platform.OS === 'android' ? '#333' : undefined}
+                  mode={Platform.OS === 'android' ? 'dropdown' : undefined}
                 >
                   {months.map((month, index) => (
                     <Picker.Item
@@ -141,6 +165,8 @@ const DatePickerInput: React.FC<DatePickerInputProps> = ({
                   selectedValue={selectedYear}
                   onValueChange={setSelectedYear}
                   style={styles.picker}
+                  dropdownIconColor={Platform.OS === 'android' ? '#333' : undefined}
+                  mode={Platform.OS === 'android' ? 'dropdown' : undefined}
                 >
                   {years.map((year) => (
                     <Picker.Item key={year} label={year} value={year} color="#333" />
@@ -199,7 +225,7 @@ const styles = StyleSheet.create({
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(0, 0, 0, 0.35)',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -242,8 +268,9 @@ const styles = StyleSheet.create({
   },
   picker: {
     height: 120,
-    backgroundColor: '#f8f9fa',
+    backgroundColor: '#ffffff',
     borderRadius: 8,
+    color: '#333',
   },
   modalFooter: {
     flexDirection: 'row',

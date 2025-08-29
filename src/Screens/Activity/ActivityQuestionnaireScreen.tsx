@@ -49,6 +49,8 @@ const ActivityQuestionnaireScreen: React.FC<ActivityQuestionnaireScreenProps> = 
     const [activityStarted, setActivityStarted] = useState(false);
     const [activityCompleted, setActivityCompleted] = useState(false);
     const [equipmentStatus, setEquipmentStatus] = useState<string>('created');
+    const [questionsLoading, setQuestionsLoading] = useState<boolean>(false);
+    const [noQuestions, setNoQuestions] = useState<boolean>(false);
 
     useEffect(() => {
         fetchEquipmentData();
@@ -84,15 +86,14 @@ const ActivityQuestionnaireScreen: React.FC<ActivityQuestionnaireScreenProps> = 
                 await OfflineService.cacheData(cacheKey, data);
                 console.log('[ActivityQuestionnaireScreen] Dados do equipamento salvos no cache');
 
-                // Buscar status específico do equipamento na atividade
+                // Buscar status específico do equipamento na atividade (conforme Postman: objeto com "results")
                 try {
-                    const activityEquipmentResponse = await apiClient.get(`/activities/${activityId}/equipments`, {
-                        headers: { Authorization: `Bearer ${token}` }
-                    });
+                    const equipmentsResponse = await ActivityService.fetchActivityEquipments(activityId, { token });
+                    const list = Array.isArray(equipmentsResponse)
+                        ? equipmentsResponse
+                        : (equipmentsResponse?.results ?? equipmentsResponse?.data ?? []);
 
-                    const equipmentInActivity = activityEquipmentResponse.data.results?.find(
-                        (eq: any) => eq.id === activityEquipmentId
-                    );
+                    const equipmentInActivity = list.find((eq: any) => eq.id === activityEquipmentId);
 
                     if (equipmentInActivity) {
                         console.log('[ActivityQuestionnaireScreen] Status do equipamento na atividade:', equipmentInActivity.status);
@@ -106,7 +107,7 @@ const ActivityQuestionnaireScreen: React.FC<ActivityQuestionnaireScreenProps> = 
                         }
                     }
                 } catch (activityError: any) {
-                    console.error('[ActivityQuestionnaireScreen] Erro ao buscar status da atividade:', activityError);
+                    console.error('[ActivityQuestionnaireScreen] Erro ao buscar status da atividade (via service):', activityError);
                     // Se falhar, usar status padrão
                     setEquipmentStatus('created');
                 }
@@ -130,6 +131,9 @@ const ActivityQuestionnaireScreen: React.FC<ActivityQuestionnaireScreenProps> = 
 
     const fetchQuestions = async () => {
         try {
+            setQuestionsLoading(true);
+            setError(null);
+            setNoQuestions(false);
             const token = await AsyncStorage.getItem("access_token");
             if (!token) throw new Error("Token não encontrado");
 
@@ -258,9 +262,32 @@ const ActivityQuestionnaireScreen: React.FC<ActivityQuestionnaireScreenProps> = 
                         try {
                             console.log('[ActivityQuestionnaireScreen] Tentando buscar versões do plan ID:', plan.id);
 
-                            const versionsResponse = await apiClient.get(`/activity_plans/${plan.id}/versions`, {
-                                headers: { Authorization: `Bearer ${token}` }
-                            });
+                            // Buscar versões com retry para rate limiting
+                            let versionsResponse: any = null;
+                            let retries = 0;
+                            const maxRetries = 3;
+
+                            while (retries < maxRetries) {
+                                try {
+                                    versionsResponse = await apiClient.get(`/activity_plans/${plan.id}/versions`, {
+                                        headers: { Authorization: `Bearer ${token}` }
+                                    });
+                                    break; // Sucesso
+                                } catch (error: any) {
+                                    if (error.response?.status === 429 && retries < maxRetries - 1) {
+                                        const waitTime = 6 + (retries * 3); // 6s, 9s, 12s
+                                        console.log(`[ActivityQuestionnaireScreen] Rate limit atingido, aguardando ${waitTime}s antes de tentar novamente...`);
+                                        await new Promise(resolve => setTimeout(resolve, waitTime * 1000));
+                                        retries++;
+                                    } else {
+                                        throw error;
+                                    }
+                                }
+                            }
+
+                            if (!versionsResponse) {
+                                throw new Error('Falha ao obter versões após múltiplas tentativas');
+                            }
 
                             console.log('[ActivityQuestionnaireScreen] Versões do plan', plan.id, ':', versionsResponse.data);
 
@@ -316,16 +343,17 @@ const ActivityQuestionnaireScreen: React.FC<ActivityQuestionnaireScreenProps> = 
                 }
             }
 
-            // Se nenhuma abordagem funcionou
+            // Se nenhuma abordagem retornou questões, marcar que não há questões
             if (!questionsFound) {
-                console.error('[ActivityQuestionnaireScreen] ❌ Nenhuma abordagem funcionou para encontrar as questões');
-                console.error('[ActivityQuestionnaireScreen] Version ID procurado:', versionId);
-                setError("Não foi possível encontrar as questões para este equipamento. O plano de atividade pode ter sido removido ou não está configurado corretamente.");
+                console.warn('[ActivityQuestionnaireScreen] Nenhuma questão encontrada para este plano de atividade/versão');
+                setNoQuestions(true);
             }
 
         } catch (error: any) {
             console.error('[ActivityQuestionnaireScreen] Erro ao buscar questões:', error);
             setError("Falha ao carregar questões da atividade.");
+        } finally {
+            setQuestionsLoading(false);
         }
     };
 
@@ -681,7 +709,16 @@ const ActivityQuestionnaireScreen: React.FC<ActivityQuestionnaireScreenProps> = 
                             {console.log('[ActivityQuestionnaireScreen] Número de questões:', questions.length)}
                             {console.log('[ActivityQuestionnaireScreen] Questões:', questions)}
 
-                            {questions.length > 0 ? (
+                            {questionsLoading ? (
+                                <View style={styles.startActivitySection}>
+                                    <ActivityIndicator size="small" color="#007bff" />
+                                    <Text style={styles.startActivityText}>{t('activityQuestionnaire.loading')}</Text>
+                                </View>
+                            ) : noQuestions ? (
+                                <View style={styles.startActivitySection}>
+                                    <Text style={styles.startActivityText}>{t('activityQuestionnaire.noQuestions')}</Text>
+                                </View>
+                            ) : questions.length > 0 ? (
                                 <DynamicActivityQuestionnaire
                                     fields={questions}
                                     onChange={setAnswers}
@@ -716,10 +753,7 @@ const ActivityQuestionnaireScreen: React.FC<ActivityQuestionnaireScreenProps> = 
                                 />
                             ) : (
                                 <View style={styles.startActivitySection}>
-                                    <Text style={styles.startActivityText}>
-                                        Carregando questões...
-                                    </Text>
-                                    <ActivityIndicator size="small" color="#007bff" />
+                                    <Text style={styles.startActivityText}>{t('activityQuestionnaire.noQuestions')}</Text>
                                 </View>
                             )}
 
@@ -747,7 +781,12 @@ const ActivityQuestionnaireScreen: React.FC<ActivityQuestionnaireScreenProps> = 
                     ) : (
                         // Exibir questionário em modo leitura para atividades finalizadas/fechadas
                         <>
-                            {questions.length > 0 ? (
+                            {questionsLoading ? (
+                                <View style={styles.startActivitySection}>
+                                    <ActivityIndicator size="small" color="#007bff" />
+                                    <Text style={styles.startActivityText}>{t('activityQuestionnaire.loading')}</Text>
+                                </View>
+                            ) : questions.length > 0 ? (
                                 <DynamicActivityQuestionnaire
                                     fields={questions}
                                     onChange={setAnswers}
@@ -782,9 +821,7 @@ const ActivityQuestionnaireScreen: React.FC<ActivityQuestionnaireScreenProps> = 
                                 />
                             ) : (
                                 <View style={styles.startActivitySection}>
-                                    <Text style={styles.startActivityText}>
-                                        Questionário não disponível.
-                                    </Text>
+                                    <Text style={styles.startActivityText}>{t('activityQuestionnaire.noQuestions')}</Text>
                                 </View>
                             )}
                         </>

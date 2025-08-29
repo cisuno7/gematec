@@ -127,41 +127,22 @@ const refreshAccessToken = async () => {
         const accountName = await AsyncStorage.getItem("account") || "default";
         const dynamicBaseUrl = await setDynamicApiUrl(accountName);
 
-        console.log("[refreshAccessToken] URL para refresh:", `${dynamicBaseUrl}/token/refresh/`);
+        console.log("[refreshAccessToken] URL para refresh:", `${dynamicBaseUrl}/token/refresh`);
         console.log("[refreshAccessToken] Account:", accountName);
         console.log("[refreshAccessToken] URL base completa:", dynamicBaseUrl);
 
-        // Tenta primeiro com barra no final, se falhar tenta sem
-        let response;
-        try {
-            console.log("[refreshAccessToken] Tentando com /token/refresh/");
-            response = await axios.post(
-                `${dynamicBaseUrl}/token/refresh/`,
-                { refresh: refreshToken },
-                {
-                    headers: {
-                        "Content-Type": "application/json",
-                    },
-                    timeout: 10000,
-                }
-            );
-        } catch (firstError: any) {
-            if (firstError.response?.status === 404) {
-                console.log("[refreshAccessToken] Endpoint com / não encontrado, tentando sem /");
-                response = await axios.post(
-                    `${dynamicBaseUrl}/token/refresh`,
-                    { refresh: refreshToken },
-                    {
-                        headers: {
-                            "Content-Type": "application/json",
-                        },
-                        timeout: 10000,
-                    }
-                );
-            } else {
-                throw firstError;
+        // Usar endpoint conforme Postman.md: /token/refresh (apiConfig já adiciona /api)
+        console.log("[refreshAccessToken] Tentando com /token/refresh conforme Postman.md");
+        const response = await axios.post(
+            `${dynamicBaseUrl}/token/refresh`,
+            { refresh: refreshToken },
+            {
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                timeout: 10000,
             }
-        }
+        );
 
         console.log("[refreshAccessToken] Resposta do servidor:", {
             status: response.status,

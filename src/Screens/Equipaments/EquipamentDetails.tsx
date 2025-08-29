@@ -46,8 +46,8 @@ const EquipmentDetailsScreen: React.FC<EquipmentDetailsScreenProps> = ({ route, 
   const [activityForm, setActivityForm] = useState({
     name: "",
     activity_type_id: undefined as number | undefined,
-    start_date: new Date().toISOString().slice(0, 10),
-    end_date: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10), // Data de fim = data de início + 1 dia
+    start_date: new Date().toISOString().slice(0, 10), // Hoje
+    end_date: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10), // Amanhã
   });
 
   // Função para gerar nome da atividade: <nome_atividade> - <tag>
@@ -91,7 +91,8 @@ const EquipmentDetailsScreen: React.FC<EquipmentDetailsScreenProps> = ({ route, 
       if (!token) throw new Error("Token não encontrado");
 
       console.log('[EquipamentDetails] Carregando tipos de atividade...');
-      const types = await ActivityService.fetchActivityTypes(token);
+      const activityService = new ActivityService();
+      const types = await activityService.fetchActivityTypes(token);
       console.log('[EquipamentDetails] Tipos carregados:', types);
       setActivityTypes(types);
     } catch (err: any) {
@@ -133,12 +134,12 @@ const EquipmentDetailsScreen: React.FC<EquipmentDetailsScreenProps> = ({ route, 
         return;
       }
 
-      // Validação: data de fim deve ser maior que data de início
+      // Validação: data final não pode ser menor que data inicial
       const startDate = new Date(activityForm.start_date);
       const endDate = new Date(activityForm.end_date);
 
-      if (endDate <= startDate) {
-        Alert.alert("Erro", "A data final deve ser maior que a data de início.");
+      if (endDate < startDate) {
+        Alert.alert("Erro", "A data final não pode ser anterior à data de início.");
         return;
       }
 
@@ -150,7 +151,7 @@ const EquipmentDetailsScreen: React.FC<EquipmentDetailsScreenProps> = ({ route, 
         name: activityForm.name,
         activity_type_id: activityForm.activity_type_id,
         start_date: activityForm.start_date,
-        end_date: activityForm.end_date || null,
+        end_date: activityForm.end_date,
       });
 
       // 1. Criar atividade com nome único
@@ -161,16 +162,24 @@ const EquipmentDetailsScreen: React.FC<EquipmentDetailsScreenProps> = ({ route, 
         activity_type_id: activityForm.activity_type_id,
         equipment_id: parsedEquipmentId, // Passar equipment_id para obter client_id
         start_date: activityForm.start_date,
-        end_date: activityForm.end_date || null,
+        end_date: activityForm.end_date,
       }, token);
 
       console.log('[EquipamentDetails] Atividade criada:', activity);
+      console.log('[EquipamentDetails] Status da atividade criada:', activity.status);
+      console.log('[EquipamentDetails] Tipo de atividade:', activity.activity_type);
 
-      // 2. Vincular equipamento
+      // 2. Vincular equipamento à atividade
+      // TODAS as atividades devem vincular equipamento (não apenas Ordem de Serviço)
+      console.log('[EquipamentDetails] === INICIANDO VÍNCULO DE EQUIPAMENTO ===');
+      console.log('[EquipamentDetails] Equipment ID a ser vinculado:', parsedEquipmentId);
+      console.log('[EquipamentDetails] Activity ID:', activity.id);
+
       await ActivityService.linkEquipmentToActivity(activity.id, { equipment_id: parsedEquipmentId }, token);
+      console.log('[EquipamentDetails] Equipamento vinculado com sucesso');
 
       setShowCreateActivity(false);
-      Alert.alert("Sucesso", "Atividade criada e equipamento vinculado!");
+      Alert.alert("Sucesso", "Atividade criada e equipamento vinculado com sucesso!");
       navigation.navigate("ActivityHistoryScreen", { equipmentId: parsedEquipmentId });
     } catch (err: any) {
       console.error('[EquipamentDetails] Erro ao criar atividade:', err);
@@ -475,7 +484,7 @@ const EquipmentDetailsScreen: React.FC<EquipmentDetailsScreenProps> = ({ route, 
 
               <View style={styles.inputGroup}>
                 <DatePickerInput
-                  label="Data de Início"
+                  label="Data de Início *"
                   value={activityForm.start_date}
                   onChangeText={text => setActivityForm(f => ({ ...f, start_date: text }))}
                   placeholder="Selecione a data de início"

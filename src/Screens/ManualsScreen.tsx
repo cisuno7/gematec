@@ -111,6 +111,10 @@ const ManualsScreen: React.FC<ManualsScreenProps> = ({ navigation }) => {
           // Mensagem simples de progresso (sem expor URLs ou detalhes técnicos)
           Alert.alert(t('common.loading'), `Baixando manual...`);
 
+          if (!token) {
+            Alert.alert(t('common.error'), "Token de acesso não encontrado");
+            return;
+          }
           const fileUri = await ManualService.downloadManual(fileUrl, token, manual.name);
 
           console.log("[ManualsScreen] Download concluído. Arquivo salvo em:", fileUri);

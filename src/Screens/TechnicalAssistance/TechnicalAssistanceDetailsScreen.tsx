@@ -113,7 +113,7 @@ const TechnicalAssistanceDetailsScreen: React.FC<TechnicalAssistanceDetailsScree
             const isConnected = await NetInfo.fetch().then(state => state.isConnected);
 
             if (isConnected) {
-                await service.submitAnswers(token, id, { status, answers: formattedAnswers });
+                await TechnicalAssistanceService.submitAnswers(token, id, { status, answers: formattedAnswers });
                 Alert.alert("Sucesso", "Respostas salvas com sucesso!");
             } else {
                 await OfflineService.addRequestToQueue({

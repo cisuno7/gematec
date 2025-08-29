@@ -1,7 +1,6 @@
 // file: src/Services/MenuService.ts
 import apiClient from "../Context/ApiClient";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { setDynamicApiUrl } from "../config/apiConfig";
 import { MenuItem } from "../Models/MenuItem";
 
 export default class MenuService {
@@ -13,18 +12,12 @@ export default class MenuService {
                 throw new Error("Token de acesso não encontrado.");
             }
 
-            // Decodificar o token para obter o accountName
-            // const decodedToken: any = jwtDecode(accessToken); // Remova esta linha
-            const accountName = await AsyncStorage.getItem("account") || "default"; // Obtenha o nome da conta do AsyncStorage
-            const dynamicBaseUrl = await setDynamicApiUrl(accountName);
             const endpoint = `/me/menu?app=mobile`;
 
-            console.log("[MenuService] Buscando menu dinâmico do endpoint:", `${dynamicBaseUrl}${endpoint}`);
+            console.log("[MenuService] Buscando menu dinâmico do endpoint:", endpoint);
 
-            const response = await apiClient.get(endpoint, {
-                baseURL: dynamicBaseUrl, // Usar URL dinâmica
-                headers: { Authorization: `Bearer ${accessToken}` },
-            });
+            // apiClient já configura automaticamente a URL dinâmica e Authorization
+            const response = await apiClient.get(endpoint);
 
             console.log("[MenuService] Resposta do menu dinâmico:", response.data);
             const menuData: MenuItem[] = response.data;

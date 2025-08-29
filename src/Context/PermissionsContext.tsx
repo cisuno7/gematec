@@ -107,9 +107,30 @@ export const PermissionProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       return false;
     }
 
-    const hasPermission = permissions.includes(permission);
-    console.log("[PermissionProvider] Resultado da verificação:", hasPermission);
-    return hasPermission;
+    const normalizedRequested = (permission || "").trim();
+
+    // Aliases para compatibilizar nomes de permissões entre menu e backend
+    const permissionAliases: Record<string, string[]> = {
+      // Ex.: menu pede list_activities, backend pode fornecer list_activitytypes
+      'list_activities': ['list_activitytypes'],
+    };
+
+    const candidates = new Set<string>([normalizedRequested, ...(permissionAliases[normalizedRequested] || [])]);
+
+    // Aceita tanto a forma "list_equipments" quanto formas com prefixo como
+    // "equipments.list_equipments", "users.view_user" etc.
+    const result = permissions.some((userPermission) => {
+      if (typeof userPermission !== 'string') return false;
+      const normalizedUserPerm = userPermission.trim();
+      if (candidates.has(normalizedUserPerm)) return true;
+
+      // Compara pelo sufixo após separadores comuns (., :, _)
+      const suffix = normalizedUserPerm.split(/[\.:_]/).pop();
+      return Array.from(candidates).some(candidate => candidate === suffix);
+    });
+
+    console.log("[PermissionProvider] Resultado da verificação:", result);
+    return result;
   };
 
   return (

@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Alert,
 } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { DrawerNavigationProp } from "@react-navigation/drawer";
 import { RootStackParamList } from "../Routers/AppRouter";
 import ClientService from "../Services/ClientService";
@@ -86,7 +87,10 @@ const ClientList: React.FC<ClientListProps> = ({ hasContract, navigation }) => {
             style={styles.actionButton}
             onPress={() => navigation.navigate("ClientDetailScreen", { clientId: item.id })}
           >
-            <Text style={styles.actionButtonText}>👁️ {t('clients.view')}</Text>
+            <View style={styles.actionButtonContent}>
+              <Ionicons name="eye" size={16} color="#fff" />
+              <Text style={styles.actionButtonText}>{t('clients.view')}</Text>
+            </View>
           </TouchableOpacity>
         )}
 
@@ -95,7 +99,10 @@ const ClientList: React.FC<ClientListProps> = ({ hasContract, navigation }) => {
             style={styles.actionButton}
             onPress={() => navigation.navigate("ClientSectorsScreen", { clientId: item.id })}
           >
-            <Text style={styles.actionButtonText}>📁 {t('clients.sectors')}</Text>
+            <View style={styles.actionButtonContent}>
+              <Ionicons name="folder" size={16} color="#fff" />
+              <Text style={styles.actionButtonText}>{t('clients.sectors')}</Text>
+            </View>
           </TouchableOpacity>
         )}
       </View>
@@ -194,6 +201,11 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     minWidth: 100,
     alignItems: "center",
+  },
+  actionButtonContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
   },
   actionButtonText: {
     color: "#fff",

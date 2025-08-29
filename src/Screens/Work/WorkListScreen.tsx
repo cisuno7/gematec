@@ -10,6 +10,20 @@ import { WorkListItem } from "../../Models/Work";
 import { usePermissions } from "../../Context/PermissionsContext";
 import { useLanguage } from "../../Context/LanguageContext";
 
+const formatDateTimePtBR = (iso?: string | null) => {
+    if (!iso) return "—";
+    try {
+        const d = new Date(iso);
+        if (Number.isNaN(d.getTime())) return String(iso);
+        return d.toLocaleString('pt-BR', {
+            year: 'numeric', month: '2-digit', day: '2-digit',
+            hour: '2-digit', minute: '2-digit'
+        });
+    } catch {
+        return String(iso);
+    }
+};
+
 interface WorkListScreenProps {
     navigation: DrawerNavigationProp<RootStackParamList, "WorkListScreen">;
     route: RouteProp<RootStackParamList, "WorkListScreen">;
@@ -106,7 +120,7 @@ const WorkListScreen: React.FC<WorkListScreenProps> = ({ route, navigation }) =>
                 </View>
                 <View style={styles.infoRow}>
                     <MaterialIcons name="event" size={16} color="#666" />
-                    <Text style={styles.infoText}>{t('work.openedAt')}: {item.opened_at}</Text>
+                    <Text style={styles.infoText}>{t('work.openedAt')}: {formatDateTimePtBR(item.opened_at)}</Text>
                 </View>
                 <View style={styles.actions}>
                     {canView && (

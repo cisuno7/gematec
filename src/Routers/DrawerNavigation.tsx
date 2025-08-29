@@ -46,6 +46,8 @@ const { width } = Dimensions.get('window');
 // Mapeamento de slugs para dados do aplicativo
 const SLUG_TO_APP_DATA: { [key: string]: { titleKey: string; route?: keyof RootStackParamList; icon?: string; action?: 'logout' } } = {
   "operational": { titleKey: "menu.operacional", icon: "briefcase" },
+  "basic": { titleKey: "menu.basicRegistrations", icon: "folder-open" },
+  "administrator": { titleKey: "menu.administrative", icon: "shield" },
   "clients_with_contract": { titleKey: "menu.clientsWithContract", route: "ClientsComContratoScreen" },
   "clients_without_contract": { titleKey: "menu.clientsWithoutContract", route: "ClientsAvulsosScreen" },
   "equipments": { titleKey: "menu.equipments", route: "GeneralEquipmentListScreen" },
@@ -110,11 +112,23 @@ const CustomDrawerContent = (props: any & { extraData: {} }) => {
   const processMenuItems = (items: MenuItem[]): MenuItem[] => {
     console.log("[DrawerNavigation] Itens antes do filtro:", items.map(item => ({ slug: item.slug, required_apps: item.required_apps })));
 
-    const filteredItems = items.filter(item => {
-      const shouldInclude = item.required_apps ? item.required_apps.includes("mobile") : true;
-      console.log(`[DrawerNavigation] Item ${item.slug} - required_apps: ${item.required_apps}, incluído: ${shouldInclude}`);
-      return shouldInclude;
-    });
+    const filteredItems = items
+      .filter(item => {
+        const shouldInclude = item.required_apps ? item.required_apps.includes("mobile") : true;
+        console.log(`[DrawerNavigation] Item ${item.slug} - required_apps: ${item.required_apps}, incluído: ${shouldInclude}`);
+        return shouldInclude;
+      })
+      // Remove categorias/grupos que não tiverem filhos mobile após o filtro
+      .filter(item => {
+        if (item.items && item.items.length > 0) {
+          const hasChildren = item.items.some(child => !child.required_apps || child.required_apps.includes("mobile"));
+          if (!hasChildren) {
+            console.log(`[DrawerNavigation] Removendo categoria sem filhos mobile: ${item.slug}`);
+          }
+          return hasChildren;
+        }
+        return true;
+      });
 
     console.log("[DrawerNavigation] Itens após filtro:", filteredItems.map(item => item.slug));
 

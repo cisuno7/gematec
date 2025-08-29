@@ -132,7 +132,7 @@ export default class AuthService {
 
       console.log('[AuthService] URL para refresh:', `${dynamicBaseUrl}/token/refresh`);
 
-      const response = await apiClient.post(`${dynamicBaseUrl}/token/refresh`, {
+      const response = await apiClient.post(`/token/refresh`, {
         refresh: refreshToken,
       });
 

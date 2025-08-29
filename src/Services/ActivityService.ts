@@ -265,9 +265,32 @@ export default class ActivityService {
             if (isConnected) {
                 console.log('[ActivityService] Modo online, buscando questões para Activity Plan:', activityPlanId, 'Version:', versionId);
 
-                const response = await apiClient.get(`/activity_plans/${activityPlanId}/versions/${versionId}`, {
-                    headers: { Authorization: `Bearer ${token}` },
-                });
+                // Fazer requisição com retry automático para rate limiting
+                let response: any = null;
+                let retries = 0;
+                const maxRetries = 3;
+
+                while (retries < maxRetries) {
+                    try {
+                        response = await apiClient.get(`/activity_plans/${activityPlanId}/versions/${versionId}`, {
+                            headers: { Authorization: `Bearer ${token}` },
+                        });
+                        break; // Sucesso, sair do loop
+                    } catch (error: any) {
+                        if (error.response?.status === 429 && retries < maxRetries - 1) {
+                            const waitTime = 10 + (retries * 5); // 10s, 15s, 20s
+                            console.log(`[ActivityService] Rate limit atingido, aguardando ${waitTime}s antes de tentar novamente...`);
+                            await new Promise(resolve => setTimeout(resolve, waitTime * 1000));
+                            retries++;
+                        } else {
+                            throw error;
+                        }
+                    }
+                }
+
+                if (!response) {
+                    throw new Error('Falha ao obter resposta após múltiplas tentativas');
+                }
 
                 console.log('[ActivityService] Resposta da API de questões:', response.data);
 
@@ -501,18 +524,18 @@ export default class ActivityService {
                 return dateString;
             };
 
-            // Preparar dados para envio
+            // Preparar dados para envio conforme documentação Postman.md
             const payload = {
                 name: data.name,
                 activity_type_id: data.activity_type_id,
-                client_id: clientId,
                 start_date: convertDateFormat(data.start_date),
-                end_date: data.end_date ? convertDateFormat(data.end_date) : convertDateFormat(data.start_date), // Se não tiver end_date, usar start_date
+                end_date: convertDateFormat(data.end_date),
+                client_id: clientId,
             };
 
-            // Validar dados obrigatórios
-            if (!payload.name || !payload.activity_type_id || !payload.start_date) {
-                throw new Error("Nome, tipo de atividade e data de início são obrigatórios.");
+            // Validar dados obrigatórios conforme Postman.md
+            if (!payload.name || !payload.activity_type_id || !payload.start_date || !payload.end_date) {
+                throw new Error("Nome, tipo de atividade, data de início e data final são obrigatórios.");
             }
 
             if (!payload.client_id) {
@@ -566,14 +589,23 @@ export default class ActivityService {
     // 7. Vincular equipamento à atividade
     static async linkEquipmentToActivity(activityId: number, data: any, token: string): Promise<any> {
         try {
-            console.log('[ActivityService] Vinculando equipamento à atividade:', { activityId, data });
+            console.log('[ActivityService] === VINCULANDO EQUIPAMENTO ===');
+            console.log('[ActivityService] Activity ID:', activityId);
+            console.log('[ActivityService] Equipment ID:', data.equipment_id);
+            console.log('[ActivityService] Data recebido:', data);
+
+            // Verificar se o equipment_id é válido
+            if (!data.equipment_id || data.equipment_id <= 0) {
+                throw new Error('Equipment ID inválido');
+            }
 
             // Converter equipment_id para equipments_ids (array)
             const payload = {
-                equipments_ids: [data.equipment_id]
+                equipments_ids: [Number(data.equipment_id)]
             };
 
-            console.log('[ActivityService] Payload para vincular equipamento:', payload);
+            console.log('[ActivityService] Payload final para API:', payload);
+            console.log('[ActivityService] URL será:', `/activities/${activityId}/equipments`);
 
             const response = await apiClient.post(`/activities/${activityId}/equipments`, payload, {
                 headers: { Authorization: `Bearer ${token}` },
@@ -591,6 +623,15 @@ export default class ActivityService {
                 console.error('Headers:', error.response.headers);
 
                 if (error.response.status === 400) {
+                    // Verificar se é erro de status
+                    const errors = error.response.data?.errors || [];
+                    const statusError = errors.find((e: any) => e.code === 'invalid_for_current_status');
+
+                    if (statusError) {
+                        console.error('[ActivityService] Erro de status:', statusError);
+                        throw new Error(`A atividade precisa estar em um status diferente para vincular equipamentos. Status atual pode não permitir esta ação.`);
+                    }
+
                     const errorMessage = error.response.data?.message || error.response.data?.error || "Dados inválidos";
                     throw new Error(`Erro de validação: ${errorMessage}`);
                 } else if (error.response.status === 401) {
@@ -614,14 +655,19 @@ export default class ActivityService {
         }
     }
 
-    // 8. Buscar tipos de atividade possíveis
-    static async fetchActivityTypes(token: string): Promise<any[]> {
+    // 8. Buscar tipos de atividade possíveis de serem cadastradas pelo técnico
+    async fetchActivityTypes(token: string): Promise<any[]> {
         console.log('[ActivityService] Buscando tipos de atividade...');
         const normalize = (arr: any[]): any[] => {
             if (!Array.isArray(arr)) return [];
             return arr.map((it: any) => ({
                 id: it.id,
-                name: it.name || it.label || it.description || it.slug || `Tipo ${it.id}`,
+                name: it.name || `Tipo ${it.id}`,
+                slug: it.slug || it.name?.toLowerCase().replace(/\s+/g, '_'),
+                creationPolicy: it.creation_policy || 'common',
+                equipmentInsertionPolicy: it.equipment_insertion_policy || 'manual',
+                closurePolicy: it.closure_policy || 'default',
+                budgetPolicy: it.budget_policy || it.budgetPolicy || 'default',
             }));
         };
 

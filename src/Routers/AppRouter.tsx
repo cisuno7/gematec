@@ -29,6 +29,7 @@ import PmocEquipmentScreen from "../Screens/Pmoc/PmocEquipmentScreen";
 import ActivityHistoryScreen from "../Screens/Activity/ActivityHistoryScreen";
 import ActivityEquipmentListScreen from "../Screens/Activity/ActivityEquipmentListScreen";
 import ActivityQuestionnaireScreen from "../Screens/Activity/ActivityQuestionnaireScreen";
+import NewActivityModal from "../Screens/Activity/NewActivityModal";
 import WorkListScreen from "../Screens/Work/WorkListScreen";
 import WorkDetailScreen from "../Screens/Work/WorkDetailScreen";
 import WorkCreateScreen from "../Screens/Work/WorkCreateScreen";
@@ -91,6 +92,7 @@ export type RootStackParamList = {
   ActivityHistoryScreen: { equipmentId?: number, activityTypeSlug?: string, status?: string[] };
   ActivityEquipmentListScreen: { activityId: number; activityName: string; clientId?: number; clientName?: string };
   ActivityQuestionnaireScreen: { activityId: number; activityEquipmentId: number; equipmentId: number; equipmentTag: string; activityName: string };
+  NewActivityModal: undefined;
   WorkListScreen: { activityId: number; activityName?: string };
   WorkDetailScreen: { activityId: number; workId: number };
   WorkCreateScreen: { activityId: number };
@@ -151,6 +153,7 @@ const AppRouter: React.FC = () => {
       <Stack.Screen name="ActivityHistoryScreen" component={ActivityHistoryScreen} options={{ headerTitle: t('menu.activities') }} />
       <Stack.Screen name="ActivityEquipmentListScreen" component={ActivityEquipmentListScreen} options={{ headerShown: false }} />
       <Stack.Screen name="ActivityQuestionnaireScreen" component={ActivityQuestionnaireScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="NewActivityModal" component={NewActivityModal} options={{ headerShown: false }} />
       <Stack.Screen name="WorkListScreen" component={WorkListScreen} options={{ headerTitle: 'Registros de Trabalho' }} />
       <Stack.Screen name="WorkDetailScreen" component={WorkDetailScreen} options={{ headerTitle: 'Detalhes do Registro' }} />
       <Stack.Screen name="WorkCreateScreen" component={WorkCreateScreen} options={{ headerTitle: 'Criar Registro de Trabalho' }} />

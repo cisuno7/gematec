@@ -13,6 +13,20 @@ import { WorkDetail } from "../../Models/Work";
 import { usePermissions } from "../../Context/PermissionsContext";
 import { useLanguage } from "../../Context/LanguageContext";
 
+const formatDateTimePtBR = (iso?: string | null) => {
+    if (!iso) return "—";
+    try {
+        const d = new Date(iso);
+        if (Number.isNaN(d.getTime())) return String(iso);
+        return d.toLocaleString('pt-BR', {
+            year: 'numeric', month: '2-digit', day: '2-digit',
+            hour: '2-digit', minute: '2-digit'
+        });
+    } catch {
+        return String(iso);
+    }
+};
+
 interface WorkDetailScreenProps {
     navigation: DrawerNavigationProp<RootStackParamList, "WorkDetailScreen">;
     route: RouteProp<RootStackParamList, "WorkDetailScreen">;
@@ -175,8 +189,8 @@ const WorkDetailScreen: React.FC<WorkDetailScreenProps> = ({ route, navigation }
                     <View style={styles.card}>
                         <Text style={styles.title}>{t('work.generalData')}</Text>
                         <Text>{t('work.fields.name')}: {work.name}</Text>
-                        <Text>{t('work.openedAt')}: {work.opened_at}</Text>
-                        <Text>{t('work.signedAt')}: {work.signed_at || "—"}</Text>
+                        <Text>{t('work.openedAt')}: {formatDateTimePtBR(work.opened_at)}</Text>
+                        <Text>{t('work.signedAt')}: {formatDateTimePtBR(work.signed_at)}</Text>
                     </View>
 
                     <View style={styles.card}>
@@ -214,7 +228,7 @@ const WorkDetailScreen: React.FC<WorkDetailScreenProps> = ({ route, navigation }
                                     />
                                 </View>
                                 {work.signed_at && (
-                                    <Text style={styles.signatureMeta}>{t('work.signedAt')}: {work.signed_at}</Text>
+                                    <Text style={styles.signatureMeta}>{t('work.signedAt')}: {formatDateTimePtBR(work.signed_at)}</Text>
                                 )}
                                 {(work as any).signed_by && (
                                     <Text style={styles.signatureMeta}>{t('work.signedBy')}: {(work as any).signed_by.name} • {(work as any).signed_by.email}</Text>

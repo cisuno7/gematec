@@ -415,6 +415,15 @@ const ActivityHistoryScreen: React.FC<ActivityHistoryScreenProps> = ({ route, na
                 </View>
             </View>
 
+            {/* Botão Nova Atividade */}
+            <TouchableOpacity
+                style={styles.newActivityButton}
+                onPress={() => navigation.navigate("NewActivityModal" as any)}
+            >
+                <MaterialIcons name="add" size={24} color="#fff" />
+                <Text style={styles.newActivityButtonText}>Nova Atividade</Text>
+            </TouchableOpacity>
+
             <ScrollView
                 style={styles.content}
                 refreshControl={
@@ -815,6 +824,27 @@ const styles = StyleSheet.create({
         color: "#666",
         fontWeight: "500",
         backgroundColor: "transparent",
+    },
+    newActivityButton: {
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "center",
+        backgroundColor: "#007bff",
+        marginHorizontal: 16,
+        marginTop: 16,
+        paddingVertical: 14,
+        borderRadius: 12,
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.15,
+        shadowRadius: 8,
+        elevation: 5,
+    },
+    newActivityButtonText: {
+        color: "#fff",
+        fontSize: 16,
+        fontWeight: "600",
+        marginLeft: 8,
     },
 
 });

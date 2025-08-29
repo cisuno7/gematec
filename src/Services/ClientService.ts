@@ -18,12 +18,7 @@ export default class ClientService {
         throw new Error("Token de acesso ausente.");
       }
 
-      const accountName = await AsyncStorage.getItem("account") || "default";
-      const dynamicBaseUrl = await setDynamicApiUrl(accountName);
-      const endpoint = `${dynamicBaseUrl}/clients`;
-      console.log("[ClientService] Endpoint completo:", endpoint);
-      console.log("[ClientService] Account name:", accountName);
-      console.log("[ClientService] Dynamic base URL:", dynamicBaseUrl);
+      console.log("[ClientService] Buscando clientes com apiClient automático");
 
       const params = {
         has_contract: hasContract.toString(),
@@ -32,15 +27,11 @@ export default class ClientService {
         include: "sectors,addresses",
       };
 
-      const headers = {
-        Authorization: `Bearer ${accessToken}`,
-      };
       console.log("[ClientService] Iniciando requisição com os seguintes parâmetros:");
       console.log("Parâmetros:", params);
-      console.log("Headers:", headers);
-      console.log("[ClientService] URL completa:", `${endpoint}?${new URLSearchParams(params).toString()}`);
 
-      const response = await apiClient.get(endpoint, { params, headers });
+      // apiClient já configura automaticamente a URL dinâmica e Authorization
+      const response = await apiClient.get('/clients', { params });
       console.log("[ClientService] Dados recebidos:", response.data);
       const clientList = response.data.results.map((data: any) => new Client(data));
       return {
@@ -185,9 +176,9 @@ export default class ClientService {
         params.parent_id = parentId;
       }
 
-      const response = await apiClient.get(endpoint, {
+      // apiClient já configura automaticamente a URL dinâmica e Authorization
+      const response = await apiClient.get('/clients', {
         params,
-        headers: { Authorization: `Bearer ${accessToken}` },
       });
       console.log("[ClientService] Resposta completa dos setores:", response.data);
       return response.data;

@@ -3,6 +3,7 @@ import { TechnicalAssistance } from "../Models/TechnicalAssistance";
 import { Equipment } from "../Models/Equipament"; // Importar Equipment para fetchEquipments
 import { Answer } from "../Models/ServiceOrder"; // Importar Answer para fetchAnswers e submitAnswers
 import { setDynamicApiUrl } from "../config/apiConfig";
+
 import AsyncStorage from "@react-native-async-storage/async-storage";
 export default class TechnicalAssistanceService {
 
@@ -17,10 +18,7 @@ export default class TechnicalAssistanceService {
             status?: string;
         }
     ): Promise<{ results: TechnicalAssistance[]; count: number }> {
-        const accountName = await AsyncStorage.getItem("account") || "default";
-        const dynamicBaseUrl = await setDynamicApiUrl(accountName);
-        const endpoint = `${dynamicBaseUrl}/activities`; // Corrigido para /activities
-        console.log('[TechnicalAssistanceService] Endpoint:', endpoint);
+        console.log('[TechnicalAssistanceService] Buscando assistências técnicas');
 
         // Construir parâmetros apenas com valores válidos
         const params: { [key: string]: any } = {
@@ -34,10 +32,8 @@ export default class TechnicalAssistanceService {
         if (filters?.status) params.status = filters.status;
 
         try {
-            const response = await apiClient.get(endpoint, {
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                },
+            // apiClient já configura automaticamente a URL dinâmica e Authorization
+            const response = await apiClient.get('/activities', {
                 params,
             });
             console.log('[TechnicalAssistanceService] Parâmetros enviados:', params);
@@ -63,12 +59,9 @@ export default class TechnicalAssistanceService {
     }
 
     async fetchClients(token: string, search: string): Promise<any> {
-        const accountName = await AsyncStorage.getItem("account") || "default";
-        const dynamicBaseUrl = await setDynamicApiUrl(accountName);
-        const endpoint = `${dynamicBaseUrl}/clients`; // fetchClients
         try {
-            const response = await apiClient.get(endpoint, {
-                headers: { Authorization: `Bearer ${token}` },
+            // apiClient já configura automaticamente a URL dinâmica e Authorization
+            const response = await apiClient.get('/clients', {
                 params: { search },
             });
             return response.data;
@@ -78,7 +71,7 @@ export default class TechnicalAssistanceService {
         }
     }
 
-    async submitAnswers(
+    static async submitAnswers(
         token: string,
         technicalAssistanceId: number,
         data: { status?: string; answers: { question_id: number; value: string; meta?: any }[] }

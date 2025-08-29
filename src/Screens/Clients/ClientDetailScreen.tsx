@@ -17,7 +17,7 @@ import ClientService from "../../Services/ClientService";
 import { usePermissions } from "../../Context/PermissionsContext";
 import { useLanguage } from "../../Context/LanguageContext";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Client, Contract, Contact, Address } from "../../Models/Clientes";
+import Client, { IClient, Contract, Contact, Address } from "../../Models/Clientes";
 
 interface ClientDetailScreenProps {
     route: RouteProp<RootStackParamList, "ClientDetailScreen">;
@@ -358,7 +358,7 @@ const ClientDetailScreen: React.FC<ClientDetailScreenProps> = ({ route, navigati
                             addresses.map((address) => (
                                 <View key={address.id} style={styles.listItem}>
                                     <Text style={styles.listItemText}>
-                                        <Text style={styles.bold}>{t('clientDetails.cityStateCountry')}:</Text> {String((typeof address.city === 'object' ? address.city?.name : address.city) || "N/A")}, {String((typeof address.state === 'object' ? address.state?.name : address.state) || address.state || "N/A")}
+                                        <Text style={styles.bold}>{t('clientDetails.cityStateCountry')}:</Text> {String(address.city || "N/A")}, {String(address.state || "N/A")}
                                     </Text>
                                     <Text style={styles.listItemText}>
                                         <Text style={styles.bold}>{t('clientDetails.neighborhood')}:</Text> {String(address.neighborhood || "N/A")}

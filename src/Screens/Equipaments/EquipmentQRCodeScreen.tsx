@@ -183,14 +183,14 @@ const EquipmentQRCodeScreen: React.FC<EquipmentQRCodeScreenProps> = ({
       // Determinar o tipo de erro e mostrar alerta apropriado
       let alertTitle = "❌ Erro ao Processar QR Code";
       let alertMessage = error.message;
-      let alertButtons = [
+      let alertButtons: any = [
         {
           text: "Tentar Novamente",
           onPress: () => setScanning(true),
         },
         {
           text: "Cancelar",
-          style: "cancel"
+          style: "cancel" as const
         }
       ];
 
@@ -205,7 +205,7 @@ const EquipmentQRCodeScreen: React.FC<EquipmentQRCodeScreenProps> = ({
           },
           {
             text: "Entendi",
-            style: "cancel"
+            style: "cancel" as const
           }
         ];
       } else if (error.message.includes("Token de acesso")) {

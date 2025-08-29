@@ -1,5 +1,4 @@
-import axios from "axios";
-import { buildApiUrlForAccount } from "../config/apiConfig";
+import apiClient from "../Context/ApiClient";
 import { RoadmapResponse, RoadmapActivity } from '../Models/Roadmap';
 import OfflineService from './OfflineService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -284,15 +283,10 @@ export class RoadmapService {
             }
 
             // Se não houver cache, busca na API
-            const apiUrl = await buildApiUrlForAccount();
-            const endpoint = `${apiUrl}/me/roadmap`;
-            const headers = await this.getAuthHeaders();
+            console.log('[RoadmapService] Buscando roteiro atual da API: /me/roadmap');
 
-            console.log('[RoadmapService] Buscando roteiro atual da API:', endpoint);
-            console.log('[RoadmapService] Headers enviados:', headers);
-            console.log('[RoadmapService] API URL construída:', apiUrl);
-
-            const response = await axios.get(endpoint, { headers });
+            // apiClient já configura automaticamente a URL dinâmica e Authorization
+            const response = await apiClient.get('/me/roadmap');
 
             console.log('[RoadmapService] Status da resposta:', response.status);
             console.log('[RoadmapService] Headers da resposta:', response.headers);
@@ -325,13 +319,10 @@ export class RoadmapService {
      */
     static async getRoadmapActivities(roadmapId: number): Promise<RoadmapResponse> {
         try {
-            const apiUrl = await buildApiUrlForAccount();
-            const endpoint = `${apiUrl}/roadmaps/${roadmapId}/activities`;
-            const headers = await this.getAuthHeaders();
+            console.log('[RoadmapService] Buscando atividades do roadmap:', `/roadmaps/${roadmapId}/activities`);
 
-            console.log('[RoadmapService] Buscando atividades do roadmap:', endpoint);
-
-            const response = await axios.get(endpoint, { headers });
+            // apiClient já configura automaticamente a URL dinâmica e Authorization
+            const response = await apiClient.get(`/roadmaps/${roadmapId}/activities`);
             console.log('[RoadmapService] Atividades do roadmap:', JSON.stringify(response.data, null, 2));
 
             // Valida e retorna as atividades
@@ -357,13 +348,10 @@ export class RoadmapService {
                 throw new Error('Formato de data inválido. Use YYYY-MM-DD');
             }
 
-            const apiUrl = await buildApiUrlForAccount();
-            const endpoint = `${apiUrl}/roadmaps/${date}`;
-            const headers = await this.getAuthHeaders();
+            console.log('[RoadmapService] Buscando roteiro por data:', `/roadmaps/${date}`);
 
-            console.log('[RoadmapService] Endpoint de roteiro por data:', endpoint);
-
-            const response = await axios.get(endpoint, { headers });
+            // apiClient já configura automaticamente a URL dinâmica e Authorization
+            const response = await apiClient.get(`/roadmaps/${date}`);
             return await this.validateRoadmapResponse(response.data);
         } catch (error: any) {
             console.error('[RoadmapService] Erro ao buscar roteiro por data:', error);
@@ -384,13 +372,11 @@ export class RoadmapService {
                 return cachedEquipment;
             }
 
-            const apiUrl = await buildApiUrlForAccount();
-            const endpoint = `${apiUrl}/roadmaps/activities/${activityId}/equipment`;
-            const headers = await this.getAuthHeaders();
 
-            console.log('[RoadmapService] Buscando equipamentos da atividade:', endpoint);
+            console.log('[RoadmapService] Buscando equipamentos da atividade:', `/roadmaps/activities/${activityId}/equipment`);
 
-            const response = await axios.get(endpoint, { headers });
+            // apiClient já configura automaticamente a URL dinâmica e Authorization
+            const response = await apiClient.get(`/roadmaps/activities/${activityId}/equipment`);
             const equipment = response.data;
 
             // Salva no cache
@@ -426,13 +412,12 @@ export class RoadmapService {
                 return cachedQuestions;
             }
 
-            const apiUrl = await buildApiUrlForAccount();
-            const endpoint = `${apiUrl}/roadmaps/activities/${activityId}/equipment/${equipmentId}/questions`;
-            const headers = await this.getAuthHeaders();
 
-            console.log('[RoadmapService] Buscando questões do equipamento:', endpoint);
+            console.log('[RoadmapService] Buscando questões:', `/roadmaps/activities/${activityId}/equipment/${equipmentId}/questions`);
 
-            const response = await axios.get(endpoint, { headers });
+
+            // apiClient já configura automaticamente a URL dinâmica e Authorization
+            const response = await apiClient.get(`/roadmaps/activities/${activityId}/equipment/${equipmentId}/questions`);
             const questions = response.data;
 
             // Salva no cache
@@ -460,13 +445,14 @@ export class RoadmapService {
      */
     static async submitEquipmentAnswers(activityId: number, equipmentId: number, answers: any[]): Promise<void> {
         try {
-            const apiUrl = await buildApiUrlForAccount();
-            const endpoint = `${apiUrl}/roadmaps/activities/${activityId}/equipment/${equipmentId}/answers`;
-            const headers = await this.getAuthHeaders();
 
-            console.log('[RoadmapService] Enviando respostas do equipamento:', endpoint);
 
-            const response = await axios.post(endpoint, { answers }, { headers });
+
+
+            console.log('[RoadmapService] Enviando respostas do equipamento:', `/roadmaps/activities/${activityId}/equipment/${equipmentId}/answers`);
+
+            // apiClient já configura automaticamente a URL dinâmica e Authorization
+            const response = await apiClient.post(`/roadmaps/activities/${activityId}/equipment/${equipmentId}/answers`, { answers });
 
             // Limpa o cache para forçar atualização
             await this.clearEquipmentCache(activityId, equipmentId);
@@ -499,15 +485,15 @@ export class RoadmapService {
                 throw new Error(`Status inválido. Use um dos seguintes: ${validStatuses.join(', ')}`);
             }
 
-            const apiUrl = await buildApiUrlForAccount();
-            const headers = await this.getAuthHeaders();
+
+
 
             // Tentar diferentes endpoints possíveis
             const possibleEndpoints = [
-                `${apiUrl}/activities/${activityId}/status`,
-                `${apiUrl}/roadmaps/activities/${activityId}/status`,
-                `${apiUrl}/activities/${activityId}`,
-                `${apiUrl}/roadmaps/activities/${activityId}`
+                `/activities/${activityId}/status`,
+                `/roadmaps/activities/${activityId}/status`,
+                `/activities/${activityId}`,
+                `/roadmaps/activities/${activityId}`
             ];
 
             console.log('[RoadmapService] Tentando endpoints possíveis:', possibleEndpoints);
@@ -518,7 +504,7 @@ export class RoadmapService {
             for (const endpoint of possibleEndpoints) {
                 try {
                     console.log('[RoadmapService] Tentando endpoint:', endpoint);
-                    response = await axios.patch(endpoint, { status }, { headers });
+                    response = await apiClient.patch(endpoint, { status });
                     endpointUsed = endpoint;
                     console.log('[RoadmapService] Endpoint funcionou:', endpoint);
                     break;
@@ -547,6 +533,77 @@ export class RoadmapService {
             return response.data;
         } catch (error: any) {
             console.error('[RoadmapService] Erro ao atualizar status da atividade:', error);
+            this.handleApiError(error);
+        }
+    }
+
+    /**
+     * Adiciona notas a uma atividade do roadmap
+     */
+    static async addNotesToActivity(activityId: number, notes: string): Promise<RoadmapActivity> {
+        try {
+            console.log('[RoadmapService] === ADICIONANDO NOTAS ===');
+            console.log('[RoadmapService] Activity ID:', activityId);
+            console.log('[RoadmapService] Notes:', notes);
+
+            // Valida os parâmetros
+            if (!activityId || activityId <= 0) {
+                throw new Error('ID da atividade inválido');
+            }
+
+            if (!notes || notes.trim() === '') {
+                throw new Error('Notas não podem estar vazias');
+            }
+
+            // Tentar diferentes endpoints possíveis
+            const possibleEndpoints = [
+                `/activities/${activityId}/notes`,
+                `/roadmaps/activities/${activityId}/notes`,
+                `/activities/${activityId}`,
+                `/roadmaps/activities/${activityId}`
+            ];
+
+            console.log('[RoadmapService] Tentando endpoints possíveis:', possibleEndpoints);
+
+            let response;
+            let endpointUsed = '';
+
+            for (const endpoint of possibleEndpoints) {
+                try {
+                    console.log('[RoadmapService] Tentando endpoint:', endpoint);
+
+                    // Para endpoints específicos de notas, usar POST; para endpoints gerais, usar PATCH
+                    const method = endpoint.includes('/notes') ? 'post' : 'patch';
+                    const payload = endpoint.includes('/notes') ? { notes } : { notes };
+
+                    response = await apiClient[method](endpoint, payload);
+                    endpointUsed = endpoint;
+                    console.log('[RoadmapService] Endpoint funcionou:', endpoint);
+                    break;
+                } catch (error: any) {
+                    console.log('[RoadmapService] Endpoint falhou:', endpoint, 'Status:', error.response?.status);
+                    if (error.response?.status === 404) {
+                        continue; // Tentar próximo endpoint
+                    } else {
+                        throw error; // Outro erro, não continuar
+                    }
+                }
+            }
+
+            if (!response) {
+                throw new Error('Nenhum endpoint válido encontrado para adição de notas');
+            }
+
+            console.log('[RoadmapService] Endpoint usado:', endpointUsed);
+            console.log('[RoadmapService] Payload enviado:', { notes });
+            console.log('[RoadmapService] Resposta da API:', response.data);
+
+            // Limpa o cache do roteiro atual para forçar atualização
+            await OfflineService.clearCache();
+
+            return response.data;
+        } catch (error: any) {
+            console.error('[RoadmapService] Erro ao adicionar notas à atividade:', error);
             this.handleApiError(error);
         }
     }

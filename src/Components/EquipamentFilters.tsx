@@ -6,6 +6,7 @@ import axios from "axios";
 import { API_BASE_URL, buildApiUrlForAccount } from "../config/apiConfig";
 import { Sector } from "../Models/Clientes";
 import CustomPicker from "./CustomPicker";
+import apiClient from "../Context/ApiClient";
 
 interface EquipmentFiltersProps {
   onFilter: (filters: any) => void;
@@ -211,17 +212,19 @@ const EquipmentFilters: React.FC<EquipmentFiltersProps> = ({ onFilter, sectorId,
     setLoadingEquipmentTypes(true);
     try {
       const token = await AsyncStorage.getItem("access_token");
-      const apiUrl = await buildApiUrlForAccount();
-      console.log("[EquipmentFilters] Fazendo requisição para:", `${apiUrl}/equipment_types`);
-      const res = await axios.get(`${apiUrl}/equipment_types`, {
-        headers: { Authorization: `Bearer ${token}` },
+      if (!token) throw new Error("Token não encontrado");
+      console.log("[EquipmentFilters] Fazendo requisição para: /equipment_types (via apiClient)");
+      const res = await apiClient.get(`/equipment_types`, {
+        headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
       });
-      console.log("[EquipmentFilters] Resposta da API equipment_types:", res.data);
-      console.log("[EquipmentFilters] Tipos de equipamento carregados:", res.data.results?.length || 0);
-      console.log("[EquipmentFilters] Dados dos tipos:", res.data.results);
-      setEquipmentTypes(res.data.results || []);
+      const payload = res.data;
+      const list = Array.isArray(payload) ? payload : (payload?.results ?? []);
+      console.log("[EquipmentFilters] Tipos de equipamento carregados:", list.length);
+      setEquipmentTypes(list);
     } catch (error) {
       console.error("[EquipmentFilters] Erro ao buscar tipos de equipamento:", error);
+      // Em caso de erro 500, evita quebrar a tela e mantém lista vazia
+      setEquipmentTypes([]);
     } finally {
       setLoadingEquipmentTypes(false);
     }

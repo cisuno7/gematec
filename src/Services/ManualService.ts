@@ -17,7 +17,7 @@ interface FetchManualsParams {
 }
 
 export default class ManualService {
-    private static async getDynamicBaseUrl(accessToken: string): Promise<string> {
+    static async getDynamicBaseUrl(accessToken: string): Promise<string> {
         const decodedToken: any = jwtDecode(accessToken);
         const accountName = decodedToken?.account_name || "default";
         return await setDynamicApiUrl(accountName); // Corrigido para setDynamicApiUrl e usa await
