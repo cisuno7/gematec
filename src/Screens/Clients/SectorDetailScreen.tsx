@@ -8,6 +8,8 @@ import {
     Alert,
     TouchableOpacity,
     FlatList,
+    Modal,
+    TextInput,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { RouteProp } from "@react-navigation/native";
@@ -32,6 +34,9 @@ const SectorDetailScreen: React.FC<SectorDetailScreenProps> = ({ route, navigati
     const [sector, setSector] = useState<Sector | null>(null);
     const [subsectors, setSubsectors] = useState<Sector[]>([]);
     const [loading, setLoading] = useState(true);
+    const [creating, setCreating] = useState(false);
+    const [newSubsectorName, setNewSubsectorName] = useState("");
+    const [showCreateModal, setShowCreateModal] = useState(false);
 
     useEffect(() => {
         fetchSectorDetails();
@@ -62,6 +67,26 @@ const SectorDetailScreen: React.FC<SectorDetailScreenProps> = ({ route, navigati
             Alert.alert(t('common.error'), error.message || t('sectors.loadError'));
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleCreateSubsector = async () => {
+        try {
+            const token = await AsyncStorage.getItem("access_token");
+            if (!token) throw new Error("Token de acesso não encontrado.");
+            if (!newSubsectorName.trim()) {
+                Alert.alert(t('common.error'), t('sectors.name') + ' é obrigatório.');
+                return;
+            }
+            setCreating(true);
+            await ClientService.createClientSector(clientId.toString(), token, newSubsectorName, sectorId);
+            setShowCreateModal(false);
+            setNewSubsectorName("");
+            await fetchSectorDetails();
+        } catch (err: any) {
+            Alert.alert(t('common.error'), err.message || t('sectors.loadError'));
+        } finally {
+            setCreating(false);
         }
     };
 
@@ -162,6 +187,11 @@ const SectorDetailScreen: React.FC<SectorDetailScreenProps> = ({ route, navigati
             {sector.level === 0 && subsectors.length > 0 && (
                 <View style={styles.section}>
                     <Text style={styles.sectionTitle}>{t('sectors.subsectorsTitle')} ({subsectors.length})</Text>
+                    <View style={styles.actionsRow}>
+                        <TouchableOpacity style={styles.createButton} onPress={() => setShowCreateModal(true)}>
+                            <Text style={styles.createButtonText}>Adicionar Subsetor</Text>
+                        </TouchableOpacity>
+                    </View>
                     <FlatList
                         data={subsectors}
                         keyExtractor={(item) => item.id.toString()}
@@ -175,8 +205,35 @@ const SectorDetailScreen: React.FC<SectorDetailScreenProps> = ({ route, navigati
                 <View style={styles.section}>
                     <Text style={styles.sectionTitle}>{t('sectors.subsectorsTitle')}</Text>
                     <Text style={styles.emptyText}>{t('sectors.noSubsectors')}</Text>
+                    <View style={styles.actionsRow}>
+                        <TouchableOpacity style={styles.createButton} onPress={() => setShowCreateModal(true)}>
+                            <Text style={styles.createButtonText}>Adicionar Subsetor</Text>
+                        </TouchableOpacity>
+                    </View>
                 </View>
             )}
+
+            <Modal visible={showCreateModal} transparent animationType="fade">
+                <View style={styles.modalBackdrop}>
+                    <View style={styles.modalCard}>
+                        <Text style={styles.modalTitle}>{t('sectors.name')}</Text>
+                        <TextInput
+                            style={styles.input}
+                            placeholder={t('sectors.name')}
+                            value={newSubsectorName}
+                            onChangeText={setNewSubsectorName}
+                        />
+                        <View style={styles.modalActions}>
+                            <TouchableOpacity style={[styles.modalButton, styles.cancelButton]} onPress={() => setShowCreateModal(false)}>
+                                <Text style={styles.modalButtonText}>Cancelar</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity disabled={creating} style={[styles.modalButton, styles.confirmButton]} onPress={handleCreateSubsector}>
+                                <Text style={styles.modalButtonText}>{creating ? '...' : 'Criar'}</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
         </ScrollView>
     );
 };
@@ -285,6 +342,66 @@ const styles = StyleSheet.create({
         color: "#666",
         fontStyle: "italic",
         padding: 20,
+    },
+    actionsRow: {
+        flexDirection: 'row',
+        justifyContent: 'flex-end',
+        marginBottom: 10,
+    },
+    createButton: {
+        backgroundColor: '#28a745',
+        paddingVertical: 8,
+        paddingHorizontal: 12,
+        borderRadius: 6,
+    },
+    createButtonText: {
+        color: '#fff',
+        fontWeight: 'bold',
+    },
+    modalBackdrop: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.4)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 20,
+    },
+    modalCard: {
+        width: '100%',
+        backgroundColor: '#fff',
+        borderRadius: 8,
+        padding: 16,
+    },
+    modalTitle: {
+        fontSize: 16,
+        fontWeight: 'bold',
+        marginBottom: 10,
+    },
+    input: {
+        borderWidth: 1,
+        borderColor: '#ddd',
+        borderRadius: 6,
+        padding: 10,
+        marginBottom: 12,
+    },
+    modalActions: {
+        flexDirection: 'row',
+        justifyContent: 'flex-end',
+        gap: 8,
+    },
+    modalButton: {
+        paddingVertical: 10,
+        paddingHorizontal: 14,
+        borderRadius: 6,
+    },
+    cancelButton: {
+        backgroundColor: '#6c757d',
+    },
+    confirmButton: {
+        backgroundColor: '#007BFF',
+    },
+    modalButtonText: {
+        color: '#fff',
+        fontWeight: 'bold',
     },
     loadingText: {
         textAlign: "center",

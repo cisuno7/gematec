@@ -17,35 +17,52 @@ import DatePickerInput from './DatePickerInput';
 interface DynamicEquipmentFieldsProps {
     onFieldsChange: (fields: { [key: string]: any }) => void;
     initialValues?: { [key: string]: any };
+    equipmentTypeId?: number | string; // opcional: quando fornecido, carrega template por tipo
 }
 
 const DynamicEquipmentFields: React.FC<DynamicEquipmentFieldsProps> = ({
     onFieldsChange,
     initialValues = {},
+    equipmentTypeId,
 }) => {
     const [template, setTemplate] = useState<EquipmentTemplateModel | null>(null);
     const [loading, setLoading] = useState(true);
     const [fieldValues, setFieldValues] = useState<{ [key: string]: any }>(initialValues);
 
     useEffect(() => {
-        fetchTemplate();
-    }, []);
+        // Não buscar template ao abrir sem tipo selecionado (tarefas.md)
+        if (equipmentTypeId) {
+            fetchTemplateByType(equipmentTypeId);
+        } else {
+            setTemplate(null);
+            setLoading(false);
+        }
+    }, [equipmentTypeId]);
 
     useEffect(() => {
         onFieldsChange(fieldValues);
     }, [fieldValues]);
 
-    const fetchTemplate = async () => {
+    // Removido fetchTemplate genérico: não chamar endpoint antigo sem tipo
+
+    const fetchTemplateByType = async (equipmentTypeId: number | string) => {
         try {
             setLoading(true);
             const token = await AsyncStorage.getItem('access_token');
             if (!token) throw new Error('Token de acesso não encontrado.');
 
-            const templateData = await EquipmentService.getEquipmentTemplate(token);
+            const typeId = Number(equipmentTypeId);
+            if (!Number.isFinite(typeId)) {
+                setTemplate(null);
+                return;
+            }
+
+            const templateData = await EquipmentService.getEquipmentTemplateByEquipmentType(typeId, token);
             setTemplate(templateData);
         } catch (error: any) {
-            console.error('[DynamicEquipmentFields] Erro ao buscar template:', error);
-            Alert.alert('Erro', 'Não foi possível carregar o template de equipamentos.');
+            console.error('[DynamicEquipmentFields] Erro ao buscar template por tipo:', error);
+            Alert.alert('Erro', 'Não foi possível carregar o template para o tipo selecionado.');
+            setTemplate(null);
         } finally {
             setLoading(false);
         }
@@ -217,7 +234,15 @@ const DynamicEquipmentFields: React.FC<DynamicEquipmentFieldsProps> = ({
     if (loading) {
         return (
             <View style={styles.container}>
-                <Text style={styles.loadingText}>Carregando campos dinâmicos...</Text>
+                <Text style={styles.loadingText}>Carregando campos adicionais...</Text>
+            </View>
+        );
+    }
+
+    if (!equipmentTypeId) {
+        return (
+            <View style={styles.container}>
+                <Text style={styles.loadingText}>Selecione um tipo de equipamento para carregar os campos.</Text>
             </View>
         );
     }
@@ -232,11 +257,11 @@ const DynamicEquipmentFields: React.FC<DynamicEquipmentFieldsProps> = ({
 
     return (
         <ScrollView style={styles.container}>
-            <Text style={styles.sectionTitle}>Campos Dinâmicos</Text>
-            {template.getOrderedFields().map((field: DynamicField) => (
-                <View key={field.id} style={styles.fieldContainer}>
+            <Text style={styles.sectionTitle}>Campos Adicionais</Text>
+            {template.getOrderedFields().map((field: DynamicField, index: number) => (
+                <View key={`${field.id ?? field.key ?? field.name ?? index}`} style={styles.fieldContainer}>
                     <Text style={styles.fieldLabel}>
-                        {field.name}
+                        {String(field.label || field.name || field.key).replace(/_/g, ' ')}
                         {field.required && <Text style={styles.required}> *</Text>}
                     </Text>
                     {renderField(field)}

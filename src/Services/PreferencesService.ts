@@ -64,10 +64,10 @@ export default class PreferencesService {
 
             console.log('[PreferencesService] Corpo da requisição (conforme spec):', requestBody);
 
-            // Usar PUT conforme especificação do endpoint
-            console.log('[PreferencesService] Usando PUT conforme documentação...');
+            // Usar PATCH conforme especificação atualizada do endpoint
+            console.log('[PreferencesService] Usando PATCH conforme especificação atualizada...');
             // apiClient já configura automaticamente a URL dinâmica e Authorization
-            const response = await apiClient.put('/me/preferences', requestBody);
+            const response = await apiClient.patch('/me/preferences', requestBody);
 
             console.log('[PreferencesService] Resposta recebida:', response.data);
             return response.data;

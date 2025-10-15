@@ -7,6 +7,8 @@ import {
     ActivityIndicator,
     Alert,
     TouchableOpacity,
+    TextInput,
+    Modal,
 } from "react-native";
 import { RouteProp } from "@react-navigation/native";
 import { DrawerNavigationProp } from "@react-navigation/drawer";
@@ -29,6 +31,9 @@ const ClientSectorsScreen: React.FC<ClientSectorsScreenProps> = ({ route, naviga
 
     const [sectors, setSectors] = useState<Sector[]>([]);
     const [loading, setLoading] = useState(true);
+    const [creating, setCreating] = useState(false);
+    const [newSectorName, setNewSectorName] = useState("");
+    const [showCreateModal, setShowCreateModal] = useState(false);
 
     useEffect(() => {
         fetchClientSectors();
@@ -49,6 +54,26 @@ const ClientSectorsScreen: React.FC<ClientSectorsScreenProps> = ({ route, naviga
             Alert.alert(t('common.error'), error.message || t('clients.sectorsLoadError'));
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleCreateRootSector = async () => {
+        try {
+            const token = await AsyncStorage.getItem("access_token");
+            if (!token) throw new Error("Token de acesso não encontrado.");
+            if (!newSectorName.trim()) {
+                Alert.alert(t('common.error'), t('sectors.name') + ' é obrigatório.');
+                return;
+            }
+            setCreating(true);
+            await ClientService.createClientSector(clientId.toString(), token, newSectorName, null);
+            setShowCreateModal(false);
+            setNewSectorName("");
+            await fetchClientSectors();
+        } catch (err: any) {
+            Alert.alert(t('common.error'), err.message || t('sectors.loadError'));
+        } finally {
+            setCreating(false);
         }
     };
 
@@ -99,6 +124,12 @@ const ClientSectorsScreen: React.FC<ClientSectorsScreenProps> = ({ route, naviga
                 <Text style={styles.title}>{t('sectors.rootTitle')}</Text>
             </View>
 
+            <View style={styles.actionsRow}>
+                <TouchableOpacity style={styles.createButton} onPress={() => setShowCreateModal(true)}>
+                    <Text style={styles.createButtonText}>Adicionar Setor</Text>
+                </TouchableOpacity>
+            </View>
+
             {sectors.length > 0 ? (
                 <FlatList
                     data={sectors}
@@ -111,6 +142,28 @@ const ClientSectorsScreen: React.FC<ClientSectorsScreenProps> = ({ route, naviga
                     <Text style={styles.emptyText}>{t('sectors.noRootFound')}</Text>
                 </View>
             )}
+
+            <Modal visible={showCreateModal} transparent animationType="fade">
+                <View style={styles.modalBackdrop}>
+                    <View style={styles.modalCard}>
+                        <Text style={styles.modalTitle}>{t('sectors.name')}</Text>
+                        <TextInput
+                            style={styles.input}
+                            placeholder={t('sectors.name')}
+                            value={newSectorName}
+                            onChangeText={setNewSectorName}
+                        />
+                        <View style={styles.modalActions}>
+                            <TouchableOpacity style={[styles.modalButton, styles.cancelButton]} onPress={() => setShowCreateModal(false)}>
+                                <Text style={styles.modalButtonText}>Cancelar</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity disabled={creating} style={[styles.modalButton, styles.confirmButton]} onPress={handleCreateRootSector}>
+                                <Text style={styles.modalButtonText}>{creating ? '...' : 'Criar'}</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
         </View>
     );
 };
@@ -129,6 +182,22 @@ const styles = StyleSheet.create({
         fontSize: 20,
         fontWeight: "bold",
         color: "#fff",
+    },
+    actionsRow: {
+        flexDirection: 'row',
+        justifyContent: 'flex-end',
+        padding: 10,
+        backgroundColor: '#f5f5f5',
+    },
+    createButton: {
+        backgroundColor: '#28a745',
+        paddingVertical: 8,
+        paddingHorizontal: 12,
+        borderRadius: 6,
+    },
+    createButtonText: {
+        color: '#fff',
+        fontWeight: 'bold',
     },
     listContainer: {
         padding: 10,
@@ -183,6 +252,51 @@ const styles = StyleSheet.create({
         fontSize: 16,
         color: "#666",
         textAlign: "center",
+    },
+    modalBackdrop: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.4)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 20,
+    },
+    modalCard: {
+        width: '100%',
+        backgroundColor: '#fff',
+        borderRadius: 8,
+        padding: 16,
+    },
+    modalTitle: {
+        fontSize: 16,
+        fontWeight: 'bold',
+        marginBottom: 10,
+    },
+    input: {
+        borderWidth: 1,
+        borderColor: '#ddd',
+        borderRadius: 6,
+        padding: 10,
+        marginBottom: 12,
+    },
+    modalActions: {
+        flexDirection: 'row',
+        justifyContent: 'flex-end',
+        gap: 8,
+    },
+    modalButton: {
+        paddingVertical: 10,
+        paddingHorizontal: 14,
+        borderRadius: 6,
+    },
+    cancelButton: {
+        backgroundColor: '#6c757d',
+    },
+    confirmButton: {
+        backgroundColor: '#007BFF',
+    },
+    modalButtonText: {
+        color: '#fff',
+        fontWeight: 'bold',
     },
     loadingText: {
         textAlign: "center",

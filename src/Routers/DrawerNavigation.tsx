@@ -76,7 +76,7 @@ const SLUG_TO_APP_DATA: { [key: string]: { titleKey: string; route?: keyof RootS
   "create_equipment": { titleKey: "menu.createEquipment", route: "CreateEquipmentScreen" },
   "filter_equipment": { titleKey: "menu.filterEquipment", route: "EquipamentScreen" },
   "view_activities": { titleKey: "menu.viewActivities", route: "ActivityHistoryScreen" },
-  "roadmaps": { titleKey: "menu.roadmaps", route: "RoadmapScreen", icon: "map" },
+  "roadmaps": { titleKey: "menu.roadmaps", route: "RoadmapScreen" },
   "documentation": { titleKey: "menu.documentation", icon: "document" },
 };
 
@@ -88,11 +88,7 @@ const CustomDrawerHeader: React.FC = () => {
 
   return (
     <View style={styles.headerContainer}>
-      <View style={styles.avatarContainer}>
-        <FontAwesome name="user-circle" size={60} color="#fff" />
-      </View>
       <View style={styles.userInfo}>
-        <Text style={styles.welcomeText}>{t('common.welcome')}</Text>
         <Text style={styles.userName}>{username || t('common.user')}</Text>
       </View>
       <View style={styles.headerDecoration} />
@@ -138,6 +134,17 @@ const CustomDrawerContent = (props: any & { extraData: {} }) => {
         const appData = SLUG_TO_APP_DATA[item.slug];
         if (!appData) {
           console.warn(`Mapeamento não encontrado para o slug: ${item.slug}`);
+          // Se o item já tem título e não é uma categoria (não tem items), mantém ele
+          if (item.title && !item.items) {
+            console.log(`[DrawerNavigation] Item ${item.slug} tem título próprio, mantendo com rota padrão`);
+            const processedItem: MenuItem = {
+              ...item,
+              title: item.title,
+              route: item.route || (item.slug === 'clients_with_contract' ? 'ClientsComContratoScreen' :
+                item.slug === 'clients_without_contract' ? 'ClientsAvulsosScreen' : undefined),
+            };
+            return processedItem;
+          }
           return null;
         }
 
@@ -162,23 +169,46 @@ const CustomDrawerContent = (props: any & { extraData: {} }) => {
   };
 
   useEffect(() => {
+    let mounted = true;
     const fetchMenu = async () => {
       try {
         setLoadingMenu(true);
         const menuData = await MenuService.fetchDynamicMenu();
+        if (!mounted) return;
         console.log("[DrawerNavigation] Menu recebido do backend:", JSON.stringify(menuData, null, 2));
         const processedData = processMenuItems(menuData);
+        if (!mounted) return;
         console.log("[DrawerNavigation] Menu processado:", JSON.stringify(processedData, null, 2));
         setDynamicMenu(processedData);
       } catch (error: any) {
-        Alert.alert("Erro", error.message || "Não foi possível carregar o menu.");
-        console.error("Erro ao carregar menu:", error);
+        console.warn("[DrawerNavigation] Menu não carregado na primeira tentativa (provável corrida de inicialização). Tentando novamente em 1s...");
+        // Retry suave após um pequeno delay para contornar corrida de AsyncStorage/account/baseURL
+        setTimeout(async () => {
+          try {
+            if (!mounted) return;
+            const retryData = await MenuService.fetchDynamicMenu();
+            if (!mounted) return;
+            const processed = processMenuItems(retryData);
+            if (!mounted) return;
+            setDynamicMenu(processed);
+          } catch (retryErr) {
+            if (!mounted) return;
+            Alert.alert("Erro", (retryErr as any).message || "Não foi possível carregar o menu.");
+            console.error("Erro ao carregar menu (retry):", retryErr);
+          } finally {
+            if (!mounted) return;
+            setLoadingMenu(false);
+          }
+        }, 1000);
+        return;
       } finally {
+        if (!mounted) return;
         setLoadingMenu(false);
       }
     };
     fetchMenu();
-  }, [t]); // Adiciona dependência da função de tradução para recarregar quando a linguagem mudar
+    return () => { mounted = false; };
+  }, [t]); // Recarrega quando a linguagem mudar
 
   const toggleSubmenu = (id: string) => {
     setSubmenuStates((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -312,27 +342,24 @@ const CustomDrawerContent = (props: any & { extraData: {} }) => {
         <CustomDrawerHeader />
 
         <View style={styles.menuSection}>
-          {/* Item Fixo: Meus Dados */}
-          {(() => {
-            const hasViewUserPermission = hasPermission("view_user");
-            console.log("[DrawerNavigation] Verificando permissão users.view_user:", hasViewUserPermission);
-            return hasViewUserPermission && (
-              <TouchableOpacity
-                style={styles.menuItem}
-                onPress={() => props.navigation.navigate("PersonalDataScreen" as any, {})}
-                activeOpacity={0.7}
-              >
-                <View style={styles.menuItemContent}>
-                  <View style={styles.menuItemLeft}>
-                    <View style={styles.iconContainer}>
-                      <Ionicons name="person" size={20} color="#007BFF" />
-                    </View>
-                    <Text style={styles.menuText}>{t('menu.personalData')}</Text>
-                  </View>
+          {/* Item Fixo: Meus Dados (sempre visível; edição controlada na tela) */}
+          <TouchableOpacity
+            style={styles.menuItem}
+            onPress={() => props.navigation.navigate("PersonalDataScreen" as any, {})}
+            activeOpacity={0.7}
+          >
+            <View style={styles.menuItemContent}>
+              <View style={styles.menuItemLeft}>
+                <View style={styles.iconContainer}>
+                  <Ionicons name="person" size={20} color="#007BFF" />
                 </View>
-              </TouchableOpacity>
-            );
-          })()}
+                <Text style={styles.menuText}>{t('menu.personalData')}</Text>
+              </View>
+            </View>
+          </TouchableOpacity>
+
+          {/* Separador visual */}
+          <View style={styles.menuSeparator} />
 
           {/* Menu Dinâmico */}
           {dynamicMenu.map((item) => renderMenuItem(item))}
@@ -563,6 +590,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#6C757D',
     fontWeight: '500',
+  },
+  menuSeparator: {
+    height: 1,
+    backgroundColor: '#E9ECEF',
+    marginHorizontal: 20,
+    marginVertical: 15,
   },
 });
 

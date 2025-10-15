@@ -1,8 +1,34 @@
-import axios from 'axios';
 import { Equipment } from '../Models/Equipament';
 import EquipmentTemplateModel from '../Models/EquipmentTemplate';
-import apiClient from "../Context/ApiClient";
+import apiClient, { EquipmentLock } from "../Context/ApiClient";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+
+// Contador global de operações simultâneas
+let activeOperations = new Map<string, number>();
+
+function incrementOperation(equipmentId: string) {
+  const key = `equipment_${equipmentId}`;
+  const current = activeOperations.get(key) || 0;
+  const newCount = current + 1;
+  activeOperations.set(key, newCount);
+
+  console.log(`[EquipmentService] 🔢 Operações simultâneas para ${equipmentId}: ${newCount}`);
+  if (newCount > 1) {
+    console.error(`[EquipmentService] ⚠️ ALERTA: ${newCount} operações simultâneas para equipamento ${equipmentId}!`);
+  }
+
+  return newCount;
+}
+
+function decrementOperation(equipmentId: string) {
+  const key = `equipment_${equipmentId}`;
+  const current = activeOperations.get(key) || 0;
+  const newCount = Math.max(0, current - 1);
+  activeOperations.set(key, newCount);
+
+  console.log(`[EquipmentService] 🔢 Operação finalizada para ${equipmentId}, restantes: ${newCount}`);
+  return newCount;
+}
 
 interface EquipmentFilters {
   search?: string;
@@ -19,38 +45,73 @@ export default class EquipmentService {
   static async fetchEquipments(
     token: string,
     filters: EquipmentFilters
-  ): Promise<{ results: Equipment[]; count: number }> {
+  ): Promise<{ results: Equipment[]; count: number; links?: { next: string | null; previous: string | null } }> {
     try {
       console.log("[EquipmentService] Iniciando busca de equipamentos com filtros:", filters);
 
-      const params = new URLSearchParams();
-      if (filters.search) params.append('search', filters.search);
-      if (filters.equipmentType) params.append('equipment_type', filters.equipmentType);
-      if (filters.brand) params.append('brand', filters.brand);
-      if (filters.status) params.append('status', filters.status);
-      if (filters.sector_id) params.append('sector_id', filters.sector_id.toString());
-      if (filters.client_id) params.append('client_id', filters.client_id.toString());
-      if (filters.subsector_id) params.append('subsector_id', filters.subsector_id.toString());
-      if (filters.page) params.append('page', filters.page.toString());
-      if (filters.per_page) params.append('per_page', filters.per_page.toString());
+      const query: any = {};
+      if (filters.search) query.search = filters.search;
+      // Parametrização alinhada ao backend: *_id e is_active
+      if (filters.equipmentType) {
+        const eqTypeId = Number(filters.equipmentType);
+        query.equipment_type_id = Number.isNaN(eqTypeId) ? filters.equipmentType : eqTypeId;
+      }
+      if (filters.brand) {
+        const brandId = Number(filters.brand);
+        query.brand_id = Number.isNaN(brandId) ? filters.brand : brandId;
+      }
+      if (filters.status) {
+        if (filters.status === 'active') query.is_active = true;
+        else if (filters.status === 'inactive') query.is_active = false;
+      }
+      if (filters.sector_id) query.sector_id = filters.sector_id;
+      if (filters.client_id) query.client_id = filters.client_id;
+      if (filters.subsector_id) query.subsector_id = filters.subsector_id;
+      if (filters.page) query.page = filters.page;
+      if (filters.per_page) query.per_page = filters.per_page;
 
-      const url = `/equipments?${params}`;
-      console.log("[EquipmentService] URL da requisição:", url);
+      console.log("[EquipmentService] GET /equipments com params:", query);
 
-      const response = await apiClient.get(url, {
+      const response = await apiClient.get('/equipments', {
         headers: { Authorization: `Bearer ${token}` },
+        params: query,
       });
 
-      console.log("[EquipmentService] Resposta recebida:", response.data);
-      return response.data; // Deve retornar { results, count }
+      const payload = response.data;
+      const results: any[] = Array.isArray(payload)
+        ? payload
+        : (payload?.results || payload?.data || []);
+      const count: number = typeof payload?.count === 'number' ? payload.count : results.length;
+      const links = payload?.links || { next: null, previous: null };
+
+      console.log("[EquipmentService] Resposta normalizada:", { results_len: results.length, count });
+      return { results, count, links };
     } catch (error: any) {
-      console.error("[EquipmentService] Erro ao buscar equipamentos:", error);
-      console.error("[EquipmentService] Detalhes do erro:", {
-        message: error.message,
-        status: error.response?.status,
-        data: error.response?.data,
-        url: error.config?.url,
-      });
+      console.error("[EquipmentService] Erro ao buscar equipamentos:", error?.message || error);
+      const status = error.response?.status;
+      const dataType = typeof error.response?.data;
+      const dataPreview = dataType === 'string' ? (error.response?.data as string).slice(0, 200) + '... [truncado]' : '[objeto]';
+      console.error("[EquipmentService] Status:", status, "Dados (preview):", error.response?.data ? dataPreview : undefined);
+
+      // Fallback para paginação diferente: trocar page_size -> per_page se 500
+      if (status === 500) {
+        try {
+          console.log("[EquipmentService] Tentando fallback invertendo page_size->per_page...");
+          const queryFallback: any = { ...((error.config?.params) || {}) };
+          if (queryFallback.page_size && !queryFallback.per_page) {
+            queryFallback.per_page = queryFallback.page_size;
+            delete queryFallback.page_size;
+          }
+          const retry = await apiClient.get('/equipments', {
+            headers: { Authorization: `Bearer ${token}` },
+            params: queryFallback,
+          });
+          console.log("[EquipmentService] Fallback bem-sucedido. count:", retry.data?.count);
+          return retry.data;
+        } catch (retryErr: any) {
+          console.error("[EquipmentService] Fallback com page_size falhou:", retryErr?.response?.status || retryErr?.message);
+        }
+      }
 
       if (error.response?.status === 404) {
         throw new Error("Endpoint não encontrado. Verifique a URL da API.");
@@ -168,35 +229,143 @@ export default class EquipmentService {
     data: any
   ): Promise<any> {
     try {
-      console.log("[EquipmentService] Atualizando equipamento...");
-
+      console.log("[EquipmentService] ===== INICIANDO UPDATE EQUIPAMENTO =====");
       console.log("[EquipmentService] ID do Equipamento:", equipmentId);
-      console.log("[EquipmentService] Dados para atualização:", data);
+      console.log("[EquipmentService] Payload recebido (tipo):", typeof data);
+      console.log("[EquipmentService] Payload tem additional_fields?:", !!data?.additional_fields);
+      console.log("[EquipmentService] Tipo de additional_fields:", typeof data?.additional_fields);
 
-      const response = await apiClient.put(`/equipments/${equipmentId}`, data, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-      });
+      // Log detalhado do payload antes de enviar
+      console.log("[EquipmentService] Payload recebido para update:", JSON.stringify(data, null, 2));
 
-      console.log("[EquipmentService] Equipamento atualizado com sucesso:", response.data);
-      return response.data;
+      // Validar que additional_fields seja objeto simples conforme Postman.md
+      if (data && data.additional_fields) {
+        console.log("[EquipmentService] Additional fields antes da sanitização:", data.additional_fields);
+        // Manter como está - sem conversão para JSON string
+      }
+
+      // Garantir que additional_fields sempre exista (campo obrigatório no backend)
+      if (!data.additional_fields) {
+        console.warn("[EquipmentService] additional_fields estava ausente, adicionando objeto vazio");
+        data.additional_fields = {};
+      }
+
+      // Incrementa contador de operações simultâneas
+      incrementOperation(equipmentId);
+
+      // Adquire lock para evitar concorrência
+      console.log("[EquipmentService] 🔒 Tentando adquirir lock para equipamento", equipmentId);
+      console.log("[EquipmentService] Status do lock antes de adquirir:", EquipmentLock.isLocked(equipmentId));
+      console.log("[EquipmentService] Timestamp da tentativa:", new Date().toISOString());
+
+      const lockAcquired = await EquipmentLock.acquire(equipmentId, 30000); // 30 segundos de timeout
+      console.log("[EquipmentService] Resultado da aquisição de lock:", lockAcquired);
+
+      if (!lockAcquired) {
+        console.error("[EquipmentService] ❌ FALHA: Não foi possível adquirir lock para equipamento", equipmentId);
+        throw new Error(`Não foi possível adquirir lock para equipamento ${equipmentId}`);
+      }
+
+      console.log("[EquipmentService] ✅ Lock confirmado, iniciando operação para equipamento", equipmentId);
+      console.log("[EquipmentService] Status do lock após aquisição:", EquipmentLock.isLocked(equipmentId));
+
+      try {
+        // Log detalhado do payload sendo enviado
+        console.log("[EquipmentService] === 🚀 PAYLOAD ENVIADO PARA BACK-END ===");
+        console.log("[EquipmentService] 📦 Payload completo:", JSON.stringify(data, null, 2));
+        console.log("[EquipmentService] 📋 Estrutura detalhada:");
+        console.log("  🔹 client_id:", data.client_id, "(tipo:", typeof data.client_id, ")");
+        console.log("  🔹 sector_id:", data.sector_id, "(tipo:", typeof data.sector_id, ")");
+        console.log("  🔹 brand_id:", data.brand_id, "(tipo:", typeof data.brand_id, ")");
+        console.log("  🔹 equipment_type_id:", data.equipment_type_id, "(tipo:", typeof data.equipment_type_id, ")");
+        console.log("  🔹 tag:", data.tag, "(tipo:", typeof data.tag, ")");
+        console.log("  🔹 additional_fields:", data.additional_fields ? "PRESENTE" : "NULO");
+
+        if (data.additional_fields) {
+          console.log("  📋 Conteúdo additional_fields:");
+          Object.keys(data.additional_fields).forEach(key => {
+            console.log(`    • ${key}:`, data.additional_fields[key], "(tipo:", typeof data.additional_fields[key], ")");
+          });
+        } else {
+          console.log("  📋 additional_fields: vazio/null");
+        }
+
+        console.log("[EquipmentService] 🔗 URL da requisição: PUT /equipments/" + equipmentId);
+        console.log("[EquipmentService] ⏰ Timestamp:", new Date().toISOString());
+        console.log("[EquipmentService] === 🏁 FIM PAYLOAD ===");
+
+        console.log("[EquipmentService] ===== ANTES DA REQUISIÇÃO PUT =====");
+        console.log("[EquipmentService] Payload final tem additional_fields?:", !!data?.additional_fields);
+        console.log("[EquipmentService] Payload keys:", Object.keys(data));
+
+        const response = await apiClient.put(`/equipments/${equipmentId}`, data, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        });
+
+        console.log("[EquipmentService] ✅ Equipamento atualizado com sucesso:", response.data);
+        console.log("[EquipmentService] 🔓 Liberando lock para equipamento", equipmentId);
+        return response.data;
+      } finally {
+        // Sempre libera o lock
+        console.log("[EquipmentService] 🔓 Finalizando - liberando lock para equipamento", equipmentId);
+        EquipmentLock.release(equipmentId);
+        console.log("[EquipmentService] ✅ Lock liberado com sucesso");
+
+        // Decrementa contador de operações simultâneas
+        decrementOperation(equipmentId);
+      }
     } catch (error: any) {
-      console.error("[EquipmentService] Erro ao atualizar equipamento:", error);
+      console.error("[EquipmentService] ❌ Erro ao atualizar equipamento:", error);
+
+      // Libera lock em caso de erro também
+      console.log("[EquipmentService] 🔓 Liberando lock devido a erro para equipamento", equipmentId);
+      EquipmentLock.release(equipmentId);
+      console.log("[EquipmentService] ✅ Lock liberado após erro");
+
+      // Decrementa contador de operações simultâneas em caso de erro
+      decrementOperation(equipmentId);
 
       if (error.response) {
-        console.error("[EquipmentService] Erro no servidor:");
-        console.error("Status:", error.response.status);
-        console.error("Dados:", error.response.data);
+        const status = error.response.status;
+        const url = (error.config && (error.config as any).url) || "(sem URL)";
+        const serverData = error.response.data;
+        console.error("[EquipmentService] Erro no servidor:", { status, url, data: serverData });
 
-        // Tratamento de códigos de erro específicos
-        if (error.response.status === 404) {
-          throw new Error("Equipamento não encontrado.");
-        } else if (error.response.status === 401) {
-          throw new Error("Token de acesso inválido ou expirado.");
+        // Extrair mensagem útil do backend
+        let serverMessage: string | undefined =
+          serverData?.message || serverData?.error || serverData?.detail;
+
+        // Tentar consolidar mensagens de validação
+        if (!serverMessage && serverData && typeof serverData === 'object') {
+          try {
+            const errorsObj = serverData.errors || serverData?.non_field_errors || serverData?.data;
+            if (errorsObj && typeof errorsObj === 'object') {
+              const parts: string[] = [];
+              Object.keys(errorsObj).forEach((k) => {
+                const val = errorsObj[k];
+                if (Array.isArray(val)) parts.push(`${k}: ${val.join(', ')}`);
+                else if (typeof val === 'string') parts.push(`${k}: ${val}`);
+              });
+              if (parts.length) serverMessage = parts.join(' | ');
+            }
+          } catch { }
+        }
+
+        if (status === 404) {
+          throw new Error(serverMessage || "Equipamento não encontrado.");
+        } else if (status === 401) {
+          throw new Error(serverMessage || "Token de acesso inválido ou expirado.");
+        } else if (status === 400 || status === 422) {
+          throw new Error(serverMessage || "Dados inválidos ao atualizar equipamento.");
+        } else if (status === 500) {
+          console.error("Detalhes do erro 500:", error.response.data);
+          // Repassa o erro original para permitir fallback no chamador
+          throw error;
         } else {
-          throw new Error("Erro inesperado no servidor.");
+          throw new Error(serverMessage || `Erro inesperado no servidor (status ${status}) na URL ${url}.`);
         }
       } else if (error.request) {
         console.error("[EquipmentService] Nenhuma resposta recebida do servidor:", error.request);
@@ -259,6 +428,25 @@ export default class EquipmentService {
         const serverMessage = errSingular?.response?.data?.message || errPlural?.response?.data?.message;
         throw new Error(serverMessage || "Falha ao buscar template de equipamentos.");
       }
+    }
+  }
+
+  /**
+   * Busca o template atual vinculado a um tipo de equipamento específico
+   * Endpoint conforme tarefas.md: GET /api/equipment_types/:equipment_type_id/templates/current
+   */
+  static async getEquipmentTemplateByEquipmentType(equipmentTypeId: number, token: string): Promise<EquipmentTemplateModel> {
+    try {
+      console.log(`[EquipmentService] Buscando template por tipo de equipamento: ${equipmentTypeId}`);
+      const response = await apiClient.get(`/equipment_types/${equipmentTypeId}/templates/current`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      console.log("[EquipmentService] Template por tipo recebido:", response.data);
+      return new EquipmentTemplateModel(response.data);
+    } catch (error: any) {
+      console.error("[EquipmentService] Erro ao buscar template por tipo de equipamento:", error?.response?.status, error?.message);
+      const serverMessage = error?.response?.data?.message || error?.message;
+      throw new Error(serverMessage || "Falha ao buscar template por tipo de equipamento.");
     }
   }
 

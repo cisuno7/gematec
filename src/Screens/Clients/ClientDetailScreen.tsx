@@ -358,7 +358,10 @@ const ClientDetailScreen: React.FC<ClientDetailScreenProps> = ({ route, navigati
                             addresses.map((address) => (
                                 <View key={address.id} style={styles.listItem}>
                                     <Text style={styles.listItemText}>
-                                        <Text style={styles.bold}>{t('clientDetails.cityStateCountry')}:</Text> {String(address.city || "N/A")}, {String(address.state || "N/A")}
+                                        <Text style={styles.bold}>{t('clientDetails.cityStateCountry')}:</Text>{' '}
+                                        {(address.city && ((address.city as any).name || address.city)) || 'N/A'}, {" "}
+                                        {(address.state && ((address.state as any).name || (address.state as any).code || address.state)) || 'N/A'}, {" "}
+                                        {(address.country && ((address.country as any).name || address.country)) || 'N/A'}
                                     </Text>
                                     <Text style={styles.listItemText}>
                                         <Text style={styles.bold}>{t('clientDetails.neighborhood')}:</Text> {String(address.neighborhood || "N/A")}

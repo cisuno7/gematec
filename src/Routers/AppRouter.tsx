@@ -21,7 +21,8 @@ import HomeScreen from '../Screens/HomeScreen';
 import DrawerNavigator from "./DrawerNavigation";
 import EquipamentScreen from '../Screens/Equipaments/EquipamentScreen';
 import EquipmentQRCodeScreen from '../Screens/Equipaments/EquipmentQRCodeScreen';
-import EquipmentListScreen from "../Screens/Equipaments/EquipmentListScreen";
+// Usar a tela restrita correta (por cliente/setor)
+import EquipmentListScreen from "../Screens/Clients/EquipmentListScreen";
 import GeneralEquipmentListScreen from "../Screens/Equipaments/GeneralEquipmentListScreen";
 import PmocListScreen from "../Screens/Pmoc/PmocListScreen";
 import PmocDetailsScreen from "../Screens/Pmoc/PmocDetailsScreen";
@@ -91,8 +92,8 @@ export type RootStackParamList = {
   ServiceOrderScreen: undefined;
   ActivityHistoryScreen: { equipmentId?: number, activityTypeSlug?: string, status?: string[] };
   ActivityEquipmentListScreen: { activityId: number; activityName: string; clientId?: number; clientName?: string };
-  ActivityQuestionnaireScreen: { activityId: number; activityEquipmentId: number; equipmentId: number; equipmentTag: string; activityName: string };
-  NewActivityModal: undefined;
+  ActivityQuestionnaireScreen: { activityId: number; activityEquipmentId: number; equipmentId: number; equipmentTag: string; activityName: string; budgetPolicy?: string; fromNewActivityFlow?: boolean };
+  NewActivityModal: { preselectedActivityTypeSlug?: string } | undefined;
   WorkListScreen: { activityId: number; activityName?: string };
   WorkDetailScreen: { activityId: number; workId: number };
   WorkCreateScreen: { activityId: number };

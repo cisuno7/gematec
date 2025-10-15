@@ -18,4 +18,7 @@ export interface RoadmapResponse {
     activities: RoadmapActivity[];
     total: number;
     date: string;
+    fromCache?: boolean; // Indica se os dados vieram do cache local
+    offline?: boolean; // Indica se foi carregado em modo offline
+    error?: string; // Mensagem de erro, se houver
 }

@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, Platform } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 
 interface CustomPickerProps {
@@ -23,25 +23,29 @@ const CustomPicker: React.FC<CustomPickerProps> = ({
     return (
         <View style={[styles.container, style]}>
             <Picker
-                selectedValue={selectedValue}
+                selectedValue={selectedValue || ""}
                 onValueChange={onValueChange}
                 style={styles.picker}
-                itemStyle={styles.pickerItem}
-                mode="dropdown"
+                itemStyle={Platform.OS === 'ios' ? styles.pickerItemIOS : styles.pickerItemAndroid}
+                mode="dialog"
+                dropdownIconColor="#000"
+                dropdownIconRippleColor="#f0f0f0"
             >
                 <Picker.Item
                     label={placeholder}
                     value=""
-                    style={styles.pickerItem}
-                    color="#333"
+                    style={Platform.OS === 'ios' ? styles.placeholderItemIOS : styles.placeholderItemAndroid}
+                    color="#666"
+                    fontFamily={Platform.OS === 'android' ? 'Roboto' : 'System'}
                 />
                 {validItems.map((item, index) => (
                     <Picker.Item
                         key={index}
                         label={item.label}
                         value={item.value}
-                        style={styles.pickerItem}
+                        style={Platform.OS === 'ios' ? styles.pickerItemIOS : styles.pickerItemAndroid}
                         color="#000"
+                        fontFamily={Platform.OS === 'android' ? 'Roboto' : 'System'}
                     />
                 ))}
             </Picker>
@@ -63,10 +67,47 @@ const styles = StyleSheet.create({
         color: '#000',
         fontSize: 14,
     },
-    pickerItem: {
+    // Estilos específicos iOS
+    pickerItemIOS: {
         backgroundColor: '#fff',
         color: '#000',
-        fontSize: 14,
+        fontSize: 16,
+        textAlign: 'center',
+        fontWeight: '400',
+    },
+    placeholderItemIOS: {
+        backgroundColor: '#fff',
+        color: '#666',
+        fontSize: 16,
+        textAlign: 'center',
+        fontStyle: 'italic',
+    },
+    // Estilos específicos Android - força tema claro sempre
+    pickerItemAndroid: {
+        backgroundColor: '#fff',
+        color: '#000',
+        fontSize: 16,
+        textAlign: 'left',
+        fontWeight: '400',
+        paddingLeft: 20,
+        paddingRight: 20,
+        paddingTop: 15,
+        paddingBottom: 15,
+        borderRadius: 0,
+        marginVertical: 0,
+    },
+    placeholderItemAndroid: {
+        backgroundColor: '#fff',
+        color: '#666',
+        fontSize: 16,
+        textAlign: 'left',
+        fontStyle: 'italic',
+        paddingLeft: 20,
+        paddingRight: 20,
+        paddingTop: 15,
+        paddingBottom: 15,
+        borderRadius: 0,
+        marginVertical: 0,
     },
 });
 

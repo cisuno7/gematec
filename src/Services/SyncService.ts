@@ -167,7 +167,8 @@ export class SyncService {
 
             if (context.roadmapActivityId && context.equipmentId) {
                 // Upload de imagens para equipamento do roadmap
-                const apiUrl = await import('../config/apiConfig').then(m => m.buildApiUrlForAccount());
+                const { buildApiUrlForAccount } = require('../config/apiConfig');
+                const apiUrl = await buildApiUrlForAccount();
                 const endpoint = `${apiUrl}/roadmaps/activities/${context.roadmapActivityId}/equipment/${context.equipmentId}/images`;
                 await fetch(endpoint, {
                     method: 'POST',

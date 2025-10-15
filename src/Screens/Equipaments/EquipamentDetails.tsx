@@ -44,16 +44,16 @@ const EquipmentDetailsScreen: React.FC<EquipmentDetailsScreenProps> = ({ route, 
   const [showCreateActivity, setShowCreateActivity] = useState(false);
   const [activityTypes, setActivityTypes] = useState<any[]>([]);
   const [activityForm, setActivityForm] = useState({
-    name: "",
     activity_type_id: undefined as number | undefined,
-    start_date: new Date().toISOString().slice(0, 10), // Hoje
-    end_date: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10), // Amanhã
   });
+  const [observation, setObservation] = useState<string>('');
 
-  // Função para gerar nome da atividade: <nome_atividade> - <tag>
+  // Função para gerar nome único da atividade: <nome_atividade> - <tag> #<timestamp>
   const generateUniqueActivityName = (baseName: string, equipmentTag?: string) => {
     const equipmentSuffix = equipmentTag ? ` - ${equipmentTag}` : '';
-    return `${baseName}${equipmentSuffix}`;
+    const timestamp = new Date().getTime();
+    const uniqueSuffix = timestamp.toString().slice(-6); // Últimos 6 dígitos do timestamp
+    return `${baseName}${equipmentSuffix} #${uniqueSuffix}`;
   };
   const [creatingActivity, setCreatingActivity] = useState(false);
 
@@ -63,15 +63,27 @@ const EquipmentDetailsScreen: React.FC<EquipmentDetailsScreenProps> = ({ route, 
         const token = await AsyncStorage.getItem("access_token");
         if (!token) throw new Error("Token não encontrado");
 
-        // Buscar template de equipamento
-        const template = await EquipmentService.getEquipmentTemplate(token);
-        console.log("[EquipamentDetails] Template carregado:", template);
-        setEquipmentTemplate(template);
-
-        // Buscar detalhes do equipamento
+        // Buscar detalhes do equipamento primeiro
         const equipmentData = await EquipmentService.fetchEquipmentDetails(equipmentId, token);
         console.log("[EquipamentDetails] Dados do equipamento:", equipmentData);
         setEquipment(equipmentData);
+
+        // Buscar template por tipo (conforme tarefas.md)
+        try {
+          const typeId = equipmentData?.equipment_type?.id || equipmentData?.equipment_type_id;
+          if (typeId) {
+            const templateByType = await EquipmentService.getEquipmentTemplateByEquipmentType(Number(typeId), token);
+            console.log("[EquipamentDetails] Template por tipo carregado:", templateByType);
+            setEquipmentTemplate(templateByType as any);
+          } else {
+            console.log("[EquipamentDetails] equipment_type.id não encontrado; pulando carga de template");
+            setEquipmentTemplate(null);
+          }
+        } catch (tplErr) {
+          console.warn("[EquipamentDetails] Falha ao carregar template por tipo:", (tplErr as any)?.message || tplErr);
+          setEquipmentTemplate(null);
+          // Não bloquear a tela se o template falhar
+        }
       } catch (error) {
         console.error("Erro ao buscar equipamento:", error);
         Alert.alert("Erro", "Não foi possível carregar os detalhes do equipamento.");
@@ -113,33 +125,9 @@ const EquipmentDetailsScreen: React.FC<EquipmentDetailsScreenProps> = ({ route, 
 
   const handleCreateActivity = async () => {
     try {
-      // Validação dos campos obrigatórios
-      if (!activityForm.name.trim()) {
-        Alert.alert("Erro", "Nome da atividade é obrigatório.");
-        return;
-      }
-
+      // Validar apenas tipo (cliente/equipamento já definidos no contexto)
       if (!activityForm.activity_type_id) {
         Alert.alert("Erro", "Tipo de atividade é obrigatório.");
-        return;
-      }
-
-      if (!activityForm.start_date) {
-        Alert.alert("Erro", "Data de início é obrigatória.");
-        return;
-      }
-
-      if (!activityForm.end_date) {
-        Alert.alert("Erro", "Data final é obrigatória.");
-        return;
-      }
-
-      // Validação: data final não pode ser menor que data inicial
-      const startDate = new Date(activityForm.start_date);
-      const endDate = new Date(activityForm.end_date);
-
-      if (endDate < startDate) {
-        Alert.alert("Erro", "A data final não pode ser anterior à data de início.");
         return;
       }
 
@@ -147,40 +135,68 @@ const EquipmentDetailsScreen: React.FC<EquipmentDetailsScreenProps> = ({ route, 
       const token = await AsyncStorage.getItem("access_token");
       if (!token) throw new Error("Token não encontrado");
 
-      console.log('[EquipamentDetails] Criando atividade com dados:', {
-        name: activityForm.name,
+      // Montar dados conforme novo fluxo (nome e datas automáticos)
+      const today = new Date();
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const formatDateBR = (d: Date) => {
+        const dd = String(d.getDate()).padStart(2, '0');
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const yyyy = d.getFullYear();
+        return `${dd}/${mm}/${yyyy}`;
+      };
+      const typeName = activityTypes.find((t: any) => t.id === activityForm.activity_type_id)?.name || 'Atividade';
+      const clientName = equipment?.client?.name || '';
+      const dateTime = new Date().toLocaleString('pt-BR');
+      const autoName = `${typeName} ${clientName} ${dateTime}`.trim();
+
+      console.log('[EquipamentDetails] Criando atividade (novo fluxo):', {
+        name: autoName,
         activity_type_id: activityForm.activity_type_id,
-        start_date: activityForm.start_date,
-        end_date: activityForm.end_date,
+        client_id: equipment?.client?.id,
       });
 
-      // 1. Criar atividade com nome único
-      const uniqueActivityName = generateUniqueActivityName(activityForm.name, equipment?.tag);
-
-      const activity = await ActivityService.createActivity({
-        name: uniqueActivityName,
+      // 1) Criar atividade
+      const activityService = new ActivityService();
+      const activity = await activityService.createActivity({
+        name: autoName,
         activity_type_id: activityForm.activity_type_id,
-        equipment_id: parsedEquipmentId, // Passar equipment_id para obter client_id
-        start_date: activityForm.start_date,
-        end_date: activityForm.end_date,
+        client_id: equipment?.client?.id,
+        observation: observation ?? "",
+
       }, token);
 
-      console.log('[EquipamentDetails] Atividade criada:', activity);
-      console.log('[EquipamentDetails] Status da atividade criada:', activity.status);
-      console.log('[EquipamentDetails] Tipo de atividade:', activity.activity_type);
 
-      // 2. Vincular equipamento à atividade
+      console.log('[EquipamentDetails] Atividade criada:', activity);
+
+      // 2) Vincular equipamento existente à atividade
       // TODAS as atividades devem vincular equipamento (não apenas Ordem de Serviço)
       console.log('[EquipamentDetails] === INICIANDO VÍNCULO DE EQUIPAMENTO ===');
       console.log('[EquipamentDetails] Equipment ID a ser vinculado:', parsedEquipmentId);
       console.log('[EquipamentDetails] Activity ID:', activity.id);
 
-      await ActivityService.linkEquipmentToActivity(activity.id, { equipment_id: parsedEquipmentId }, token);
+      await activityService.addEquipmentToActivity(activity.id, { equipments_ids: [parsedEquipmentId] }, token);
       console.log('[EquipamentDetails] Equipamento vinculado com sucesso');
 
-      setShowCreateActivity(false);
-      Alert.alert("Sucesso", "Atividade criada e equipamento vinculado com sucesso!");
-      navigation.navigate("ActivityHistoryScreen", { equipmentId: parsedEquipmentId });
+      // 3) Confirmar ID do vínculo e navegar ao questionário
+      const equipmentsPayload = await ActivityService.fetchActivityEquipments(activity.id, { token });
+      const equipmentsList = Array.isArray(equipmentsPayload) ? equipmentsPayload : (equipmentsPayload?.results || []);
+      const linked = equipmentsList.find((ev: any) => ev?.equipment?.id === parsedEquipmentId || ev?.equipment_id === parsedEquipmentId);
+      const activityEquipmentId = linked?.id;
+
+      if (!activityEquipmentId) {
+        Alert.alert('Atenção', 'Atividade criada, mas não foi possível confirmar o vínculo do equipamento. Tente abrir o questionário a partir do histórico.');
+      } else {
+        setShowCreateActivity(false);
+        navigation.navigate('ActivityQuestionnaireScreen', {
+          activityId: activity.id,
+          activityEquipmentId,
+          equipmentId: parsedEquipmentId,
+          equipmentTag: equipment?.tag || 'SEM_TAG',
+          activityName: autoName,
+          fromNewActivityFlow: true,
+        });
+      }
     } catch (err: any) {
       console.error('[EquipamentDetails] Erro ao criar atividade:', err);
 
@@ -304,48 +320,106 @@ const EquipmentDetailsScreen: React.FC<EquipmentDetailsScreenProps> = ({ route, 
                   );
                 }
 
+                const normalizeText = (text: any) =>
+                  (text || '')
+                    .toString()
+                    .normalize('NFD')
+                    .replace(/[\u0300-\u036f]/g, '')
+                    .replace(/[^a-z0-9]/gi, '')
+                    .toLowerCase();
+
+                const getFromArray = (arr: any[], targetKey: string, targetLabel: string) => {
+                  const byKey = arr.find((e: any) => e?.key === targetKey || normalizeText(e?.key) === normalizeText(targetKey));
+                  if (byKey) return byKey?.value ?? byKey;
+                  const tgt = normalizeText(targetLabel);
+                  const byLabel = arr.find((e: any) => {
+                    try {
+                      const candidates = [e?.label, e?.name, e?.value?.label, e?.value?.name];
+                      return candidates.some((c) => {
+                        const norm = normalizeText(c);
+                        return norm && (norm === tgt || norm.includes(tgt) || tgt.includes(norm));
+                      });
+                    } catch {
+                      return false;
+                    }
+                  });
+                  if (byLabel) return byLabel?.value ?? byLabel;
+                  return undefined;
+                };
+
+                const getFromObject = (obj: any, targetKey: string, targetLabel: string) => {
+                  if (!obj) return undefined;
+                  if (Object.prototype.hasOwnProperty.call(obj, targetKey)) return obj[targetKey];
+                  // tenta normalizar keys do objeto (para additional_fields simples no GET)
+                  try {
+                    const normKey = normalizeText(targetKey);
+                    for (const k of Object.keys(obj)) {
+                      if (normalizeText(k) === normKey) return (obj as any)[k];
+                    }
+                  } catch { }
+                  const tgt = normalizeText(targetLabel);
+                  const values = Object.values(obj);
+                  const match = values.find((entry: any) => {
+                    try {
+                      const candidates = [entry?.label, entry?.name, entry?.value?.label, entry?.value?.name];
+                      return candidates.some((c) => {
+                        const norm = normalizeText(c);
+                        return norm && (norm === tgt || norm.includes(tgt) || tgt.includes(norm));
+                      });
+                    } catch { return false; }
+                  });
+                  if (match) return (match as any).value ?? match;
+                  return undefined;
+                };
+
+                const getDynamicValue = (fieldKey: string, fieldLabel: string) => {
+                  console.log('[EquipamentDetails] Buscando valor para:', { fieldKey, fieldLabel });
+                  console.log('[EquipamentDetails] Additional fields:', equipment?.additional_fields);
+
+                  // Adicionar busca específica para 'especificações técnicas'
+                  const specTecKey = normalizeText('especificacoes tecnicas');
+                  if (normalizeText(fieldKey) === specTecKey || normalizeText(fieldLabel) === specTecKey) {
+                    const specVal = equipment?.especificacoes_tecnicas || equipment?.specs ||
+                      equipment?.additional_fields?.especificacoes_tecnicas ||
+                      equipment?.additional_fields?.['especificações técnicas'] || '';
+                    console.log('[EquipamentDetails] Valor de especificações técnicas:', specVal);
+                    if (specVal) return specVal;
+                  }
+
+                  // Fontes possíveis usadas pelo backend
+                  const sources = [
+                    equipment?.additional_fields,
+                    equipment?.dynamic_fields,
+                    equipment?.fields,
+                    equipment?.attributes,
+                    equipment?.custom_fields,
+                  ];
+                  for (const src of sources) {
+                    if (!src) continue;
+                    try {
+                      if (Array.isArray(src)) {
+                        const val = getFromArray(src, fieldKey, fieldLabel);
+                        if (val !== undefined && val !== null) return val;
+                      } else if (typeof src === 'object') {
+                        const val = getFromObject(src, fieldKey, fieldLabel);
+                        if (val !== undefined && val !== null) return val;
+                      } else if (typeof src === 'string') { // Caso raro de string serializada
+                        try { const parsed = JSON.parse(src); return getDynamicValue(fieldKey, fieldLabel); } catch { }
+                      }
+                    } catch (e) {
+                      console.warn('[EquipamentDetails] Falha ao ler fonte dinâmica', e);
+                    }
+                  }
+                  // Fallback: tenta propriedade direta no equipamento
+                  return equipment[fieldKey] || '';
+                };
+
                 return validFields
                   .sort((a, b) => (a.order || 0) - (b.order || 0))
                   .map((field) => {
                     const fieldKey = field.key || field.name || '';
                     const fieldLabel = field.label || field.name || fieldKey;
-
-                    // Buscar valor nos campos dinâmicos (additional_fields) primeiro, com fallback por label, depois no equipamento
-                    let value = equipment.additional_fields?.[fieldKey];
-                    if (value === undefined || value === null) {
-                      // Fallback: procurar por entrada cujo label (ou sublabel) corresponda ao do template (com normalização)
-                      const af = equipment.additional_fields;
-                      if (af && typeof af === 'object') {
-                        const normalizeText = (text: any) =>
-                          (text || '')
-                            .toString()
-                            .normalize('NFD')
-                            .replace(/[\u0300-\u036f]/g, '') // remove acentos
-                            .replace(/[^a-z0-9]/gi, '')
-                            .toLowerCase();
-                        const target = normalizeText(fieldLabel);
-                        const match = Object.values(af as any).find((entry: any) => {
-                          try {
-                            const candidates = [
-                              entry?.label,
-                              entry?.value?.label,
-                              entry?.name,
-                              entry?.value?.name,
-                            ];
-                            return candidates.some((c) => {
-                              const norm = normalizeText(c);
-                              return norm && (norm === target || norm.includes(target) || target.includes(norm));
-                            });
-                          } catch {
-                            return false;
-                          }
-                        });
-                        if (match) value = match as any;
-                      }
-                    }
-                    if (value === undefined || value === null) {
-                      value = equipment[fieldKey];
-                    }
+                    let value: any = getDynamicValue(fieldKey, fieldLabel);
 
                     console.log(`[EquipamentDetails] Campo ${fieldKey}:`, value, 'Tipo:', field.type);
                     let displayValue = "N/A";
@@ -384,8 +458,22 @@ const EquipmentDetailsScreen: React.FC<EquipmentDetailsScreenProps> = ({ route, 
                       } else if (field.type === 'number') {
                         displayValue = actualValue !== null && actualValue !== undefined ? String(actualValue) : "N/A";
                         icon = "calculate";
+                      } else if (field.type === 'measure') {
+                        // Pode vir { value, unit } ou somente número. Usa unit do template se necessário
+                        let numeric = actualValue;
+                        let unit = (value && typeof value === 'object' && (value as any).unit) ? (value as any).unit : (field as any).unit;
+                        if (typeof numeric === 'object' && numeric !== null && 'value' in (numeric as any)) {
+                          numeric = (numeric as any).value;
+                        }
+                        displayValue = (numeric !== null && numeric !== undefined && numeric !== '') ? `${numeric} ${unit || ''}`.trim() : 'N/A';
+                        icon = 'speedometer';
+                      } else if (field.type === 'radio' || field.type === 'radio_with_justification' || field.type === 'select') {
+                        const v = String(actualValue).toLowerCase();
+                        if (["true", "1", "sim", "yes"].includes(v)) displayValue = 'Sim';
+                        else if (["false", "0", "nao", "não", "no"].includes(v)) displayValue = 'Não';
+                        else displayValue = actualValue !== null && actualValue !== undefined ? String(actualValue) : 'N/A';
+                        icon = 'info';
                       } else {
-                        // Para selects/radios (com ou sem justificativa), priorizar o valor efetivo extraído (ex.: "A"/"B")
                         displayValue = actualValue !== null && actualValue !== undefined ? String(actualValue) : "N/A";
                         icon = "info";
                       }
@@ -458,17 +546,6 @@ const EquipmentDetailsScreen: React.FC<EquipmentDetailsScreenProps> = ({ route, 
 
             <View style={styles.modalBody}>
               <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Nome da Atividade</Text>
-                <TextInput
-                  style={styles.textInput}
-                  placeholder="Digite o nome da atividade (será único automaticamente)"
-                  placeholderTextColor="#999"
-                  value={activityForm.name}
-                  onChangeText={text => setActivityForm(f => ({ ...f, name: text }))}
-                />
-              </View>
-
-              <View style={styles.inputGroup}>
                 <Text style={styles.inputLabel}>Tipo de Atividade</Text>
                 <CustomPicker
                   selectedValue={activityForm.activity_type_id !== undefined ? String(activityForm.activity_type_id) : ''}
@@ -483,22 +560,14 @@ const EquipmentDetailsScreen: React.FC<EquipmentDetailsScreenProps> = ({ route, 
               </View>
 
               <View style={styles.inputGroup}>
-                <DatePickerInput
-                  label="Data de Início *"
-                  value={activityForm.start_date}
-                  onChangeText={text => setActivityForm(f => ({ ...f, start_date: text }))}
-                  placeholder="Selecione a data de início"
-                  style={styles.textInput}
-                />
-              </View>
-
-              <View style={styles.inputGroup}>
-                <DatePickerInput
-                  label="Data Final *"
-                  value={activityForm.end_date}
-                  onChangeText={text => setActivityForm(f => ({ ...f, end_date: text }))}
-                  placeholder="Selecione a data final"
-                  style={styles.textInput}
+                <Text style={styles.inputLabel}>Observação (opcional)</Text>
+                <TextInput
+                  style={[styles.textInput, { minHeight: 80, textAlignVertical: 'top' }]}
+                  placeholder="Digite uma observação (opcional)"
+                  placeholderTextColor="#999"
+                  value={observation}
+                  onChangeText={setObservation}
+                  multiline
                 />
               </View>
             </View>

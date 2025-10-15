@@ -38,27 +38,71 @@ const RoadmapScreen: React.FC<RoadmapScreenProps> = ({ navigation }) => {
             setLoading(true);
 
             const response = await RoadmapService.getCurrentRoadmap();
-            console.log('[RoadmapScreen] Dados recebidos:', response);
-            console.log('[RoadmapScreen] Atividades recebidas:', response.activities);
-            console.log('[RoadmapScreen] Número de atividades:', response.activities?.length || 0);
+            console.log('[RoadmapScreen] 📦 Dados recebidos do RoadmapService');
+            console.log('[RoadmapScreen] 📊 Estatísticas:', {
+                hasActivities: !!response.activities,
+                activitiesCount: response.activities?.length || 0,
+                fromCache: response.fromCache,
+                offline: response.offline,
+                hasError: !!response.error
+            });
 
             // Os dados já foram processados no RoadmapService
             const validActivities = response.activities;
 
-            console.log('[RoadmapScreen] Atividades validadas:', validActivities);
-            console.log('[RoadmapScreen] Número de atividades validadas:', validActivities.length);
+            console.log('[RoadmapScreen] ✅ Atividades processadas:', validActivities.length);
             setActivities(validActivities);
+
+            // Mostrar feedback se os dados vieram do cache
+            if (response.fromCache || response.offline) {
+                console.warn('[RoadmapScreen] ⚠️ Dados carregados do CACHE (modo offline)');
+                Alert.alert(
+                    'Modo Offline',
+                    'Roteiro carregado do cache local. Os dados podem estar desatualizados. Conecte-se à internet e puxe para baixo para atualizar.',
+                    [{ text: 'Entendi' }]
+                );
+            } else {
+                console.log('[RoadmapScreen] ✅ Dados carregados do SERVIDOR (atualizados)');
+            }
         } catch (error: any) {
-            console.error('[RoadmapScreen] Erro ao carregar roteiro:', error);
-            console.error('[RoadmapScreen] Tipo do erro:', typeof error);
-            console.error('[RoadmapScreen] Mensagem do erro:', error.message);
+            console.error('[RoadmapScreen] ❌❌❌ ERRO ao carregar roteiro ❌❌❌');
+            console.error('[RoadmapScreen] 🔴 Tipo do erro:', typeof error);
+            console.error('[RoadmapScreen] 🔴 Nome do erro:', error?.constructor?.name);
+            console.error('[RoadmapScreen] 🔴 Mensagem do erro:', error.message);
+            console.error('[RoadmapScreen] 🔴 Stack:', error.stack);
 
             // Se não há roteiros para o dia, não mostrar erro
             if (error.message && error.message.includes('Nenhum roteiro encontrado')) {
-                console.log('[RoadmapScreen] Nenhum roteiro para o dia atual');
+                console.log('[RoadmapScreen] ℹ️ Nenhum roteiro para o dia atual (comportamento esperado)');
                 setActivities([]);
+                // Não mostrar alerta de erro, apenas informativo
+            } else if (error.message && error.message.includes('Sem conexão')) {
+                console.error('[RoadmapScreen] 🌐 Erro de conexão sem cache disponível');
+                setActivities([]);
+                Alert.alert(
+                    'Sem Conexão',
+                    'Não foi possível carregar o roteiro. Verifique sua conexão com a internet e tente novamente.',
+                    [{ text: 'OK' }]
+                );
             } else {
-                Alert.alert('Erro', error.message || 'Erro ao carregar roteiro');
+                // Outros erros
+                setActivities([]);
+                Alert.alert(
+                    'Erro ao Carregar Roteiro',
+                    error.message || 'Erro inesperado ao carregar roteiro. Por favor, tente novamente.',
+                    [
+                        {
+                            text: 'Ver Detalhes',
+                            onPress: () => {
+                                Alert.alert(
+                                    'Detalhes do Erro',
+                                    `Tipo: ${error?.constructor?.name || 'Desconhecido'}\n\nMensagem: ${error.message || 'Sem mensagem'}`
+                                );
+                            }
+                        },
+                        { text: 'OK' }
+                    ]
+                );
             }
         } finally {
             setLoading(false);
@@ -69,20 +113,67 @@ const RoadmapScreen: React.FC<RoadmapScreenProps> = ({ navigation }) => {
     const onRefresh = async () => {
         setRefreshing(true);
         try {
-            console.log('[RoadmapScreen] === INICIANDO REFRESH ===');
+            console.log('[RoadmapScreen] === INICIANDO REFRESH (Pull to Refresh) ===');
+            console.log('[RoadmapScreen] 🔄 Forçando atualização do servidor...');
+            
             // Força a busca da API usando forceRefresh
             const response = await RoadmapService.getCurrentRoadmap(true);
-            console.log('[RoadmapScreen] Dados do refresh recebidos:', response);
-            console.log('[RoadmapScreen] Atividades do refresh:', response.activities?.length || 0);
+            
+            console.log('[RoadmapScreen] 📦 Dados do refresh recebidos');
+            console.log('[RoadmapScreen] 📊 Estatísticas do refresh:', {
+                activitiesCount: response.activities?.length || 0,
+                fromCache: response.fromCache,
+                offline: response.offline,
+                hasError: !!response.error
+            });
 
             // Os dados já foram processados no RoadmapService
             const validActivities = response.activities;
 
-            console.log('[RoadmapScreen] Atividades validadas do refresh:', validActivities.length);
+            console.log('[RoadmapScreen] ✅ Atividades validadas do refresh:', validActivities.length);
             setActivities(validActivities);
+
+            // Feedback ao usuário sobre o refresh
+            if (response.fromCache || response.offline) {
+                console.warn('[RoadmapScreen] ⚠️ Refresh usou CACHE (sem conexão)');
+                Alert.alert(
+                    'Dados Locais',
+                    'Não foi possível atualizar do servidor. Mostrando dados locais salvos anteriormente.',
+                    [{ text: 'OK' }]
+                );
+            } else {
+                console.log('[RoadmapScreen] ✅ Refresh do SERVIDOR bem-sucedido!');
+                // Pequeno feedback visual de sucesso (opcional)
+            }
         } catch (error: any) {
-            console.error('[RoadmapScreen] Erro no refresh:', error);
-            Alert.alert('Erro', error.message || 'Erro ao atualizar roteiro');
+            console.error('[RoadmapScreen] ❌❌❌ ERRO no refresh ❌❌❌');
+            console.error('[RoadmapScreen] 🔴 Tipo:', error?.constructor?.name);
+            console.error('[RoadmapScreen] 🔴 Mensagem:', error.message);
+            
+            // Tratamento específico por tipo de erro
+            if (error.message && error.message.includes('Nenhum roteiro encontrado')) {
+                console.log('[RoadmapScreen] ℹ️ Nenhum roteiro disponível (404)');
+                setActivities([]);
+                // Não mostrar erro, apenas limpar a lista
+            } else if (error.message && error.message.includes('Token inválido')) {
+                Alert.alert(
+                    'Sessão Expirada',
+                    'Sua sessão expirou. Por favor, faça login novamente.',
+                    [{ text: 'OK' }]
+                );
+            } else if (error.message && error.message.includes('conexão') || error.message.includes('conectar')) {
+                Alert.alert(
+                    'Erro de Conexão',
+                    'Não foi possível conectar ao servidor. Verifique sua internet.',
+                    [{ text: 'OK' }]
+                );
+            } else {
+                Alert.alert(
+                    'Erro ao Atualizar',
+                    error.message || 'Erro ao atualizar roteiro. Tente novamente.',
+                    [{ text: 'OK' }]
+                );
+            }
         } finally {
             setRefreshing(false);
             console.log('[RoadmapScreen] === FINALIZANDO REFRESH ===');

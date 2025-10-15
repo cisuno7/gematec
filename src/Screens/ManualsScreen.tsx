@@ -3,6 +3,7 @@ import { View, Text, TextInput, FlatList, StyleSheet, ActivityIndicator, Touchab
 import * as Linking from "expo-linking";
 import { Picker } from "@react-native-picker/picker";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import CustomPicker from "../Components/CustomPicker";
 import { RouteProp } from "@react-navigation/native";
 import { DrawerNavigationProp } from "@react-navigation/drawer";
 import { RootStackParamList } from "../Routers/AppRouter";
@@ -204,27 +205,16 @@ const ManualsScreen: React.FC<ManualsScreenProps> = ({ navigation }) => {
       {loadingCategories ? (
         <ActivityIndicator size="small" color="#007BFF" />
       ) : (
-        <View style={{ position: 'relative' }}>
-          <Picker
-            selectedValue={selectedCategory}
-            onValueChange={(value) => {
-              setSelectedCategory(value);
-              setPage(1);
-            }}
-            style={[styles.picker, { backgroundColor: '#fff', color: '#222' }]}
-          >
-            <Picker.Item label={t('manuals.allCategories')} value="" color="#888" />
-            {categories.map((category) => (
-              <Picker.Item key={category.id} label={category.name} value={category.id.toString()} color="#CCCCCC" />
-            ))}
-          </Picker>
-          <MaterialIcons
-            name="arrow-drop-down"
-            size={24}
-            color="#888"
-            style={{ position: 'absolute', right: 10, top: 13, pointerEvents: 'none' }}
-          />
-        </View>
+        <CustomPicker
+          selectedValue={selectedCategory}
+          onValueChange={(value) => {
+            setSelectedCategory(value);
+            setPage(1);
+          }}
+          items={categories.map(category => ({ label: category.name, value: category.id.toString() }))}
+          placeholder={t('manuals.allCategories')}
+          style={[styles.picker, { backgroundColor: '#fff' }]}
+        />
       )}
       {loading ? (
         <ActivityIndicator size="large" color="#007BFF" />

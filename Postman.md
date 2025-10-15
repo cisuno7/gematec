@@ -1,40 +1,12 @@
-Refresh Token API
-This endpoint is used to refresh an existing authentication token using a valid refresh token. It allows clients to obtain a new access token without requiring the user to re-authenticate, thereby enhancing user experience and maintaining session continuity.
-Request
-Method: POST
-Endpoint: {{gematec__host}}/api/token/refresh
-
-Headers
-Content-Type: application/json
-Authorization: Bearer token (if required by the API)
-
+API Endpoint: Create Activity
+This endpoint allows users to create a new activity within the system. By sending a POST request to /api/activities, users can specify the details of the activity they wish to add.
 Request Body
-The request body must be in JSON format and should include the following parameter:
-refresh (string): The refresh token that was previously issued to the user. This token is used to validate the request and generate a new access token.
+The request must be sent in JSON format and should include the following parameters:
+name (string): The name of the activity.
+activity_type_id (integer): The identifier for the type of activity.
+client_id (integer): The identifier for the client associated with the activity.
 
-Example Request Body:
-
-
-JSON
-
-
-
-
-
-
-
-
-{
-  "refresh": "{{refresh_token}}"
-}
-
-
-Response
-Upon a successful request, the server will return a response containing a new access token. The expected response structure is as follows:
-access (string): The newly issued access token that can be used for subsequent authenticated requests.
-expires_in (integer): The duration in seconds for which the access token is valid.
-
-Example Response:
+Example Request
 
 
 JSON
@@ -47,15 +19,59 @@ JSON
 
 
 {
-  "access": "new_access_token_value",
-  "expires_in": 3600
+  "name": "Ordem de Serviço ABC 3",
+  "activity_type_id": 3,
+  "start_date": "30/06/2025",
+  "end_date": "15/07/2025",
+  "client_id": 2
 }
 
 
-Authentication Requirements
-Ensure that the request is authenticated as per the API's requirements. If the API requires an Authorization header, include a valid bearer token in the header for the request to be processed successfully.
-This endpoint is crucial for maintaining user sessions without requiring frequent logins, thus improving the overall user experience.
+Response Structure
+Upon a successful request, the API will respond with a JSON object containing the details of the created activity. The response will include the following fields:
+id (integer): The unique identifier for the newly created activity.
+name (string): The name of the activity.
+activity_type (object): An object containing the id and name of the activity type.
+client (object): An object containing the id and name of the client.
+status (string): The current status of the activity.
+start_date (string): The start date of the activity.
+end_date (string): The end date of the activity.
+opened_at (datetime|null): Timestamp when the activity was opened.
+closed_at (datetime|null): Timestamp when the activity was closed.
+created_at (string): Timestamp when the activity was created.
+updated_at (string): Timestamp when the activity was last updated.
+
+Example Response
 
 
+JSON
+
+
+
+
+
+
+
+
+{
+  "id": 0,
+  "name": "",
+  "activity_type": {
+    "id": 0,
+    "name": ""
+  },
+  "client": {
+    "id": 0,
+    "name": ""
+  },
+  "status": "",
+  "opened_at": null,
+  "closed_at": null,
+  "created_at": "",
+  "updated_at": ""
+}
+
+
+This structure provides a clear overview of the activity created and its associated details.
 
 

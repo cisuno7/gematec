@@ -1,4 +1,3 @@
-import axios from 'axios';
 import apiClient from "../Context/ApiClient";
 import Client from '../Models/Clientes';
 import { setDynamicApiUrl } from "../config/apiConfig";
@@ -23,6 +22,9 @@ export default class ClientService {
       const params = {
         has_contract: hasContract.toString(),
         page: page.toString(),
+        // padroniza paginação para evitar 'Invalid page' por discrepância de page_size
+        per_page: 10,
+        page_size: 10,
         search: searchQuery,
         include: "sectors,addresses",
       };
@@ -177,13 +179,22 @@ export default class ClientService {
       }
 
       // apiClient já configura automaticamente a URL dinâmica e Authorization
-      const response = await apiClient.get('/clients', {
-        params,
-      });
-      console.log("[ClientService] Resposta completa dos setores:", response.data);
-      return response.data;
+      const response = await apiClient.get(`/clients/${clientId}/sectors`, { params });
+      const payload = response.data;
+      // Normaliza para o payload do Postman: { links, count, results: [...] }
+      const results = Array.isArray(payload) ? payload : (payload?.results || []);
+      const count = typeof payload?.count === 'number' ? payload.count : results.length;
+      const links = payload?.links || { next: null, previous: null };
+      console.log("[ClientService] Setores normalizados:", { results_len: results.length, count });
+      return { results, count, links };
     } catch (error: any) {
       console.error("[ClientService] Erro ao buscar setores do cliente:", error);
+      const status = error?.response?.status;
+      // Tratamento silencioso para erros de servidor (500) ou respostas HTML inesperadas
+      if (status >= 500 || typeof error?.response?.data === 'string') {
+        console.warn('[ClientService] Retornando lista vazia para setores devido a erro do servidor.');
+        return { results: [], count: 0, links: { next: null, previous: null } };
+      }
       throw new Error("Erro ao obter os setores do cliente.");
     }
   }
@@ -226,6 +237,30 @@ export default class ClientService {
     }
   }
 
+  static async createClientSector(
+    clientId: string,
+    accessToken: string,
+    name: string,
+    parentId?: number | null
+  ) {
+    try {
+      const payload = {
+        name: name.trim(),
+        parent_id: parentId ?? null,
+        ignores_auto_activity_mapping: true,
+      } as any;
+
+      const response = await apiClient.post(`/clients/${clientId}/sectors`, payload, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+
+      return response.data;
+    } catch (error: any) {
+      console.error("[ClientService] Erro ao criar setor:", error);
+      throw new Error("Erro ao criar setor.");
+    }
+  }
+
   static async getClientAddresses(clientId: string, accessToken: string) {
     try {
       const accountName = await AsyncStorage.getItem("account") || "default";
@@ -242,6 +277,76 @@ export default class ClientService {
     } catch (error: any) {
       console.error("[ClientService] Erro ao buscar endereços do cliente:", error);
       throw new Error("Erro ao obter os endereços do cliente.");
+    }
+  }
+
+  static async createClient(clientData: {
+    name: string;
+    email: string;
+    document?: string;
+    phone?: string;
+    company_name?: string;
+    company_state_registration?: string;
+    company_opening_at?: string | null;
+    is_active?: boolean;
+    additional_fields?: {
+      sector_name?: string;
+      subsector_name?: string;
+      contact_name?: string;
+    };
+  }, accessToken: string) {
+    try {
+      if (!accessToken) {
+        console.error("[ClientService] Token de acesso ausente.");
+        throw new Error("Token de acesso ausente.");
+      }
+
+      console.log("[ClientService] Criando novo cliente:", clientData);
+
+      const payload = {
+        name: clientData.name,
+        email: clientData.email,
+        document: clientData.document || "",
+        phone: clientData.phone || "",
+        company_name: clientData.company_name || "",
+        company_state_registration: clientData.company_state_registration || "",
+        company_opening_at: clientData.company_opening_at || null,
+        is_active: clientData.is_active !== undefined ? clientData.is_active : true,
+        additional_fields: clientData.additional_fields || {}
+      };
+
+      const response = await apiClient.post('/clients', payload, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+
+      console.log("[ClientService] Cliente criado com sucesso:", response.data);
+      return response.data;
+    } catch (error: any) {
+      console.error("[ClientService] Erro ao criar cliente:", error);
+
+      if (error.response) {
+        console.error("[ClientService] Erro no servidor:");
+        console.error('Status:', error.response.status);
+        console.error('Dados:', error.response.data);
+
+        if (error.response.status === 400) {
+          throw new Error(error.response.data?.message || "Dados inválidos para criação do cliente");
+        } else if (error.response.status === 401) {
+          throw new Error("Token de acesso inválido ou expirado");
+        } else if (error.response.status === 422) {
+          const validationErrors = error.response.data?.errors || {};
+          const errorMessages = Object.values(validationErrors).flat().join(", ");
+          throw new Error(`Erro de validação: ${errorMessages}`);
+        } else {
+          throw new Error(error.response.data?.message || "Erro inesperado no servidor");
+        }
+      } else if (error.request) {
+        console.error("[ClientService] Erro de rede:", error.request);
+        throw new Error("Erro de conexão. Verifique sua internet");
+      } else {
+        console.error("[ClientService] Erro inesperado:", error.message);
+        throw new Error(`Erro inesperado: ${error.message}`);
+      }
     }
   }
 

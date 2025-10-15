@@ -12,14 +12,15 @@ export interface Sector {
 export interface Address {
   id: number;
   street: string;
-  city: string;
-  state: string;
+  city: string | { id: number; name: string };
+  state: string | { id: number; name: string; code?: string };
   postal_code: string;
   neighborhood?: string; // Adicionado
   number?: string; // Adicionado
   complement?: string; // Adicionado
   reference_point?: string; // Adicionado
   zip_code?: string; //
+  country?: string | { id: number; name: string }; // Pode vir como objeto
 }
 
 export interface Contract {

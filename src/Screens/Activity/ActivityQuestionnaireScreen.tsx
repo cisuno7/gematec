@@ -19,7 +19,10 @@ import DynamicActivityQuestionnaire from "../../Components/DynamicActivityQuesti
 import { ActivityDynamicField } from "../../Models/ActivityDynamicField";
 import { ActivityAnswer } from "../../Models/ActivityAnswer";
 import NetInfo from '@react-native-community/netinfo';
+import SendToBudgetModal from "../../Components/SendToBudgetModal";
 import OfflineService from '../../Services/OfflineService';
+import apiClient from "../../Context/ApiClient";
+import ClientService from "../../Services/ClientService";
 
 interface ActivityQuestionnaireScreenProps {
     navigation: DrawerNavigationProp<RootStackParamList, "ActivityQuestionnaireScreen">;
@@ -28,7 +31,8 @@ interface ActivityQuestionnaireScreenProps {
 
 const ActivityQuestionnaireScreen: React.FC<ActivityQuestionnaireScreenProps> = ({ route, navigation }) => {
     const { t } = useLanguage();
-    const { activityId, activityEquipmentId, equipmentId, equipmentTag, activityName } = route.params;
+    const { activityId, activityEquipmentId, equipmentId, equipmentTag, activityName, budgetPolicy, fromNewActivityFlow } = route.params;
+    const activityService = new ActivityService();
 
     console.log('[ActivityQuestionnaireScreen] Parâmetros recebidos:', {
         activityId,
@@ -51,6 +55,7 @@ const ActivityQuestionnaireScreen: React.FC<ActivityQuestionnaireScreenProps> = 
     const [equipmentStatus, setEquipmentStatus] = useState<string>('created');
     const [questionsLoading, setQuestionsLoading] = useState<boolean>(false);
     const [noQuestions, setNoQuestions] = useState<boolean>(false);
+    const [showBudgetModal, setShowBudgetModal] = useState(false);
 
     useEffect(() => {
         fetchEquipmentData();
@@ -60,6 +65,26 @@ const ActivityQuestionnaireScreen: React.FC<ActivityQuestionnaireScreenProps> = 
         if (equipmentData && questions.length === 0) {
             fetchQuestions();
         }
+    }, [equipmentData]);
+
+    // Enriquecer dados do equipamento (setor) caso o backend não retorne o objeto completo
+    useEffect(() => {
+        const enrichSectorIfNeeded = async () => {
+            try {
+                if (!equipmentData) return;
+                if (equipmentData.sector && (equipmentData.sector.name || equipmentData.sector.complete_name)) return;
+                const sectorId = equipmentData.sector_id;
+                const clientId = equipmentData.client_id || equipmentData.client?.id;
+                if (!sectorId || !clientId) return;
+                const token = await AsyncStorage.getItem("access_token");
+                if (!token) return;
+                const sectorDetails = await ClientService.getSectorDetails(String(clientId), Number(sectorId), token);
+                setEquipmentData((prev: any) => ({ ...prev, sector: sectorDetails }));
+            } catch (e) {
+                console.warn('[ActivityQuestionnaireScreen] Falha ao enriquecer setor:', (e as any)?.message);
+            }
+        };
+        enrichSectorIfNeeded();
     }, [equipmentData]);
 
     const fetchEquipmentData = async () => {
@@ -75,7 +100,8 @@ const ActivityQuestionnaireScreen: React.FC<ActivityQuestionnaireScreenProps> = 
             if (isConnected) {
                 console.log('[ActivityQuestionnaireScreen] Modo online, buscando dados do equipamento:', equipmentId);
 
-                const apiClient = await import('../../Context/ApiClient').then(m => m.default);
+                // Import estático para evitar problemas de bundling
+                const { default: apiClient } = require('../../Context/ApiClient');
                 const response = await apiClient.get(`/equipments/${equipmentId}`, {
                     headers: { Authorization: `Bearer ${token}` }
                 });
@@ -140,15 +166,13 @@ const ActivityQuestionnaireScreen: React.FC<ActivityQuestionnaireScreenProps> = 
             console.log('[ActivityQuestionnaireScreen] Buscando questões para atividade:', activityId);
 
             // Buscar dados do equipamento na atividade para obter activity_plan_id e version_id
-            const apiClient = await import('../../Context/ApiClient').then(m => m.default);
-            const activityEquipmentResponse = await apiClient.get(`/activities/${activityId}/equipments`, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
+            console.log('[ActivityQuestionnaireScreen] Buscando equipamentos da atividade via ActivityService...');
+            const activityEquipmentResponse = await ActivityService.fetchActivityEquipments(activityId, { token });
 
-            console.log('[ActivityQuestionnaireScreen] Dados dos equipamentos da atividade:', activityEquipmentResponse.data);
+            console.log('[ActivityQuestionnaireScreen] Dados dos equipamentos da atividade:', activityEquipmentResponse);
 
             // Encontrar o equipamento específico
-            const equipmentData = activityEquipmentResponse.data.results?.find((eq: any) => eq.id === activityEquipmentId);
+            const equipmentData = activityEquipmentResponse.results?.find((eq: any) => eq.id === activityEquipmentId);
 
             if (!equipmentData) {
                 console.error('[ActivityQuestionnaireScreen] Equipamento não encontrado na atividade');
@@ -169,186 +193,84 @@ const ActivityQuestionnaireScreen: React.FC<ActivityQuestionnaireScreenProps> = 
 
             console.log('[ActivityQuestionnaireScreen] Buscando questões - Version ID:', versionId);
 
-            // Tentar múltiplas abordagens para encontrar as questões
-            let questionsFound = false;
+            // Buscar questões usando o endpoint correto especificado no tarefas.md
+            console.log('[ActivityQuestionnaireScreen] Buscando questões usando endpoint correto...');
 
-            // Abordagem 2: Tentar buscar activity plans com parâmetros expandidos
-            if (!questionsFound) {
-                try {
-                    console.log('[ActivityQuestionnaireScreen] Abordagem 2: Buscando activity plans com versões expandidas...');
+            try {
+                // Usar o endpoint correto para buscar questões: GET /api/activity_plans/:activity_plan_id/versions/:version_id
+                // Precisamos primeiro obter o activity_plan_id e version_id do equipamento na atividade
 
-                    const plansResponse = await apiClient.get('/activity_plans', {
-                        headers: { Authorization: `Bearer ${token}` },
-                        params: {
-                            include_versions: true,
-                            expand: 'versions'
-                        }
-                    });
+                if (!equipmentData.activity_plan_id || !equipmentData.activity_plan_version_id) {
+                    console.error('[ActivityQuestionnaireScreen] Activity plan ID ou version ID não encontrado no equipamento');
+                    setError("Dados do plano de atividade não encontrados para este equipamento.");
+                    return;
+                }
 
-                    console.log('[ActivityQuestionnaireScreen] Activity plans com detalhes:', plansResponse.data);
+                const questionsResponse = await apiClient.get(`/activity_plans/${equipmentData.activity_plan_id}/versions/${equipmentData.activity_plan_version_id}`, {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
 
-                    // Procurar por uma versão que corresponda ao versionId
-                    let foundPlan = null;
-                    let foundVersion = null;
+                console.log('[ActivityQuestionnaireScreen] Questões recebidas:', questionsResponse.data);
 
-                    for (const plan of plansResponse.data.results || []) {
-                        if (plan.versions && plan.versions.length > 0) {
-                            for (const version of plan.versions) {
-                                if (version.id === versionId) {
-                                    foundPlan = plan;
-                                    foundVersion = version;
-                                    console.log('[ActivityQuestionnaireScreen] ENCONTROU! Plan ID:', plan.id, 'Version ID:', version.id);
-                                    break;
-                                }
-                            }
-                            if (foundPlan) break;
-                        }
-                    }
+                if (questionsResponse.data && questionsResponse.data.questions && questionsResponse.data.questions.length > 0) {
+                    setQuestions(questionsResponse.data.questions);
+                    console.log('[ActivityQuestionnaireScreen] ✅ Questões carregadas com sucesso');
 
-                    if (foundPlan && foundVersion) {
-                        const finalResponse = await ActivityService.fetchActivityQuestions(
-                            foundPlan.id,
-                            foundVersion.id,
+                    // Carregar respostas salvas
+                    try {
+                        const savedAnswersResponse = await ActivityService.fetchActivityAnswers(
+                            activityId,
+                            activityEquipmentId,
                             token
                         );
+                        console.log('[ActivityQuestionnaireScreen] Respostas salvas carregadas:', savedAnswersResponse);
 
-                        if (finalResponse && finalResponse.length > 0) {
-                            setQuestions(finalResponse);
-                            questionsFound = true;
-                            console.log('[ActivityQuestionnaireScreen] ✅ Questões encontradas com abordagem 2');
+                        // Verificar estrutura das respostas
+                        const results = savedAnswersResponse.results || savedAnswersResponse || [];
+                        console.log('[ActivityQuestionnaireScreen] Results extraídos:', results);
 
-                            // Carregar respostas salvas após encontrar as questões
-                            try {
-                                const savedAnswersResponse = await ActivityService.fetchActivityAnswers(
-                                    activityId,
-                                    activityEquipmentId,
-                                    token
+                        // Log detalhado de uploads para debug
+                        results.forEach((answer: any, index: number) => {
+                            console.log(`[ActivityQuestionnaireScreen] Resposta ${index}:`, {
+                                question_id: answer.question_id,
+                                value: answer.value,
+                                tem_uploads_urls: !!answer.uploads_urls,
+                                uploads_urls: answer.uploads_urls,
+                                tem_uploads: !!answer.uploads,
+                                uploads: answer.uploads
+                            });
+
+                            if (answer.uploads_urls && answer.uploads_urls.length > 0) {
+                                console.log(`[ActivityQuestionnaireScreen] Resposta ${index} uploads_urls detalhado:`,
+                                    answer.uploads_urls.map((url: any, i: number) => ({
+                                        index: i,
+                                        tipo: typeof url,
+                                        valor: url
+                                    }))
                                 );
-                                console.log('[ActivityQuestionnaireScreen] Respostas salvas carregadas (abordagem 2):', savedAnswersResponse);
-                                setSavedAnswersData(savedAnswersResponse.results || []);
-
-                                // Marcar questões como salvas
-                                const savedMap: { [key: string]: boolean } = {};
-                                (savedAnswersResponse.results || []).forEach((answer: any) => {
-                                    // map by field key when we know questions
-                                    const field = finalResponse.find((q: any) => q.id === answer.question_id);
-                                    if (field) savedMap[field.key] = true;
-                                });
-                                setSavedAnswers(savedMap);
-                            } catch (savedError) {
-                                console.log('[ActivityQuestionnaireScreen] Nenhuma resposta salva encontrada ou erro (abordagem 2):', savedError);
                             }
-                        }
+                        });
+
+                        setSavedAnswersData(results);
+
+                        // Marcar questões como salvas
+                        const savedMap: { [key: string]: boolean } = {};
+                        results.forEach((answer: any) => {
+                            const field = questionsResponse.data.questions.find((q: any) => q.id === answer.question_id);
+                            if (field) savedMap[field.key] = true;
+                        });
+                        setSavedAnswers(savedMap);
+                    } catch (savedError) {
+                        console.log('[ActivityQuestionnaireScreen] Nenhuma resposta salva encontrada:', savedError);
                     }
-
-                } catch (error2: any) {
-                    console.error('[ActivityQuestionnaireScreen] ❌ Erro na abordagem 2:', error2.response?.status, error2.response?.data);
+                } else {
+                    console.log('[ActivityQuestionnaireScreen] Nenhuma questão encontrada para este equipamento');
+                    setNoQuestions(true);
                 }
+            } catch (questionsError: any) {
+                console.error('[ActivityQuestionnaireScreen] Erro ao buscar questões:', questionsError.response?.status, questionsError.response?.data);
+                setError("Não foi possível carregar as questões para este equipamento.");
             }
-
-
-
-            // Abordagem 4: Tentar buscar todas as versões de todos os activity plans
-            if (!questionsFound) {
-                try {
-                    console.log('[ActivityQuestionnaireScreen] Abordagem 4: Buscando todas as versões de todos os plans...');
-
-                    const plansResponse = await apiClient.get('/activity_plans', {
-                        headers: { Authorization: `Bearer ${token}` }
-                    });
-
-                    // Para cada activity plan, tentar buscar suas versões
-                    for (const plan of plansResponse.data.results || []) {
-                        try {
-                            console.log('[ActivityQuestionnaireScreen] Tentando buscar versões do plan ID:', plan.id);
-
-                            // Buscar versões com retry para rate limiting
-                            let versionsResponse: any = null;
-                            let retries = 0;
-                            const maxRetries = 3;
-
-                            while (retries < maxRetries) {
-                                try {
-                                    versionsResponse = await apiClient.get(`/activity_plans/${plan.id}/versions`, {
-                                        headers: { Authorization: `Bearer ${token}` }
-                                    });
-                                    break; // Sucesso
-                                } catch (error: any) {
-                                    if (error.response?.status === 429 && retries < maxRetries - 1) {
-                                        const waitTime = 6 + (retries * 3); // 6s, 9s, 12s
-                                        console.log(`[ActivityQuestionnaireScreen] Rate limit atingido, aguardando ${waitTime}s antes de tentar novamente...`);
-                                        await new Promise(resolve => setTimeout(resolve, waitTime * 1000));
-                                        retries++;
-                                    } else {
-                                        throw error;
-                                    }
-                                }
-                            }
-
-                            if (!versionsResponse) {
-                                throw new Error('Falha ao obter versões após múltiplas tentativas');
-                            }
-
-                            console.log('[ActivityQuestionnaireScreen] Versões do plan', plan.id, ':', versionsResponse.data);
-
-                            if (versionsResponse.data && versionsResponse.data.results) {
-                                for (const version of versionsResponse.data.results) {
-                                    if (version.id === versionId) {
-                                        console.log('[ActivityQuestionnaireScreen] ENCONTROU! Plan ID:', plan.id, 'Version ID:', version.id);
-
-                                        const finalResponse = await ActivityService.fetchActivityQuestions(
-                                            plan.id,
-                                            version.id,
-                                            token
-                                        );
-
-                                        if (finalResponse && finalResponse.length > 0) {
-                                            setQuestions(finalResponse);
-                                            questionsFound = true;
-                                            console.log('[ActivityQuestionnaireScreen] ✅ Questões encontradas com abordagem 4');
-
-                                            // Carregar respostas salvas após encontrar as questões
-                                            try {
-                                                const savedAnswersResponse = await ActivityService.fetchActivityAnswers(
-                                                    activityId,
-                                                    activityEquipmentId,
-                                                    token
-                                                );
-                                                console.log('[ActivityQuestionnaireScreen] Respostas salvas carregadas:', savedAnswersResponse);
-                                                setSavedAnswersData(savedAnswersResponse.results || []);
-
-                                                // Marcar questões como salvas
-                                                const savedMap: { [key: string]: boolean } = {};
-                                                (savedAnswersResponse.results || []).forEach((answer: any) => {
-                                                    savedMap[answer.question_id] = true;
-                                                });
-                                                setSavedAnswers(savedMap);
-                                            } catch (savedError) {
-                                                console.log('[ActivityQuestionnaireScreen] Nenhuma resposta salva encontrada ou erro:', savedError);
-                                            }
-
-                                            break;
-                                        }
-                                    }
-                                }
-                                if (questionsFound) break;
-                            }
-                        } catch (versionError: any) {
-                            console.log('[ActivityQuestionnaireScreen] Plan', plan.id, 'não tem endpoint de versões ou erro:', versionError.response?.status);
-                        }
-                    }
-
-                } catch (error4: any) {
-                    console.error('[ActivityQuestionnaireScreen] ❌ Erro na abordagem 4:', error4.response?.status, error4.response?.data);
-                }
-            }
-
-            // Se nenhuma abordagem retornou questões, marcar que não há questões
-            if (!questionsFound) {
-                console.warn('[ActivityQuestionnaireScreen] Nenhuma questão encontrada para este plano de atividade/versão');
-                setNoQuestions(true);
-            }
-
         } catch (error: any) {
             console.error('[ActivityQuestionnaireScreen] Erro ao buscar questões:', error);
             setError("Falha ao carregar questões da atividade.");
@@ -429,46 +351,138 @@ const ActivityQuestionnaireScreen: React.FC<ActivityQuestionnaireScreenProps> = 
     const saveIndividualAnswer = async (questionId: string, answer: any) => {
         try {
             const token = await AsyncStorage.getItem("access_token");
-            if (!token) throw new Error("Token não encontrado");
+            if (!token) {
+                console.error('[ActivityQuestionnaireScreen] ❌ Token não encontrado');
+                Alert.alert(
+                    "Erro de Autenticação",
+                    "Sessão expirada. Por favor, faça login novamente.",
+                    [{ text: "OK" }]
+                );
+                throw new Error("Token não encontrado");
+            }
 
-            console.log('[ActivityQuestionnaireScreen] Salvando resposta individual:', questionId, answer);
+            console.log('[ActivityQuestionnaireScreen] 💾 Iniciando salvamento de resposta individual...');
+            console.log('[ActivityQuestionnaireScreen] 📝 Question ID:', questionId);
+            console.log('[ActivityQuestionnaireScreen] 📦 Answer data:', answer);
+
+            // Validar dados obrigatórios antes de enviar
+            if (!answer.question_id || answer.question_id <= 0) {
+                console.error('[ActivityQuestionnaireScreen] ❌ question_id inválido:', answer.question_id);
+                Alert.alert(
+                    "Erro de Validação",
+                    "ID da questão inválido. Por favor, tente novamente.",
+                    [{ text: "OK" }]
+                );
+                throw new Error('ID da questão inválido');
+            }
+
+            if (answer.value === undefined || answer.value === null) {
+                console.warn('[ActivityQuestionnaireScreen] ⚠️ Valor vazio, pulando salvamento para:', questionId);
+                return; // não salva valores vazios
+            }
 
             // Converter para o formato esperado pela API
             const answerData: ActivityAnswer = {
-                question_id: answer.question_id, // Já convertido no DynamicActivityQuestionnaire
+                question_id: Number(answer.question_id),
                 value: answer.value,
-                justification: answer.justification,
-                uploads: answer.uploads || []
+                justification: answer.justification || '',
+                uploads: Array.isArray(answer.uploads) ? answer.uploads : []
             };
 
-            console.log('[ActivityQuestionnaireScreen] Uploads na resposta:', answer.uploads);
-            console.log('[ActivityQuestionnaireScreen] Uploads no answerData:', answerData.uploads);
+            console.log('[ActivityQuestionnaireScreen] ✅ Dados validados para envio:', {
+                question_id: answerData.question_id,
+                hasValue: !!answerData.value,
+                hasJustification: !!answerData.justification,
+                uploadsCount: answerData.uploads?.length || 0,
+                activityId,
+                activityEquipmentId
+            });
 
-            console.log('[ActivityQuestionnaireScreen] Dados da resposta a serem enviados:', answerData);
-
-            const response = await ActivityService.postActivityAnswers(
+            console.log('[ActivityQuestionnaireScreen] 🚀 Enviando para ActivityService...');
+            const response = await ActivityService.postActivityAnswer(
                 activityId,
                 activityEquipmentId,
-                [answerData],
+                answerData,
                 token
             );
 
-            console.log('[ActivityQuestionnaireScreen] Resposta da API:', response);
+            console.log('[ActivityQuestionnaireScreen] 📬 Resposta recebida da API:', response);
 
-            // Verificar se foi salvo offline
-            if (response.offline) {
-                console.log('[ActivityQuestionnaireScreen] Resposta salva offline');
+            // Verificar flags de offline antes de mostrar alert
+            console.log('[ActivityQuestionnaireScreen] 🔍 Verificando flags de offline:', {
+                offline: response.offline,
+                queued: response.queued,
+                success: response.success
+            });
+
+            // Verificar se foi salvo offline ou online
+            if (response.offline || response.queued) {
+                console.warn('[ActivityQuestionnaireScreen] ⚠️ Resposta salva OFFLINE (será sincronizada quando houver conexão)');
+
+                // Mostrar feedback ao usuário de que foi salvo offline
+                Alert.alert(
+                    "Salvo Localmente",
+                    "Resposta salva no dispositivo e será enviada ao servidor quando houver conexão estável.",
+                    [{ text: "Entendi" }]
+                );
             } else {
-                console.log('[ActivityQuestionnaireScreen] Resposta salva online');
+                console.log('[ActivityQuestionnaireScreen] ✅ Resposta salva ONLINE no servidor com sucesso!');
             }
 
             // Marcar como salvo
             setSavedAnswers(prev => ({ ...prev, [questionId]: true }));
-            console.log('[ActivityQuestionnaireScreen] Resposta salva com sucesso:', questionId);
+            console.log('[ActivityQuestionnaireScreen] ✅ Resposta marcada como salva:', questionId);
         } catch (error: any) {
-            console.error('[ActivityQuestionnaireScreen] Erro ao salvar resposta individual:', error);
+            console.error('[ActivityQuestionnaireScreen] ❌❌❌ ERRO ao salvar resposta individual ❌❌❌');
+            console.error('[ActivityQuestionnaireScreen] 🔴 Tipo:', error?.constructor?.name);
+            console.error('[ActivityQuestionnaireScreen] 🔴 Mensagem:', error?.message);
+            console.error('[ActivityQuestionnaireScreen] 🔴 Detalhes completos:', {
+                status: error?.response?.status,
+                statusText: error?.response?.statusText,
+                data: error?.response?.data,
+                questionId,
+                activityId,
+                activityEquipmentId
+            });
+
             // Marcar como não salvo em caso de erro
             setSavedAnswers(prev => ({ ...prev, [questionId]: false }));
+
+            // Mostrar mensagem de erro apropriada ao usuário
+            let errorMessage = "Erro ao salvar resposta. ";
+
+            if (error?.message?.includes('validação')) {
+                errorMessage += "Verifique se todos os campos obrigatórios foram preenchidos corretamente.";
+            } else if (error?.response?.status === 401) {
+                errorMessage += "Sessão expirada. Por favor, faça login novamente.";
+            } else if (error?.response?.status === 403) {
+                errorMessage += "Você não tem permissão para realizar esta ação.";
+            } else if (error?.response?.status === 404) {
+                errorMessage += "Atividade ou equipamento não encontrado.";
+            } else if (error?.response?.status >= 500) {
+                errorMessage += "Erro no servidor. Tente novamente em alguns instantes.";
+            } else if (!error?.response) {
+                errorMessage += "Problema de conexão. Verifique sua internet.";
+            } else {
+                errorMessage += "Por favor, tente novamente.";
+            }
+
+            Alert.alert(
+                "Erro ao Salvar",
+                errorMessage,
+                [
+                    {
+                        text: "Ver Detalhes",
+                        onPress: () => {
+                            const details = error?.response?.data
+                                ? JSON.stringify(error.response.data, null, 2)
+                                : error?.message || "Erro desconhecido";
+                            Alert.alert("Detalhes do Erro", details);
+                        }
+                    },
+                    { text: "OK" }
+                ]
+            );
         }
     };
 
@@ -495,37 +509,147 @@ const ActivityQuestionnaireScreen: React.FC<ActivityQuestionnaireScreenProps> = 
             const token = await AsyncStorage.getItem("access_token");
             if (!token) throw new Error("Token não encontrado");
 
-            console.log('[ActivityQuestionnaireScreen] Concluindo atividade');
-
-            const response = await ActivityService.patchActivityEquipment(
-                activityId,
-                activityEquipmentId,
-                { status: "closed" },
-                token
-            );
-
-            console.log('[ActivityQuestionnaireScreen] Resposta da conclusão:', response);
-
-            // Limpar dados locais após conclusão bem-sucedida
-            await clearLocalData();
-
-            // Verificar se foi salvo offline
-            if (response.offline) {
+            // Se a política for spot, perguntar ao usuário sobre orçamento
+            if (budgetPolicy === "spot") {
                 Alert.alert(
-                    "📱 Modo Offline",
-                    "A atividade foi marcada para conclusão e será processada quando houver conexão com a internet.",
-                    [{ text: "OK", onPress: () => navigation.goBack() }]
+                    t('common.confirm'),
+                    t('activityQuestionnaire.questionnaire'),
+                    [
+                        {
+                            text: t('activityQuestionnaire.sendToBudget'),
+                            onPress: async () => {
+                                try {
+                                    // Alterar status para waiting_budget_approval
+                                    await activityService.updateActivityStatus(
+                                        activityId,
+                                        "waiting_budget_approval",
+                                        token
+                                    );
+                                    await clearLocalData();
+                                    Alert.alert(
+                                        "Sucesso",
+                                        "Atividade enviada para aprovação de orçamento",
+                                        [{ text: "OK", onPress: () => navigation.navigate("ActivityHistoryScreen" as any) }]
+                                    );
+                                } catch (error: any) {
+                                    Alert.alert("Erro", error.message);
+                                } finally {
+                                    setSaving(false);
+                                }
+                            }
+                        },
+                        {
+                            text: t('activityQuestionnaire.continueExecution'),
+                            onPress: async () => {
+                                try {
+                                    // Alterar status para open
+                                    await activityService.updateActivityStatus(
+                                        activityId,
+                                        "open",
+                                        token
+                                    );
+                                    await clearLocalData();
+                                    Alert.alert(
+                                        "Sucesso",
+                                        "Atividade aberta para execução",
+                                        [{ text: "OK", onPress: () => navigation.navigate("ActivityHistoryScreen" as any) }]
+                                    );
+                                } catch (error: any) {
+                                    Alert.alert("Erro", error.message);
+                                } finally {
+                                    setSaving(false);
+                                }
+                            }
+                        },
+                        {
+                            text: "Cancelar",
+                            style: "cancel",
+                            onPress: () => setSaving(false)
+                        }
+                    ]
                 );
             } else {
-                Alert.alert(t('common.success'), t('activityQuestionnaire.completeSuccess'), [
-                    { text: "OK", onPress: () => navigation.goBack() }
-                ]);
-            }
+                // Fluxo normal - fechar atividade
+                console.log('[ActivityQuestionnaireScreen] Concluindo atividade');
 
-            setActivityCompleted(true);
+                const response = await ActivityService.patchActivityEquipment(
+                    activityId,
+                    activityEquipmentId,
+                    { status: "pending" },
+                    token
+                );
+
+                console.log('[ActivityQuestionnaireScreen] Resposta da conclusão:', response);
+
+                // Limpar dados locais após conclusão bem-sucedida
+                await clearLocalData();
+
+                // Verificar se foi salvo offline
+                if (response.offline) {
+                    Alert.alert(
+                        "📱 Modo Offline",
+                        "A atividade foi marcada para conclusão e será processada quando houver conexão com a internet.",
+                        [{ text: "OK", onPress: () => navigation.navigate("ActivityHistoryScreen" as any) }]
+                    );
+                } else {
+                    Alert.alert(t('common.success'), t('activityQuestionnaire.completeSuccess'), [
+                        { text: "OK", onPress: () => navigation.navigate("ActivityHistoryScreen" as any) }
+                    ]);
+                }
+
+                setActivityCompleted(true);
+                setSaving(false);
+            }
         } catch (error: any) {
             console.error('[ActivityQuestionnaireScreen] Erro ao concluir atividade:', error);
             Alert.alert(t('common.error'), t('activityQuestionnaire.completeError'));
+            setSaving(false);
+        }
+    };
+
+    const handleSendToBudget = async () => {
+        try {
+            setSaving(true);
+            const token = await AsyncStorage.getItem("access_token");
+            if (!token) throw new Error("Token não encontrado");
+
+            await activityService.updateActivityStatus(
+                activityId,
+                "waiting_budget_approval",
+                token
+            );
+            await clearLocalData();
+            Alert.alert(
+                t('common.success'),
+                "Atividade enviada para aprovação de orçamento",
+                [{ text: "OK", onPress: () => navigation.navigate("ActivityHistoryScreen" as any) }]
+            );
+        } catch (error: any) {
+            Alert.alert(t('common.error'), error.message || "Falha ao enviar para orçamento");
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleContinueExecution = async () => {
+        try {
+            setSaving(true);
+            const token = await AsyncStorage.getItem("access_token");
+            if (!token) throw new Error("Token não encontrado");
+
+            await activityService.updateActivityStatus(
+                activityId,
+                "pending",
+                token
+            );
+            await clearLocalData();
+            Alert.alert(
+                t('common.success'),
+                "Questionário concluído com sucesso",
+                [{ text: "OK", onPress: () => navigation.navigate("ActivityHistoryScreen" as any) }]
+            );
+        } catch (error: any) {
+            Alert.alert(t('common.error'), error.message || "Falha ao concluir questionário");
         } finally {
             setSaving(false);
         }
@@ -546,34 +670,60 @@ const ActivityQuestionnaireScreen: React.FC<ActivityQuestionnaireScreenProps> = 
                     saved: savedAnswers[question.key]
                 });
 
-                if (!value || value === '') {
-                    console.log(`[ActivityQuestionnaireScreen] ❌ Questão ${question.key} sem valor`);
+                const isEmpty = (
+                    value === undefined ||
+                    value === null ||
+                    value === '' ||
+                    (typeof value === 'string' && value.trim() === '') ||
+                    (Array.isArray(value) && value.length === 0)
+                );
+                if (isEmpty) {
+                    console.log(`[ActivityQuestionnaireScreen] ❌ Questão ${question.key} sem valor válido`);
                     return false;
                 }
 
+                // Validações específicas por tipo
+                if (question.type === 'measure') {
+                    const numValue = Number(value);
+                    if (isNaN(numValue)) {
+                        console.log(`[ActivityQuestionnaireScreen] ❌ Questão ${question.key} com valor numérico inválido`);
+                        return false;
+                    }
+                }
+                if ((question.type === 'select' || question.type === 'radio' || question.type === 'radio_with_justification') && (question as any).options) {
+                    if (!((question as any).options as any[]).includes(value)) {
+                        console.log(`[ActivityQuestionnaireScreen] ❌ Questão ${question.key} com opção inválida`);
+                        return false;
+                    }
+                }
+
                 // Verificar justificativa para radio_with_justification
-                if (question.type === 'radio_with_justification' &&
-                    value === question.justification_target) {
+                if (question.type === 'radio_with_justification' && value === (question as any).justification_target) {
                     const justification = answers[`${question.key}_justification`];
-                    if (!justification || justification === '') {
+                    if (!justification || (typeof justification === 'string' && justification.trim() === '')) {
                         console.log(`[ActivityQuestionnaireScreen] ❌ Questão ${question.key} sem justificativa`);
                         return false;
                     }
                 }
 
                 // Verificar upload obrigatório
-                if (question.has_upload) {
-                    const uploads = answers.uploads?.[question.key];
+                if ((question as any).has_upload) {
+                    const uploadsObj = answers.uploads || {};
+                    const uploads = uploadsObj[question.key];
                     console.log(`[ActivityQuestionnaireScreen] Verificando uploads para ${question.key}:`, uploads);
-                    if (!uploads || uploads.length === 0) {
-                        console.log(`[ActivityQuestionnaireScreen] ❌ Questão ${question.key} sem upload obrigatório`);
+                    if (!Array.isArray(uploads) || uploads.length === 0) {
+                        console.log(`[ActivityQuestionnaireScreen] ❌ Questão ${question.key} sem upload obrigatório (recebido: ${typeof uploads})`);
+                        return false;
+                    }
+                    const hasValidUploads = uploads.every((u: any) => u && typeof u === 'object' && typeof u.uri === 'string');
+                    if (!hasValidUploads) {
+                        console.log(`[ActivityQuestionnaireScreen] ❌ Questão ${question.key} com uploads inválidos`);
                         return false;
                     }
                     console.log(`[ActivityQuestionnaireScreen] ✅ Questão ${question.key} com uploads válidos:`, uploads.length);
                 }
 
-                // Verificar se a resposta foi salva (opcional para validação)
-                // Se tem valor, considerar válido mesmo se não foi salvo no servidor
+                // Informativo: não bloquear por não ter sido salvo ainda
                 if (!savedAnswers[question.key]) {
                     console.log(`[ActivityQuestionnaireScreen] ⚠️ Questão ${question.key} não foi salva no servidor, mas tem valor local`);
                 }
@@ -582,6 +732,32 @@ const ActivityQuestionnaireScreen: React.FC<ActivityQuestionnaireScreenProps> = 
 
         console.log('[ActivityQuestionnaireScreen] ✅ Todas as validações passaram - Botão será habilitado');
         return true;
+    };
+
+    const getPendingQuestionsCount = (): { total: number; pending: string[] } => {
+        const pending: string[] = [];
+        for (const question of questions) {
+            if (question.rules?.required) {
+                const value = answers[question.key];
+                const isEmpty = (
+                    value === undefined ||
+                    value === null ||
+                    value === '' ||
+                    (typeof value === 'string' && value.trim() === '')
+                );
+                if (isEmpty) {
+                    pending.push((question as any).label || question.key);
+                    continue;
+                }
+                if ((question as any).has_upload) {
+                    const uploads = (answers.uploads || {})[question.key];
+                    if (!Array.isArray(uploads) || uploads.length === 0) {
+                        pending.push(`${(question as any).label || question.key} (falta foto)`);
+                    }
+                }
+            }
+        }
+        return { total: pending.length, pending };
     };
 
     if (loading) {
@@ -606,6 +782,8 @@ const ActivityQuestionnaireScreen: React.FC<ActivityQuestionnaireScreenProps> = 
     }
 
     // Log para debug do botão
+    const pendingInfo = getPendingQuestionsCount();
+    const isValid = pendingInfo.total === 0;
     console.log('[ActivityQuestionnaireScreen] Renderizando tela. validateAnswers():', validateAnswers());
 
     return (
@@ -637,7 +815,7 @@ const ActivityQuestionnaireScreen: React.FC<ActivityQuestionnaireScreenProps> = 
                             <View style={styles.infoRow}>
                                 <MaterialIcons name="business" size={16} color="#666" />
                                 <Text style={styles.infoText}>
-                                    {t('activityQuestionnaire.manufacturer')}: {equipmentData.manufacturer?.name || "N/A"}
+                                    {t('activityQuestionnaire.manufacturer')}: {equipmentData.brand?.name || equipmentData.manufacturer?.name || "N/A"}
                                 </Text>
                             </View>
                             <View style={styles.infoRow}>
@@ -649,7 +827,7 @@ const ActivityQuestionnaireScreen: React.FC<ActivityQuestionnaireScreenProps> = 
                             <View style={styles.infoRow}>
                                 <MaterialIcons name="location-on" size={16} color="#666" />
                                 <Text style={styles.infoText}>
-                                    {t('activityQuestionnaire.sector')}: {equipmentData.sector?.name || "N/A"}
+                                    {t('activityQuestionnaire.sector')}: {equipmentData.sector?.complete_name || equipmentData.sector?.name || (equipmentData.sector_id ? `#${equipmentData.sector_id}` : "N/A")}
                                 </Text>
                             </View>
                         </View>
@@ -738,13 +916,56 @@ const ActivityQuestionnaireScreen: React.FC<ActivityQuestionnaireScreenProps> = 
                                         return map;
                                     })()}
                                     initialUploads={(() => {
+                                        const getUri = (u: any): string | undefined => {
+                                            if (!u) return undefined;
+                                            if (typeof u === 'string') return u;
+                                            return (
+                                                u.uri ||
+                                                u.url ||
+                                                u.path ||
+                                                u.file_url ||
+                                                (u.file && (u.file.url || u.file.path)) ||
+                                                u.content_url ||
+                                                u.contentUrl
+                                            );
+                                        };
                                         const map: { [key: string]: any[] } = {};
-                                        (savedAnswersData || []).forEach((ans: any) => {
+                                        console.log('[ActivityQuestionnaireScreen] Processando uploads - savedAnswersData:', savedAnswersData);
+
+                                        (savedAnswersData || []).forEach((ans: any, index: number) => {
                                             const field = questions.find(q => q.id === ans.question_id);
-                                            if (field && ans.uploads && Array.isArray(ans.uploads)) {
-                                                map[field.key] = ans.uploads.map((u: any) => ({ uri: u.uri || u.url || u.path, name: u.name || 'arquivo', type: u.type || 'image/jpeg' }));
+                                            const uploadsList = Array.isArray(ans.uploads_urls) ? ans.uploads_urls : ans.uploads;
+
+                                            // Debug: verificar mapeamento de campo
+                                            console.log(`[ActivityQuestionnaireScreen] Mapeamento - question_id: ${ans.question_id}, field encontrado:`, field ? field.key : 'NÃO ENCONTRADO');
+
+                                            console.log(`[ActivityQuestionnaireScreen] Resposta ${index}:`, {
+                                                question_id: ans.question_id,
+                                                tem_uploads_urls: !!ans.uploads_urls,
+                                                tem_uploads: !!ans.uploads,
+                                                uploadsList: uploadsList,
+                                                field_key: field?.key
+                                            });
+
+                                            if (field && uploadsList && Array.isArray(uploadsList)) {
+                                                const items = uploadsList
+                                                    .map((u: any) => {
+                                                        // Se for uma string (URL), use diretamente
+                                                        if (typeof u === 'string') {
+                                                            return { uri: u, name: 'arquivo', type: 'image/jpeg' };
+                                                        }
+                                                        // Se for um objeto, tente extrair a URI
+                                                        const uri = getUri(u);
+                                                        return uri ? { uri, name: 'arquivo', type: 'image/jpeg' } : null;
+                                                    })
+                                                    .filter((item: any) => item !== null);
+
+                                                console.log(`[ActivityQuestionnaireScreen] Items processados para ${field.key}:`, items);
+
+                                                if (items.length > 0) map[field.key] = items;
                                             }
                                         });
+                                        console.log('[ActivityQuestionnaireScreen] Mapa final de uploads:', map);
                                         return map;
                                     })()}
                                     questionIdField="key"
@@ -757,25 +978,122 @@ const ActivityQuestionnaireScreen: React.FC<ActivityQuestionnaireScreenProps> = 
                                 </View>
                             )}
 
-                            <View style={styles.actionButtons}>
+                            {/* Botão Enviar Orçamento - Mostrar se budgetPolicy existe */}
+                            {budgetPolicy && (equipmentStatus === 'pending' || equipmentStatus === 'open') && (
                                 <TouchableOpacity
-                                    style={[
-                                        styles.actionButton,
-                                        styles.completeButton,
-                                        !validateAnswers() && styles.actionButtonDisabled
-                                    ]}
-                                    onPress={completeActivity}
-                                    disabled={saving || !validateAnswers()}
+                                    style={[styles.actionButton, styles.budgetButton]}
+                                    onPress={() => setShowBudgetModal(true)}
                                 >
-                                    {saving ? (
-                                        <ActivityIndicator size="small" color="#fff" />
-                                    ) : (
-                                        <>
-                                            <MaterialIcons name="check" size={20} color="#fff" />
-                                            <Text style={styles.actionButtonText}>{t('activityQuestionnaire.completeActivity')}</Text>
-                                        </>
-                                    )}
+                                    <MaterialIcons name="attach-money" size={20} color="#fff" />
+                                    <Text style={styles.actionButtonText}>Enviar Orçamento</Text>
                                 </TouchableOpacity>
+                            )}
+
+                            <View style={styles.actionButtons}>
+                                {fromNewActivityFlow ? (
+                                    <>
+                                        <TouchableOpacity
+                                            style={[
+                                                styles.actionButton,
+                                                styles.saveButton,
+                                                !isValid && styles.actionButtonDisabled
+                                            ]}
+                                            onPress={() => {
+                                                if (!isValid) {
+                                                    Alert.alert(
+                                                        'Campos Obrigatórios Pendentes',
+                                                        `Você precisa preencher ${pendingInfo.total} campo(s) obrigatório(s):\n\n${pendingInfo.pending.join('\n')}`,
+                                                        [{ text: 'OK' }]
+                                                    );
+                                                } else {
+                                                    handleSendToBudget();
+                                                }
+                                            }}
+                                            disabled={saving || !isValid}
+                                        >
+                                            {saving ? (
+                                                <ActivityIndicator size="small" color="#fff" />
+                                            ) : (
+                                                <>
+                                                    {!isValid && (
+                                                        <View style={styles.badgeContainer}>
+                                                            <Text style={styles.badgeText}>{pendingInfo.total}</Text>
+                                                        </View>
+                                                    )}
+                                                    <MaterialIcons name="attach-money" size={20} color="#fff" />
+                                                    <Text style={styles.actionButtonText}>{t('activityQuestionnaire.sendToBudget')}</Text>
+                                                </>
+                                            )}
+                                        </TouchableOpacity>
+                                        <TouchableOpacity
+                                            style={[
+                                                styles.actionButton,
+                                                styles.completeButton,
+                                                !isValid && styles.actionButtonDisabled
+                                            ]}
+                                            onPress={() => {
+                                                if (!isValid) {
+                                                    Alert.alert(
+                                                        'Campos Obrigatórios Pendentes',
+                                                        `Você precisa preencher ${pendingInfo.total} campo(s) obrigatório(s):\n\n${pendingInfo.pending.join('\n')}`,
+                                                        [{ text: 'OK' }]
+                                                    );
+                                                } else {
+                                                    handleContinueExecution();
+                                                }
+                                            }}
+                                            disabled={saving || !isValid}
+                                        >
+                                            {saving ? (
+                                                <ActivityIndicator size="small" color="#fff" />
+                                            ) : (
+                                                <>
+                                                    {!isValid && (
+                                                        <View style={styles.badgeContainer}>
+                                                            <Text style={styles.badgeText}>{pendingInfo.total}</Text>
+                                                        </View>
+                                                    )}
+                                                    <MaterialIcons name="check" size={20} color="#fff" />
+                                                    <Text style={styles.actionButtonText}>{t('activityQuestionnaire.continueExecution')}</Text>
+                                                </>
+                                            )}
+                                        </TouchableOpacity>
+                                    </>
+                                ) : (
+                                    <TouchableOpacity
+                                        style={[
+                                            styles.actionButton,
+                                            styles.completeButton,
+                                            !isValid && styles.actionButtonDisabled
+                                        ]}
+                                        onPress={() => {
+                                            if (!isValid) {
+                                                Alert.alert(
+                                                    'Campos Obrigatórios Pendentes',
+                                                    `Você precisa preencher ${pendingInfo.total} campo(s) obrigatório(s):\n\n${pendingInfo.pending.join('\n')}`,
+                                                    [{ text: 'OK' }]
+                                                );
+                                            } else {
+                                                completeActivity();
+                                            }
+                                        }}
+                                        disabled={saving || !isValid}
+                                    >
+                                        {saving ? (
+                                            <ActivityIndicator size="small" color="#fff" />
+                                        ) : (
+                                            <>
+                                                {!isValid && (
+                                                    <View style={styles.badgeContainer}>
+                                                        <Text style={styles.badgeText}>{pendingInfo.total}</Text>
+                                                    </View>
+                                                )}
+                                                <MaterialIcons name="check" size={20} color="#fff" />
+                                                <Text style={styles.actionButtonText}>{t('activityQuestionnaire.completeActivity')}</Text>
+                                            </>
+                                        )}
+                                    </TouchableOpacity>
+                                )}
                             </View>
                         </>
                     ) : (
@@ -805,13 +1123,56 @@ const ActivityQuestionnaireScreen: React.FC<ActivityQuestionnaireScreenProps> = 
                                         return map;
                                     })()}
                                     initialUploads={(() => {
+                                        const getUri = (u: any): string | undefined => {
+                                            if (!u) return undefined;
+                                            if (typeof u === 'string') return u;
+                                            return (
+                                                u.uri ||
+                                                u.url ||
+                                                u.path ||
+                                                u.file_url ||
+                                                (u.file && (u.file.url || u.file.path)) ||
+                                                u.content_url ||
+                                                u.contentUrl
+                                            );
+                                        };
                                         const map: { [key: string]: any[] } = {};
-                                        (savedAnswersData || []).forEach((ans: any) => {
+                                        console.log('[ActivityQuestionnaireScreen] Processando uploads - savedAnswersData:', savedAnswersData);
+
+                                        (savedAnswersData || []).forEach((ans: any, index: number) => {
                                             const field = questions.find(q => q.id === ans.question_id);
-                                            if (field && ans.uploads && Array.isArray(ans.uploads)) {
-                                                map[field.key] = ans.uploads.map((u: any) => ({ uri: u.uri || u.url || u.path, name: u.name || 'arquivo', type: u.type || 'image/jpeg' }));
+                                            const uploadsList = Array.isArray(ans.uploads_urls) ? ans.uploads_urls : ans.uploads;
+
+                                            // Debug: verificar mapeamento de campo
+                                            console.log(`[ActivityQuestionnaireScreen] Mapeamento - question_id: ${ans.question_id}, field encontrado:`, field ? field.key : 'NÃO ENCONTRADO');
+
+                                            console.log(`[ActivityQuestionnaireScreen] Resposta ${index}:`, {
+                                                question_id: ans.question_id,
+                                                tem_uploads_urls: !!ans.uploads_urls,
+                                                tem_uploads: !!ans.uploads,
+                                                uploadsList: uploadsList,
+                                                field_key: field?.key
+                                            });
+
+                                            if (field && uploadsList && Array.isArray(uploadsList)) {
+                                                const items = uploadsList
+                                                    .map((u: any) => {
+                                                        // Se for uma string (URL), use diretamente
+                                                        if (typeof u === 'string') {
+                                                            return { uri: u, name: 'arquivo', type: 'image/jpeg' };
+                                                        }
+                                                        // Se for um objeto, tente extrair a URI
+                                                        const uri = getUri(u);
+                                                        return uri ? { uri, name: 'arquivo', type: 'image/jpeg' } : null;
+                                                    })
+                                                    .filter((item: any) => item !== null);
+
+                                                console.log(`[ActivityQuestionnaireScreen] Items processados para ${field.key}:`, items);
+
+                                                if (items.length > 0) map[field.key] = items;
                                             }
                                         });
+                                        console.log('[ActivityQuestionnaireScreen] Mapa final de uploads:', map);
                                         return map;
                                     })()}
                                     questionIdField="key"
@@ -828,6 +1189,18 @@ const ActivityQuestionnaireScreen: React.FC<ActivityQuestionnaireScreenProps> = 
                     )}
                 </View>
             </ScrollView>
+
+            {/* Modal de Enviar Orçamento */}
+            <SendToBudgetModal
+                visible={showBudgetModal}
+                onClose={() => setShowBudgetModal(false)}
+                onSuccess={() => {
+                    Alert.alert('Sucesso', 'Equipamento enviado para orçamento com sucesso!');
+                    setShowBudgetModal(false);
+                }}
+                activityId={activityId}
+                activityEquipmentId={activityEquipmentId}
+            />
         </View>
     );
 };
@@ -1011,6 +1384,10 @@ const styles = StyleSheet.create({
     completeButton: {
         backgroundColor: "#dc3545",
     },
+    budgetButton: {
+        backgroundColor: "#ffc107",
+        marginTop: 12,
+    },
     actionButtonDisabled: {
         backgroundColor: "#6c757d",
         opacity: 0.6,
@@ -1020,6 +1397,24 @@ const styles = StyleSheet.create({
         fontSize: 16,
         fontWeight: "600",
         marginLeft: 8,
+    },
+    badgeContainer: {
+        position: 'absolute',
+        top: -8,
+        right: -8,
+        backgroundColor: '#dc3545',
+        borderRadius: 12,
+        minWidth: 24,
+        height: 24,
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 2,
+        borderColor: '#fff',
+    },
+    badgeText: {
+        color: '#fff',
+        fontSize: 12,
+        fontWeight: 'bold',
     },
 });
 

@@ -57,7 +57,12 @@ const ActivityEquipmentListScreen: React.FC<ActivityEquipmentListScreenProps> = 
     const [workName, setWorkName] = useState<string>("");
     const [creatingWork, setCreatingWork] = useState<boolean>(false);
 
+    // ✅ Novo estado para os detalhes da atividade
+    const [activityDetails, setActivityDetails] = useState<any>(null);
+
     useEffect(() => {
+        // ✅ Adicionar busca dos detalhes da atividade
+        fetchActivityDetails();
         fetchEquipments();
         fetchSectors();
     }, [selectedStatus, showOnlyStarted, selectedSector, selectedSubsector]);
@@ -168,7 +173,9 @@ const ActivityEquipmentListScreen: React.FC<ActivityEquipmentListScreenProps> = 
             console.log('[ActivityEquipmentListScreen] Buscando setores para clientId:', clientId);
 
             // Buscar apenas setores pais (level 0) do cliente
-            const response = await fetch(`${await import('../../config/apiConfig').then(m => m.buildApiUrlForAccount())}/clients/${clientId}/sectors`, {
+            const { buildApiUrlForAccount } = require('../../config/apiConfig');
+            const apiUrl = await buildApiUrlForAccount();
+            const response = await fetch(`${apiUrl}/clients/${clientId}/sectors`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
 
@@ -196,9 +203,31 @@ const ActivityEquipmentListScreen: React.FC<ActivityEquipmentListScreenProps> = 
         }
     };
 
+    // ✅ Novo método para buscar detalhes da atividade
+    const fetchActivityDetails = async () => {
+        try {
+            const token = await AsyncStorage.getItem("access_token");
+            if (!token) throw new Error("Token não encontrado");
+
+            console.log('[ActivityEquipmentListScreen] Buscando detalhes da atividade:', activityId);
+
+            const response = await ActivityService.fetchActivityDetails(activityId, { token });
+            console.log('[ActivityEquipmentListScreen] Detalhes da atividade recebidos:', response);
+
+            setActivityDetails(response);
+        } catch (error: any) {
+            console.error('[ActivityEquipmentListScreen] Erro ao buscar detalhes da atividade:', error);
+            // Não bloquear a tela se não conseguir buscar detalhes
+        }
+    };
+
     const onRefresh = async () => {
         setRefreshing(true);
-        await fetchEquipments();
+        // ✅ Buscar detalhes da atividade também no refresh
+        await Promise.all([
+            fetchActivityDetails(),
+            fetchEquipments()
+        ]);
         setRefreshing(false);
     };
 
@@ -207,20 +236,26 @@ const ActivityEquipmentListScreen: React.FC<ActivityEquipmentListScreenProps> = 
         pending: "Pendente",
         open: "Aberto",
         closed: "Fechado",
+        waiting_budget_approval: "Aguardando Aprovação de Orçamento",
+        budget_not_approved: "Orçamento não aprovado",
     };
 
     const statusColors: { [key: string]: string } = {
         created: "#6c757d",
-        pending: "#ffc107",
-        open: "#007bff",
-        closed: "#28a745",
+        open: "#007bff", // Azul
+        pending: "#ffc107", // Amarelo
+        closed: "#6c757d", // Cinza
+        waiting_budget_approval: "#6f42c1", // Roxo
+        budget_not_approved: "#dc3545", // Vermelho
     };
 
     const statusIcons: { [key: string]: string } = {
         created: "add-circle",
-        pending: "pending",
         open: "play-circle",
+        pending: "schedule",
         closed: "check-circle",
+        waiting_budget_approval: "cash",
+        budget_not_approved: "close-circle",
     };
 
     const renderEquipmentCard = ({ item }: { item: any }) => {
@@ -331,6 +366,68 @@ const ActivityEquipmentListScreen: React.FC<ActivityEquipmentListScreenProps> = 
         </TouchableOpacity>
     );
 
+    // ✅ Componente para renderizar informações do cliente
+    const renderClientInfo = () => {
+        if (!activityDetails || !activityDetails.client) {
+            return null;
+        }
+
+        const { client } = activityDetails;
+        const addresses = client.addresses || [];
+
+        return (
+            <View style={styles.clientInfoSection}>
+                <Text style={styles.sectionTitle}>Informações do Cliente</Text>
+
+                {/* Nome do Cliente */}
+                <View style={styles.clientNameContainer}>
+                    <MaterialIcons name="person" size={20} color="#007bff" />
+                    <Text style={styles.clientName}>{client.name}</Text>
+                </View>
+
+                {/* Endereços do Cliente */}
+                {addresses.length > 0 && (
+                    <View style={styles.addressesContainer}>
+                        <Text style={styles.addressesTitle}>Endereços ({addresses.length})</Text>
+                        {addresses.map((address: any, index: number) => (
+                            <View key={address.id || index} style={styles.addressCard}>
+                                <View style={styles.addressHeader}>
+                                    <MaterialIcons name="location-on" size={16} color="#666" />
+                                    <Text style={styles.addressName}>{address.name || `Endereço ${index + 1}`}</Text>
+                                </View>
+                                <Text style={styles.addressText}>
+                                    {`${address.street}${address.number ? `, ${address.number}` : ''}`}
+                                    {address.complement ? `, ${address.complement}` : ''}
+                                </Text>
+                                <Text style={styles.addressText}>
+                                    {address.neighborhood}, {address.city?.name} - {address.state?.name}
+                                </Text>
+                                <Text style={styles.addressText}>
+                                    CEP: {address.zipcode || 'N/A'}
+                                </Text>
+                                {address.reference_point && (
+                                    <Text style={styles.referenceText}>
+                                        Ref: {address.reference_point}
+                                    </Text>
+                                )}
+                            </View>
+                        ))}
+                    </View>
+                )}
+
+                {/* Observação da Atividade */}
+                <View style={styles.observationContainer}>
+                    <Text style={styles.observationTitle}>Observação</Text>
+                    <Text style={styles.observationText}>
+                        {activityDetails?.observation && activityDetails.observation.trim().length > 0
+                            ? activityDetails.observation
+                            : '—'}
+                    </Text>
+                </View>
+            </View>
+        );
+    };
+
     return (
         <View style={styles.container}>
             {/* Header */}
@@ -353,6 +450,9 @@ const ActivityEquipmentListScreen: React.FC<ActivityEquipmentListScreenProps> = 
                     <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
                 }
             >
+                {/* ✅ NOVA SEÇÃO - Informações do Cliente */}
+                {renderClientInfo()}
+
                 {/* Filtros */}
                 <View style={styles.filtersSection}>
                     <Text style={styles.sectionTitle}>{t('activityEquipmentList.filters')}</Text>
@@ -936,6 +1036,85 @@ const styles = StyleSheet.create({
     confirmButtonText: {
         color: "#fff",
         fontWeight: "600",
+    },
+    clientInfoSection: {
+        backgroundColor: "#fff",
+        margin: 16,
+        borderRadius: 12,
+        padding: 16,
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+        elevation: 4,
+    },
+    clientNameContainer: {
+        flexDirection: "row",
+        alignItems: "center",
+        marginBottom: 16,
+    },
+    clientName: {
+        fontSize: 18,
+        fontWeight: "600",
+        color: "#333",
+        marginLeft: 8,
+    },
+    addressesContainer: {
+        marginTop: 8,
+    },
+    addressesTitle: {
+        fontSize: 16,
+        fontWeight: "600",
+        color: "#666",
+        marginBottom: 12,
+    },
+    addressCard: {
+        backgroundColor: "#f8f9fa",
+        borderRadius: 8,
+        padding: 12,
+        marginBottom: 8,
+        borderLeftWidth: 3,
+        borderLeftColor: "#007bff",
+    },
+    addressHeader: {
+        flexDirection: "row",
+        alignItems: "center",
+        marginBottom: 8,
+    },
+    addressName: {
+        fontSize: 14,
+        fontWeight: "600",
+        color: "#333",
+        marginLeft: 4,
+    },
+    addressText: {
+        fontSize: 13,
+        color: "#666",
+        marginBottom: 4,
+        lineHeight: 18,
+    },
+    referenceText: {
+        fontSize: 12,
+        color: "#999",
+        fontStyle: "italic",
+        marginTop: 4,
+    },
+    observationContainer: {
+        marginTop: 16,
+        paddingTop: 12,
+        borderTopWidth: 1,
+        borderTopColor: "#f0f0f0",
+    },
+    observationTitle: {
+        fontSize: 16,
+        fontWeight: "600",
+        color: "#666",
+        marginBottom: 8,
+    },
+    observationText: {
+        fontSize: 14,
+        color: "#333",
+        lineHeight: 20,
     },
 });
 

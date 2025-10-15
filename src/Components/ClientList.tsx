@@ -28,6 +28,7 @@ const ClientList: React.FC<ClientListProps> = ({ hasContract, navigation }) => {
   const { t } = useLanguage();
   const [clients, setClients] = useState<Client[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [currentSearch, setCurrentSearch] = useState(""); // Termo de busca atual aplicado
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(false);
@@ -40,24 +41,33 @@ const ClientList: React.FC<ClientListProps> = ({ hasContract, navigation }) => {
     );
   }
 
-  const fetchClients = async (query: string = "") => {
+  const fetchClients = async () => {
     try {
       setLoading(true);
       const token = await AsyncStorage.getItem("access_token");
       if (!token) throw new Error("Token de acesso não encontrado.");
 
+      // Usa o termo de busca atual que foi aplicado
+      const searchTerm = currentSearch.length >= 3 ? currentSearch : "";
+
       const response = await ClientService.getClients(
         hasContract,
         page,
         token,
-        query.length >= 3 ? query : ""
+        searchTerm
       );
 
       const clientList = response.results.map((data: any) => new Client(data));
       setClients(clientList);
-      setTotalPages(Math.ceil(response.count / 10) || 1);
+      setTotalPages(response.total_pages || Math.ceil(response.count / 10) || 1);
     } catch (error: any) {
       console.error("[ClientList] Erro ao buscar clientes:", error);
+      const status = error?.response?.status;
+      const detail = error?.response?.data?.errors?.[0]?.detail || "";
+      if (status === 404 && /Invalid page\./i.test(detail)) {
+        setPage((p) => Math.max(p - 1, 1));
+        return;
+      }
       Alert.alert(t('common.error'), t('clients.loadError'));
     } finally {
       setLoading(false);
@@ -65,12 +75,12 @@ const ClientList: React.FC<ClientListProps> = ({ hasContract, navigation }) => {
   };
 
   useEffect(() => {
-    fetchClients(searchQuery);
-  }, [page, hasContract]);
+    fetchClients();
+  }, [page, hasContract, currentSearch]);
 
   const handleSearch = () => {
     setPage(1);
-    fetchClients(searchQuery);
+    setCurrentSearch(searchQuery); // Atualiza o termo de busca atual
   };
 
   const renderClientItem = ({ item }: { item: Client }) => (
@@ -114,14 +124,42 @@ const ClientList: React.FC<ClientListProps> = ({ hasContract, navigation }) => {
         {hasContract ? t('clients.title.withContract') : t('clients.title.withoutContract')}
       </Text>
 
-      <TextInput
-        style={styles.input}
-        placeholder={t('clients.searchPlaceholder')}
-        placeholderTextColor="#666"
-        value={searchQuery}
-        onChangeText={setSearchQuery}
-        onSubmitEditing={handleSearch}
-      />
+      {currentSearch && (
+        <View style={styles.searchInfoContainer}>
+          <Text style={styles.searchInfoText}>
+            {t('clients.searchingFor')}: "{currentSearch}"
+          </Text>
+        </View>
+      )}
+
+      <View style={styles.searchContainer}>
+        <TextInput
+          style={styles.searchInput}
+          placeholder={t('clients.searchPlaceholder')}
+          placeholderTextColor="#666"
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          onSubmitEditing={handleSearch}
+        />
+        <TouchableOpacity
+          style={styles.searchButton}
+          onPress={handleSearch}
+        >
+          <Ionicons name="search" size={20} color="#fff" />
+        </TouchableOpacity>
+        {currentSearch && (
+          <TouchableOpacity
+            style={styles.clearButton}
+            onPress={() => {
+              setSearchQuery("");
+              setCurrentSearch("");
+              setPage(1);
+            }}
+          >
+            <Ionicons name="close-circle" size={20} color="#666" />
+          </TouchableOpacity>
+        )}
+      </View>
 
       {loading ? (
         <ActivityIndicator size="large" color="#007BFF" />
@@ -131,6 +169,8 @@ const ClientList: React.FC<ClientListProps> = ({ hasContract, navigation }) => {
           keyExtractor={(item) => `${item.id}`}
           renderItem={renderClientItem}
           ListEmptyComponent={<Text style={styles.emptyText}>{t('clients.empty')}</Text>}
+          contentContainerStyle={clients.length === 0 ? styles.emptyContainer : undefined}
+          showsVerticalScrollIndicator={false}
         />
       )}
 
@@ -145,7 +185,9 @@ const ClientList: React.FC<ClientListProps> = ({ hasContract, navigation }) => {
         <Text style={styles.pageText}>{t('common.page')} {page} {t('common.of')} {totalPages}</Text>
         <TouchableOpacity
           disabled={page === totalPages}
-          onPress={() => setPage(page + 1)}
+          onPress={() => {
+            if (page < totalPages) setPage(page + 1);
+          }}
           style={[styles.pageButton, page === totalPages && styles.disabledButton]}
         >
           <Text style={styles.pageButtonText}>{t('clients.next')}</Text>
@@ -167,12 +209,43 @@ const styles = StyleSheet.create({
     marginBottom: 15,
     textAlign: "center",
   },
-  input: {
+  searchContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 15,
+    position: "relative",
+  },
+  searchInput: {
+    flex: 1,
     borderWidth: 1,
     borderColor: "#ccc",
     borderRadius: 5,
     padding: 10,
-    marginBottom: 15,
+    paddingRight: 90, // Espaço para os botões
+  },
+  searchButton: {
+    position: "absolute",
+    right: 0,
+    backgroundColor: "#007BFF",
+    padding: 10,
+    borderRadius: 5,
+    marginLeft: 5,
+  },
+  clearButton: {
+    position: "absolute",
+    right: 50,
+    padding: 10,
+  },
+  searchInfoContainer: {
+    backgroundColor: "#E3F2FD",
+    padding: 8,
+    borderRadius: 5,
+    marginBottom: 10,
+  },
+  searchInfoText: {
+    fontSize: 14,
+    color: "#0D47A1",
+    fontStyle: "italic",
   },
   itemContainer: {
     padding: 15,
@@ -245,6 +318,11 @@ const styles = StyleSheet.create({
     color: "#FF0000",
     textAlign: "center",
     marginTop: 20,
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
   },
 });
 

@@ -83,25 +83,12 @@ const CreateEquipmentScreen: React.FC<CreateEquipmentScreenProps> = ({
         const accessToken = await AsyncStorage.getItem("access_token");
         if (!accessToken) throw new Error("Token de acesso não encontrado.");
 
-        // Buscar template de equipamento
-        const template = await EquipmentService.getEquipmentTemplate(accessToken);
-        setEquipmentTemplate(template);
-
-        // Inicializar campos dinâmicos com valores padrão (com guarda)
-        const dynamicData: { [key: string]: any } = {};
-        if (template && Array.isArray((template as any).fields)) {
-          (template as any).fields.forEach((field: any) => {
-            const fieldKey = field.key || field.name || '';
-            if (fieldKey) {
-              dynamicData[fieldKey] = field.default_value || "";
-            }
-          });
-        }
-        setDynamicFields(dynamicData);
-
-        // Buscar dados dos selects
+        // Buscar dados dos selects (clientes, setores, fabricantes, tipos)
         await fetchSelectData(accessToken);
 
+        // Não buscar template ao abrir a tela (conforme tarefas.md)
+        setEquipmentTemplate(null);
+        setDynamicFields({});
       } catch (error: any) {
         console.error("[CreateEquipmentScreen] Erro ao buscar dados:", error);
         Alert.alert("Erro", error.message || "Falha ao carregar dados.");
@@ -112,6 +99,46 @@ const CreateEquipmentScreen: React.FC<CreateEquipmentScreenProps> = ({
 
     fetchData();
   }, []);
+
+  // Ao selecionar um Tipo de Equipamento, buscar o template específico e renderizar campos dinâmicos
+  useEffect(() => {
+    const fetchTemplateByType = async () => {
+      try {
+        const accessToken = await AsyncStorage.getItem("access_token");
+        if (!accessToken) return;
+        if (!equipmentTypeId) {
+          setEquipmentTemplate(null);
+          setDynamicFields({});
+          return;
+        }
+
+        const typeId = parseInt(equipmentTypeId);
+        if (!Number.isFinite(typeId)) return;
+
+        const template = await EquipmentService.getEquipmentTemplateByEquipmentType(typeId, accessToken);
+        setEquipmentTemplate(template);
+
+        // Inicializar campos dinâmicos com valores padrão do template
+        const dynamicData: { [key: string]: any } = {};
+        if (template && Array.isArray((template as any).fields)) {
+          (template as any).fields.forEach((field: any) => {
+            const fieldKey = field.key || field.name || '';
+            if (fieldKey) {
+              dynamicData[fieldKey] = field.default_value || "";
+            }
+          });
+        }
+        setDynamicFields(dynamicData);
+      } catch (error: any) {
+        console.error('[CreateEquipmentScreen] Erro ao carregar template por tipo:', error);
+        Alert.alert('Erro', error.message || 'Falha ao carregar template do tipo de equipamento.');
+        setEquipmentTemplate(null);
+        setDynamicFields({});
+      }
+    };
+
+    fetchTemplateByType();
+  }, [equipmentTypeId]);
 
   // Buscar setores quando o cliente mudar
   useEffect(() => {
@@ -202,10 +229,30 @@ const CreateEquipmentScreen: React.FC<CreateEquipmentScreenProps> = ({
         const selectedClient = allClients.find(c => c.id === preSelectedClientId);
         console.log("[CreateEquipmentScreen] Cliente pré-selecionado encontrado na lista:", selectedClient);
       } else {
-        // Se não há cliente pré-selecionado, buscar clientes com contrato
-        console.log("[CreateEquipmentScreen] Buscando apenas clientes com contrato");
-        const clientsResponse = await ClientService.getClients(true, 1, token, "");
-        setClients(clientsResponse.results);
+        // Sem cliente pré-selecionado: buscar clientes com e sem contrato
+        console.log("[CreateEquipmentScreen] Buscando clientes (com e sem contrato)");
+        const all: any[] = [];
+        try {
+          const withContract = await ClientService.getClients(true, 1, token, "");
+          all.push(...(withContract.results || []));
+          console.log("[CreateEquipmentScreen] Clientes com contrato:", withContract.results?.length || 0);
+        } catch (err) {
+          console.log("[CreateEquipmentScreen] Erro ao buscar clientes com contrato:", err);
+        }
+
+        try {
+          const withoutContract = await ClientService.getClients(false, 1, token, "");
+          all.push(...(withoutContract.results || []));
+          console.log("[CreateEquipmentScreen] Clientes sem contrato:", withoutContract.results?.length || 0);
+        } catch (err) {
+          console.log("[CreateEquipmentScreen] Erro ao buscar clientes sem contrato:", err);
+        }
+
+        // Remover duplicados por id
+        const dedup = Array.from(new Map(all.map((c: any) => [c.id, c])).values());
+        // Ordenar por nome
+        dedup.sort((a: any, b: any) => (a.name || "").localeCompare(b.name || ""));
+        setClients(dedup);
       }
 
       // Buscar fabricantes
@@ -329,11 +376,54 @@ const CreateEquipmentScreen: React.FC<CreateEquipmentScreenProps> = ({
             if (Number.isNaN(value)) value = null;
           } else if (field.type === 'boolean') {
             value = Boolean(value);
-          } else if (field.type === 'text' || field.type === 'measure' || field.type === 'select' || field.type === 'radio' || field.type === 'date') {
-            value = value !== null && value !== undefined ? String(value).trim() : '';
+          } else if (field.type === 'measure') {
+            // Enviar no formato { label, value, justification }
+            const parsed = parseFloat(value);
+            additionalFields[fieldKey] = {
+              label: field.label || field.name || fieldKey,
+              value: Number.isNaN(parsed) ? null : parsed,
+              justification: null
+            };
+            return;
+          } else if (field.type === 'radio') {
+            // Para radio, enviar no formato esperado pelo backend
+            additionalFields[fieldKey] = {
+              label: field.label || field.name || fieldKey,
+              value: String(value).trim(),
+              justification: null
+            };
+            return;
+          } else if (field.type === 'text' || field.type === 'select' || field.type === 'date') {
+            // Todos os campos devem usar a estrutura { label, value, justification }
+            additionalFields[fieldKey] = {
+              label: field.label || field.name || fieldKey,
+              value: value !== null && value !== undefined ? String(value).trim() : '',
+              justification: null
+            };
+            return;
+          } else if (field.type === 'number') {
+            const parsed = parseFloat(value);
+            additionalFields[fieldKey] = {
+              label: field.label || field.name || fieldKey,
+              value: Number.isNaN(parsed) ? null : parsed,
+              justification: null
+            };
+            return;
+          } else if (field.type === 'boolean') {
+            additionalFields[fieldKey] = {
+              label: field.label || field.name || fieldKey,
+              value: Boolean(value),
+              justification: null
+            };
+            return;
           }
 
-          additionalFields[fieldKey] = value;
+          // Fallback - usar estrutura padrão
+          additionalFields[fieldKey] = {
+            label: field.label || field.name || fieldKey,
+            value: value,
+            justification: null
+          };
         });
 
         // Adicionar additional_fields ao payload
@@ -584,11 +674,11 @@ const CreateEquipmentScreen: React.FC<CreateEquipmentScreenProps> = ({
                 <Text style={styles.sectionTitle}>Especificações Técnicas</Text>
               </View>
 
-              {equipmentTemplate.fields
+              {(equipmentTemplate?.fields || [])
                 .filter((field: DynamicField) => (field.key || field.name) && (field.key || field.name)?.trim() !== '')
                 .sort((a, b) => (a.order || 0) - (b.order || 0))
                 .map((field: DynamicField) => (
-                  <View key={field.id || field.key} style={styles.inputGroup}>
+                  <View key={(field.id || field.key || field.name) as any} style={styles.inputGroup}>
                     <Text style={styles.inputLabel}>
                       {field.label || field.name || field.key}
                       {field.required && <Text style={styles.required}>*</Text>}

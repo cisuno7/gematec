@@ -31,16 +31,10 @@ const STATUS_OPTIONS = [
     { label: "Aberto", value: "open", icon: "play-circle" },
     { label: "Pendente", value: "pending", icon: "schedule" },
     { label: "Fechado", value: "closed", icon: "check-circle" },
+    { label: "Aguardando Aprovação de Orçamento", value: "waiting_budget_approval", icon: "cash" },
 ];
 
-const ACTIVITY_TYPES = [
-    { label: "Todos", value: "all", icon: "apps", color: "#6c757d" },
-    { label: "PMOC", value: "pmoc", icon: "build", color: "#007bff" },
-    { label: "Ordem de Serviço", value: "service_order", icon: "assignment", color: "#28a745" },
-    { label: "Assistência Técnica", value: "technical_assistance", icon: "support-agent", color: "#ffc107" },
-    { label: "Instalação", value: "instalation", icon: "settings", color: "#dc3545" },
-    { label: "Atividade", value: "unknown", icon: "assignment", color: "#6c757d" },
-];
+const DEFAULT_ACTIVITY_TYPE_CHIP = { label: "Todos", value: "all", icon: "apps", color: "#6c757d" };
 
 const ActivityHistoryScreen: React.FC<ActivityHistoryScreenProps> = ({ route, navigation }) => {
     const { t } = useLanguage();
@@ -50,12 +44,24 @@ const ActivityHistoryScreen: React.FC<ActivityHistoryScreenProps> = ({ route, na
     const [refreshing, setRefreshing] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [selectedType, setSelectedType] = useState<string>(activityTypeSlug || "all");
-    const [selectedStatus, setSelectedStatus] = useState<string[]>(status || ["open", "pending"]);
+    const [selectedTypeId, setSelectedTypeId] = useState<number | null>(null);
+    const [selectedStatus, setSelectedStatus] = useState<string[]>(status || ["all"]);
     const [currentPage, setCurrentPage] = useState(1);
-    const [perPage] = useState(10);
+    const [perPage] = useState(50);
     const [totalPages, setTotalPages] = useState(1);
     const { hasPermission } = usePermissions();
     const activityService = new ActivityService();
+
+    // Tipos de atividade dinâmicos vindos do backend
+    const [activityTypes, setActivityTypes] = useState<any[]>([]);
+
+    // Normalizar strings para comparar slugs/nomes de forma robusta
+    const canonicalize = (s?: string) => (s || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9_]+/g, '_')
+        .replace(/^_+|_+$/g, '');
 
     // Permissões
     const canViewPmoc = hasPermission("list_activities");
@@ -84,6 +90,61 @@ const ActivityHistoryScreen: React.FC<ActivityHistoryScreenProps> = ({ route, na
     useEffect(() => {
         fetchActivities();
     }, [currentPage, selectedType, selectedStatus]);
+
+    // Sempre atualizar quando voltar para a tela
+    useEffect(() => {
+        const unsubscribe = navigation.addListener('focus', () => {
+            // Reaplicar seleção com base nos params vindos da Home
+            if (route.params?.activityTypeSlug) {
+                setSelectedType(route.params.activityTypeSlug);
+            }
+            if (route.params?.status && Array.isArray(route.params.status)) {
+                setSelectedStatus(route.params.status);
+            }
+            setCurrentPage(1);
+            fetchActivities();
+        });
+        return unsubscribe;
+    }, [navigation, selectedType, selectedStatus]);
+
+    // Carregar tipos de atividade do backend (dinâmico)
+    useEffect(() => {
+        const loadTypes = async () => {
+            try {
+                const token = await AsyncStorage.getItem("access_token");
+                if (!token) return;
+                const types = await activityService.fetchActivityTypes(token);
+                setActivityTypes(types || []);
+                // Se veio slug pré-selecionado, tentar definir o ID correspondente já no carregamento
+                if ((activityTypeSlug || selectedType) && types && types.length) {
+                    const canonWanted = canonicalize(activityTypeSlug || selectedType);
+                    const found = types.find((t: any) => canonicalize(t.slug || t.name) === canonWanted);
+                    setSelectedTypeId(found ? Number(found.id) : null);
+                }
+            } catch (e: any) {
+                console.warn('[ActivityHistoryScreen] Falha ao carregar tipos de atividade:', e?.message || e);
+                setActivityTypes([]);
+            }
+        };
+        loadTypes();
+    }, []);
+
+    // Sincronizar quando os params mudarem (ex.: reentrada via outro atalho da Home)
+    useEffect(() => {
+        if (activityTypeSlug) {
+            setSelectedType(activityTypeSlug);
+            // Atualizar ID se já temos a lista de tipos carregada
+            if (activityTypes && activityTypes.length) {
+                const canonWanted = canonicalize(activityTypeSlug);
+                const found = activityTypes.find((t: any) => canonicalize(t.slug || t.name) === canonWanted);
+                setSelectedTypeId(found ? Number(found.id) : null);
+            }
+        }
+        if (status && Array.isArray(status)) {
+            setSelectedStatus(status);
+        }
+        // não chama fetch aqui para evitar dupla chamada; o listener de focus já trata
+    }, [activityTypeSlug, JSON.stringify(status), JSON.stringify(activityTypes)]);
 
     const fetchActivities = async () => {
         try {
@@ -129,6 +190,7 @@ const ActivityHistoryScreen: React.FC<ActivityHistoryScreenProps> = ({ route, na
                     page: currentPage,
                     per_page: perPage,
                     activity_type_slug: selectedType !== "all" ? selectedType : undefined,
+                    activity_type_id: selectedTypeId || undefined,
                     status: selectedStatus.includes("all") ? undefined : selectedStatus,
                     token: token,
                 };
@@ -205,23 +267,55 @@ const ActivityHistoryScreen: React.FC<ActivityHistoryScreenProps> = ({ route, na
         open: "Aberto",
         closed: "Fechado",
         pending: "Pendente",
+        waiting_budget_approval: "Aguardando Aprovação de Orçamento",
+        budget_not_approved: "Orçamento não aprovado",
     };
 
     const statusColors: { [key: string]: string } = {
-        open: "#007bff",
-        closed: "#28a745",
-        pending: "#ffc107",
+        open: "#007bff", // Azul
+        pending: "#ffc107", // Amarelo
+        closed: "#6c757d", // Cinza
+        waiting_budget_approval: "#6f42c1", // Roxo
+        budget_not_approved: "#dc3545", // Vermelho
     };
 
     const statusIcons: { [key: string]: string } = {
         open: "play-circle",
         closed: "check-circle",
         pending: "schedule",
+        waiting_budget_approval: "cash",
+        budget_not_approved: "close-circle",
     };
 
     const getActivityTypeInfo = (type: string) => {
-        const found = ACTIVITY_TYPES.find(t => t.value === type);
-        return found || ACTIVITY_TYPES[0];
+        const canon = canonicalize(type);
+        const known: Record<string, { icon: string; color: string; label: string }> = {
+            pmoc: { icon: 'build', color: '#007bff', label: 'PMOC' },
+            service_order: { icon: 'assignment', color: '#28a745', label: 'Ordem de Serviço' },
+            technical_assistance: { icon: 'support-agent', color: '#ffc107', label: 'Assistência Técnica' },
+            instalation: { icon: 'settings', color: '#dc3545', label: 'Instalação' },
+        };
+
+        // Tentar casar com o que veio do backend
+        const fromApi = activityTypes.find((t) => canonicalize(t.slug || t.name) === canon);
+        if (fromApi) {
+            const k = known[canonicalize(fromApi.slug || fromApi.name)];
+            return {
+                label: fromApi.name,
+                value: canonicalize(fromApi.slug || fromApi.name),
+                icon: k?.icon || 'assignment',
+                color: k?.color || '#6c757d',
+            };
+        }
+
+        // Se não achou, usar mapeamento conhecido ou fallback genérico
+        const k = known[canon];
+        return {
+            label: k?.label || (type || 'Atividade'),
+            value: canon || 'unknown',
+            icon: k?.icon || 'assignment',
+            color: k?.color || '#6c757d',
+        };
     };
 
     // Função para formatar data em DD/MM/YYYY de forma robusta
@@ -369,9 +463,14 @@ const ActivityHistoryScreen: React.FC<ActivityHistoryScreenProps> = ({ route, na
             setSelectedStatus(["all"]);
         } else {
             setSelectedStatus((prev) => {
+                // Se "all" estava selecionado, remove ele
+                if (prev.includes("all")) {
+                    return [value];
+                }
+                // Toggle do status específico
                 const newStatus = prev.includes(value)
                     ? prev.filter((s) => s !== value)
-                    : [...prev.filter((s) => s !== "all"), value];
+                    : [...prev, value];
                 return newStatus.length === 0 ? ["all"] : newStatus;
             });
         }
@@ -418,10 +517,13 @@ const ActivityHistoryScreen: React.FC<ActivityHistoryScreenProps> = ({ route, na
             {/* Botão Nova Atividade */}
             <TouchableOpacity
                 style={styles.newActivityButton}
-                onPress={() => navigation.navigate("NewActivityModal" as any)}
+                onPress={() => {
+                    const typeToPass = selectedType !== 'all' ? selectedType : undefined;
+                    navigation.navigate("NewActivityModal" as any, { preselectedActivityTypeSlug: typeToPass });
+                }}
             >
                 <MaterialIcons name="add" size={24} color="#fff" />
-                <Text style={styles.newActivityButtonText}>Nova Atividade</Text>
+                <Text style={styles.newActivityButtonText}>{t('activity.newActivity')}</Text>
             </TouchableOpacity>
 
             <ScrollView
@@ -437,12 +539,22 @@ const ActivityHistoryScreen: React.FC<ActivityHistoryScreenProps> = ({ route, na
                     {/* Filtro de Tipo */}
                     <Text style={styles.filterLabel}>{t('activityHistory.activityType')}</Text>
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
-                        {ACTIVITY_TYPES.map((type) => (
+                        {[
+                            DEFAULT_ACTIVITY_TYPE_CHIP,
+                            ...activityTypes.map((t) => ({
+                                label: t.name,
+                                value: canonicalize(t.slug || t.name),
+                                id: t.id,
+                                icon: 'assignment',
+                                color: '#007bff',
+                            })),
+                        ].map((type) => (
                             renderFilterChip(
                                 type,
                                 selectedType === type.value,
                                 () => {
                                     setSelectedType(type.value);
+                                    setSelectedTypeId((type as any).id ? Number((type as any).id) : null);
                                     setCurrentPage(1);
                                 }
                             )

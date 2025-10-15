@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from "react";
-import { View, Text, TextInput, Button, StyleSheet, ActivityIndicator } from "react-native";
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator } from "react-native";
 import { Picker } from "@react-native-picker/picker";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import axios from "axios";
-import { API_BASE_URL, buildApiUrlForAccount } from "../config/apiConfig";
+// Removido axios; usar sempre apiClient
 import { Sector } from "../Models/Clientes";
 import CustomPicker from "./CustomPicker";
 import apiClient from "../Context/ApiClient";
+import CacheService from "../Services/CacheService";
 
 interface EquipmentFiltersProps {
   onFilter: (filters: any) => void;
@@ -14,6 +14,7 @@ interface EquipmentFiltersProps {
   clientId?: number;
   subsectors?: Sector[];
   resetKey?: number; // Chave para forçar reset dos filtros
+  showFilterButton?: boolean; // Controla se mostra o botão Filtrar
 }
 interface FiltersState {
   brand: string | number;
@@ -25,7 +26,7 @@ interface FiltersState {
   subsector_id: number | null;
 }
 
-const EquipmentFilters: React.FC<EquipmentFiltersProps> = ({ onFilter, sectorId, clientId, subsectors = [], resetKey = 0 }) => {
+const EquipmentFilters: React.FC<EquipmentFiltersProps> = ({ onFilter, sectorId, clientId, subsectors = [], resetKey = 0, showFilterButton = true }) => {
   console.log("[EquipmentFilters] Componente montado com props:", { sectorId, clientId, subsectors: subsectors.length, resetKey });
   const [filters, setFilters] = useState<FiltersState>({
     brand: "",
@@ -36,10 +37,10 @@ const EquipmentFilters: React.FC<EquipmentFiltersProps> = ({ onFilter, sectorId,
     client_id: clientId || null,
     subsector_id: null,
   });
-  const [brands, setBrands] = useState([]);
-  const [equipmentTypes, setEquipmentTypes] = useState([]);
-  const [clients, setClients] = useState([]); // Novo estado para clientes
-  const [sectors, setSectors] = useState([]);
+  const [brands, setBrands] = useState<any[]>([]);
+  const [equipmentTypes, setEquipmentTypes] = useState<any[]>([]);
+  const [clients, setClients] = useState<any[]>([]); // Novo estado para clientes
+  const [sectors, setSectors] = useState<any[]>([]);
   const [subsectorsState, setSubsectorsState] = useState<Sector[]>([]);
   const [loadingClients, setLoadingClients] = useState(false);
   const [loadingSectors, setLoadingSectors] = useState(false);
@@ -66,20 +67,59 @@ const EquipmentFilters: React.FC<EquipmentFiltersProps> = ({ onFilter, sectorId,
 
   // Buscar Clientes
   useEffect(() => {
-    fetchClients();
+    fetchClients(true);
   }, []);
 
-  const fetchClients = async () => {
+  const fetchClients = async (forceApi: boolean = false) => {
     setLoadingClients(true);
     try {
-      const token = await AsyncStorage.getItem("access_token");
-      const apiUrl = await buildApiUrlForAccount();
-      const res = await axios.get(`${apiUrl}/clients`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setClients(res.data.results || []);
+      if (!forceApi) {
+        // Tenta carregar de cache primeiro (agregando com e sem contrato)
+        const [cachedWithContract, cachedWithoutContract] = await Promise.all([
+          CacheService.get<any[]>(CacheService.KEYS.CLIENTS_WITH_CONTRACT),
+          CacheService.get<any[]>(CacheService.KEYS.CLIENTS_WITHOUT_CONTRACT)
+        ]);
+
+        if ((cachedWithContract && cachedWithContract.length > 0) ||
+          (cachedWithoutContract && cachedWithoutContract.length > 0)) {
+          const allClients = [
+            ...(cachedWithContract || []),
+            ...(cachedWithoutContract || [])
+          ];
+          const uniqueClients = Array.from(
+            new Map(allClients.map(c => [c.id, c])).values()
+          );
+          console.log("[EquipmentFilters] Clientes carregados do cache:", uniqueClients.length);
+          setClients(uniqueClients);
+          setLoadingClients(false);
+          return;
+        }
+      }
+
+      // Buscar da API e unir com/sem contrato explicitamente
+      console.log("[EquipmentFilters] Buscando clientes via apiClient /clients (com e sem contrato)");
+      const [withContract, withoutContract] = await Promise.all([
+        apiClient.get('/clients', { params: { per_page: 100, has_contract: 'true' } }),
+        apiClient.get('/clients', { params: { per_page: 100, has_contract: 'false' } }),
+      ]);
+
+      const parseList = (resp: any) => {
+        const payload = resp.data;
+        return Array.isArray(payload) ? payload : (payload?.results || []);
+      };
+      const allClients = [...parseList(withContract), ...parseList(withoutContract)];
+      const uniqueClients = Array.from(new Map(allClients.map((c: any) => [c.id, c])).values());
+
+      // Atualiza caches separadamente
+      await Promise.all([
+        CacheService.set(CacheService.KEYS.CLIENTS_WITH_CONTRACT, parseList(withContract), 30 * 60 * 1000),
+        CacheService.set(CacheService.KEYS.CLIENTS_WITHOUT_CONTRACT, parseList(withoutContract), 30 * 60 * 1000),
+      ]);
+
+      setClients(uniqueClients);
     } catch (error) {
       console.error("[EquipmentFilters] Erro ao buscar clientes:", error);
+      setClients([]); // Garantir lista vazia em caso de erro
     } finally {
       setLoadingClients(false);
     }
@@ -124,6 +164,8 @@ const EquipmentFilters: React.FC<EquipmentFiltersProps> = ({ onFilter, sectorId,
     }
   }, [filters.client_id, filters.sector_id]);
 
+  // Removido useEffect automático - agora apenas no botão "Filtrar"
+
   // Buscar Subsetores quando setor mudar
   useEffect(() => {
     const loadSubsectors = async () => {
@@ -131,14 +173,24 @@ const EquipmentFilters: React.FC<EquipmentFiltersProps> = ({ onFilter, sectorId,
         setLoadingSubsectors(true);
         setSubsectorsState([]);
         if (!filters.client_id || !filters.sector_id) return;
-        const token = await AsyncStorage.getItem("access_token");
-        if (!token) return;
-        const ClientService = (await import('../Services/ClientService')).default;
-        const response = await ClientService.getClientSectors(filters.client_id.toString(), token, undefined, filters.sector_id);
-        const list = Array.isArray(response) ? response : (response?.results || []);
+
+        console.log('[EquipmentFilters] Buscando subsetores para client_id:', filters.client_id, 'parent_id:', filters.sector_id);
+
+        // Usar apiClient diretamente com o endpoint correto
+        const response = await apiClient.get(`/clients/${filters.client_id}/sectors`, {
+          params: { parent_id: filters.sector_id }
+        });
+
+        const payload = response.data;
+        const list = Array.isArray(payload) ? payload : (payload?.results || []);
+        console.log('[EquipmentFilters] Subsetores encontrados:', list.length);
         setSubsectorsState(list);
-      } catch (error) {
+      } catch (error: any) {
         console.error('[EquipmentFilters] Erro ao buscar subsetores:', error);
+        // Se for erro 400 (parent_id inválido), não quebrar a tela
+        if (error.response?.status === 400) {
+          console.warn('[EquipmentFilters] parent_id inválido, retornando lista vazia');
+        }
         setSubsectorsState([]);
       } finally {
         setLoadingSubsectors(false);
@@ -155,7 +207,7 @@ const EquipmentFilters: React.FC<EquipmentFiltersProps> = ({ onFilter, sectorId,
       console.log("[EquipmentFilters] Token presente:", !!token);
 
       // Usar ClientService para buscar apenas setores pais (level 0)
-      const ClientService = (await import('../Services/ClientService')).default;
+      const { default: ClientService } = require('../Services/ClientService');
       const response = await ClientService.getClientSectors(selectedClientId.toString(), token!, 0);
 
       console.log("[EquipmentFilters] Resposta dos setores:", response);
@@ -184,18 +236,36 @@ const EquipmentFilters: React.FC<EquipmentFiltersProps> = ({ onFilter, sectorId,
     console.log("[EquipmentFilters] fetchBrands iniciado");
     setLoadingBrands(true);
     try {
+      // Primeiro tenta do cache
+      const cachedBrands = await CacheService.get<any[]>(CacheService.KEYS.BRANDS);
+      if (cachedBrands && cachedBrands.length > 0) {
+        console.log("[EquipmentFilters] Marcas carregadas do cache:", cachedBrands.length);
+        setBrands(cachedBrands);
+        setLoadingBrands(false);
+        return;
+      }
+
+      // Se não tem cache, busca da API
+      console.log("[EquipmentFilters] Fazendo requisição para: /brands (via apiClient)");
       const token = await AsyncStorage.getItem("access_token");
-      const apiUrl = await buildApiUrlForAccount();
-      console.log("[EquipmentFilters] Fazendo requisição para:", `${apiUrl}/brands`);
-      const res = await axios.get(`${apiUrl}/brands`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      console.log("[EquipmentFilters] Resposta da API brands:", res.data);
-      console.log("[EquipmentFilters] Marcas carregadas:", res.data.results?.length || 0);
-      console.log("[EquipmentFilters] Dados das marcas:", res.data.results);
-      setBrands(res.data.results || []);
+      if (!token) throw new Error("Token não encontrado");
+      let res;
+      try {
+        res = await apiClient.get(`/brands`, { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" } });
+      } catch (err: any) {
+        console.warn("[EquipmentFilters] Falha com Authorization. Tentando sem Authorization (compatibilidade)");
+        res = await apiClient.get(`/brands`, { headers: { Accept: "application/json" } });
+      }
+      const payload = res.data;
+      const list = Array.isArray(payload) ? payload : (payload?.results || []);
+      console.log("[EquipmentFilters] Marcas carregadas:", list.length);
+
+      // Salva no cache
+      await CacheService.set(CacheService.KEYS.BRANDS, list, 60 * 60 * 1000); // 1 hora
+      setBrands(list);
     } catch (error) {
       console.error("[EquipmentFilters] Erro ao buscar marcas:", error);
+      setBrands([]);
     } finally {
       setLoadingBrands(false);
     }
@@ -211,6 +281,16 @@ const EquipmentFilters: React.FC<EquipmentFiltersProps> = ({ onFilter, sectorId,
     console.log("[EquipmentFilters] fetchEquipmentTypes iniciado");
     setLoadingEquipmentTypes(true);
     try {
+      // Primeiro tenta do cache
+      const cachedTypes = await CacheService.get<any[]>(CacheService.KEYS.EQUIPMENT_TYPES);
+      if (cachedTypes && cachedTypes.length > 0) {
+        console.log("[EquipmentFilters] Tipos de equipamento carregados do cache:", cachedTypes.length);
+        setEquipmentTypes(cachedTypes);
+        setLoadingEquipmentTypes(false);
+        return;
+      }
+
+      // Se não tem cache, busca da API
       const token = await AsyncStorage.getItem("access_token");
       if (!token) throw new Error("Token não encontrado");
       console.log("[EquipmentFilters] Fazendo requisição para: /equipment_types (via apiClient)");
@@ -220,6 +300,9 @@ const EquipmentFilters: React.FC<EquipmentFiltersProps> = ({ onFilter, sectorId,
       const payload = res.data;
       const list = Array.isArray(payload) ? payload : (payload?.results ?? []);
       console.log("[EquipmentFilters] Tipos de equipamento carregados:", list.length);
+
+      // Salva no cache
+      await CacheService.set(CacheService.KEYS.EQUIPMENT_TYPES, list, 60 * 60 * 1000); // 1 hora
       setEquipmentTypes(list);
     } catch (error) {
       console.error("[EquipmentFilters] Erro ao buscar tipos de equipamento:", error);
@@ -243,6 +326,7 @@ const EquipmentFilters: React.FC<EquipmentFiltersProps> = ({ onFilter, sectorId,
 
   return (
     <View style={styles.container}>
+      {(() => { console.log("[EquipmentFilters] render start"); return null; })()}
       <Text style={styles.label}>Filtros</Text>
 
       {/* Filtro de Cliente - Apenas Select */}
@@ -280,11 +364,11 @@ const EquipmentFilters: React.FC<EquipmentFiltersProps> = ({ onFilter, sectorId,
         />
       )}
 
-      {/* Filtro de Patrimônio/Tag - Apenas Text */}
-      <Text style={styles.label}>Patrimônio/Tag</Text>
+      {/* Filtro de Tag - Apenas Text */}
+      <Text style={styles.label}>Tag</Text>
       <TextInput
         style={styles.input}
-        placeholder="Busca por Tag ou Patrimônio"
+        placeholder="Buscar por Tag"
         placeholderTextColor="#999"
         onChangeText={(text) => setFilters({ ...filters, search: text })}
         value={filters.search}
@@ -389,14 +473,25 @@ const EquipmentFilters: React.FC<EquipmentFiltersProps> = ({ onFilter, sectorId,
         </>
       ) : null}
 
-      <Button
-        title="Filtrar"
-        onPress={() => {
-          console.log("[EquipmentFilters] Botão Filtrar pressionado");
-          console.log("[EquipmentFilters] Filtros atuais:", filters);
-          onFilter(filters);
-        }}
-      />
+      {(() => {
+        console.log("[EquipmentFilters] showFilterButton:", showFilterButton);
+        if (showFilterButton) {
+          console.log("[EquipmentFilters] Botão Filtrar deve estar visível!");
+        }
+        return null;
+      })()}
+      {(showFilterButton !== false) && (
+        <TouchableOpacity
+          style={styles.filterButton}
+          onPress={() => {
+            console.log("[EquipmentFilters] Botão Filtrar pressionado");
+            console.log("[EquipmentFilters] Filtros atuais:", filters);
+            onFilter(filters);
+          }}
+        >
+          <Text style={styles.filterButtonText}>Filtrar</Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
 };
@@ -406,7 +501,7 @@ const styles = StyleSheet.create({
     padding: 16,
     backgroundColor: "#fff",
     borderRadius: 8,
-    marginBottom: 16,
+    marginBottom: 24,
     elevation: 1,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
@@ -443,6 +538,21 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginBottom: 12,
     fontStyle: "italic",
+  },
+  filterButton: {
+    backgroundColor: "#007BFF",
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    marginTop: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 48,
+  },
+  filterButtonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "bold",
   },
 });
 

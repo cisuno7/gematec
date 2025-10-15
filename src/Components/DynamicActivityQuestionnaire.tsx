@@ -13,6 +13,7 @@ import {
 import { Picker } from '@react-native-picker/picker';
 import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { setDynamicApiUrl } from '../config/apiConfig';
 import { ActivityDynamicField } from '../Models/ActivityDynamicField';
 import { UploadFile } from '../Models/UploadFile';
 import CustomPicker from './CustomPicker';
@@ -49,6 +50,42 @@ const DynamicActivityQuestionnaire: React.FC<DynamicActivityQuestionnaireProps> 
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
   const [savingStatus, setSavingStatus] = useState<{ [key: string]: 'saving' | 'saved' | 'error' | undefined }>({});
   const saveTimeouts = useRef<{ [key: string]: NodeJS.Timeout }>({});
+  const [imageHeaders, setImageHeaders] = useState<any | undefined>(undefined);
+  const [baseUrl, setBaseUrl] = useState<string | undefined>(undefined);
+
+  // Carregar token para exibir imagens protegidas com Authorization
+  useEffect(() => {
+    (async () => {
+      try {
+        const token = await AsyncStorage.getItem('access_token');
+        const account = await AsyncStorage.getItem('account') || undefined;
+        const apiBase = await setDynamicApiUrl(account as any);
+        if (token) setImageHeaders({ Authorization: `Bearer ${token}` });
+        setBaseUrl(apiBase);
+      } catch { }
+    })();
+  }, []);
+
+  const resolveUri = (uri?: string): string | undefined => {
+    if (!uri) return undefined;
+    if (/^https?:\/\//i.test(uri) || uri.startsWith('file://') || uri.startsWith('data:')) return uri;
+    if (uri.startsWith('/') && baseUrl) {
+      // garantir que não tenha dupla barra
+      return `${baseUrl}${uri}`.replace(/([^:]\/)\/+/, '$1/');
+    }
+    return uri;
+  };
+
+  // Log para debug de uploads
+  useEffect(() => {
+    console.log('[DynamicActivityQuestionnaire] initialUploads recebidos:', initialUploads);
+    console.log('[DynamicActivityQuestionnaire] readOnly:', readOnly);
+    if (initialUploads) {
+      Object.keys(initialUploads).forEach(key => {
+        console.log(`[DynamicActivityQuestionnaire] Uploads para campo ${key}:`, initialUploads[key]);
+      });
+    }
+  }, [initialUploads, readOnly]);
 
   // Chave para persistência local
   const getStorageKey = (questionId: string) => {
@@ -112,27 +149,49 @@ const DynamicActivityQuestionnaire: React.FC<DynamicActivityQuestionnaireProps> 
 
   // Função de salvamento automático com debounce
   const scheduleAutoSave = (questionId: string, value: any, justification?: string, uploadList?: UploadFile[]) => {
+    console.log(`[DynamicActivityQuestionnaire] 🕐 Agendando auto-save para ${questionId}...`);
+
     // Cancelar timeout anterior se existir
     if (saveTimeouts.current[questionId]) {
+      console.log(`[DynamicActivityQuestionnaire] ⏹️ Cancelando timeout anterior para ${questionId}`);
       clearTimeout(saveTimeouts.current[questionId]);
     }
 
     // Marcar como salvando
     setSavingStatus(prev => ({ ...prev, [questionId]: 'saving' }));
+    console.log(`[DynamicActivityQuestionnaire] 💾 Status: SALVANDO para ${questionId}`);
 
     // Agendar novo salvamento
     saveTimeouts.current[questionId] = setTimeout(async () => {
       try {
-        console.log(`[DynamicActivityQuestionnaire] Salvando automaticamente ${questionId} após 1 segundo...`);
+        console.log(`[DynamicActivityQuestionnaire] ⏰ Timeout atingido - iniciando salvamento de ${questionId}`);
+        console.log(`[DynamicActivityQuestionnaire] 📦 Dados a salvar:`, {
+          questionId,
+          hasValue: value !== undefined && value !== null,
+          valueType: typeof value,
+          hasJustification: !!justification,
+          uploadsCount: uploadList?.length || 0
+        });
 
         // Salvar localmente primeiro
+        console.log(`[DynamicActivityQuestionnaire] 💾 Salvando localmente primeiro...`);
         await saveDataLocally(questionId, value, justification, uploadList);
+        console.log(`[DynamicActivityQuestionnaire] ✅ Salvo localmente com sucesso`);
 
         // Salvar no servidor se a função estiver disponível
         if (onSaveAnswer) {
+          console.log(`[DynamicActivityQuestionnaire] 🌐 onSaveAnswer callback disponível - preparando envio ao servidor`);
+
           const targetField = fields.find(f => f.key === questionId);
           const fieldIndex = fields.findIndex(f => f.key === questionId);
           const questionIdNumber = (targetField && typeof targetField.id === 'number') ? (targetField.id as number) : (fieldIndex + 1);
+
+          console.log(`[DynamicActivityQuestionnaire] 🔢 Question ID numérico calculado:`, {
+            questionIdNumber,
+            fromFieldId: targetField?.id,
+            fromIndex: fieldIndex,
+            fieldKey: targetField?.key
+          });
 
           const answer = {
             question_id: questionIdNumber,
@@ -141,23 +200,36 @@ const DynamicActivityQuestionnaire: React.FC<DynamicActivityQuestionnaireProps> 
             uploads: uploadList || []
           };
 
+          console.log(`[DynamicActivityQuestionnaire] 🚀 Chamando onSaveAnswer para enviar ao servidor...`);
           await onSaveAnswer(questionId, answer);
+          console.log(`[DynamicActivityQuestionnaire] ✅ onSaveAnswer executado com sucesso`);
+        } else {
+          console.warn(`[DynamicActivityQuestionnaire] ⚠️ onSaveAnswer callback NÃO disponível - dados salvos apenas localmente`);
         }
 
         // Marcar como salvo
         setSavingStatus(prev => ({ ...prev, [questionId]: 'saved' }));
-        console.log(`[DynamicActivityQuestionnaire] ${questionId} salvo com sucesso`);
+        console.log(`[DynamicActivityQuestionnaire] ✅ ${questionId} salvo com sucesso - status: SAVED`);
 
         // Limpar status de salvo após 3 segundos
         setTimeout(() => {
           setSavingStatus(prev => ({ ...prev, [questionId]: undefined }));
+          console.log(`[DynamicActivityQuestionnaire] 🧹 Status de salvamento limpo para ${questionId}`);
         }, 3000);
 
-      } catch (error) {
-        console.error(`[DynamicActivityQuestionnaire] Erro ao salvar ${questionId}:`, error);
+      } catch (error: any) {
+        console.error(`[DynamicActivityQuestionnaire] ❌❌❌ ERRO ao salvar ${questionId} ❌❌❌`);
+        console.error(`[DynamicActivityQuestionnaire] 🔴 Tipo do erro:`, error?.constructor?.name || typeof error);
+        console.error(`[DynamicActivityQuestionnaire] 🔴 Mensagem:`, error?.message);
+        console.error(`[DynamicActivityQuestionnaire] 🔴 Stack:`, error?.stack);
+        console.error(`[DynamicActivityQuestionnaire] 🔴 Erro completo:`, error);
+
         setSavingStatus(prev => ({ ...prev, [questionId]: 'error' }));
+        console.log(`[DynamicActivityQuestionnaire] ⚠️ Status atualizado para ERROR para ${questionId}`);
       }
     }, 1000); // 1 segundo de debounce
+
+    console.log(`[DynamicActivityQuestionnaire] ✅ Timeout agendado para ${questionId} (1 segundo)`);
   };
 
   // Carregar dados salvos ao montar o componente
@@ -165,13 +237,22 @@ const DynamicActivityQuestionnaire: React.FC<DynamicActivityQuestionnaireProps> 
     loadSavedData();
   }, []);
 
-  // Atualizar estados quando valores iniciais mudarem
+  // Atualizar estados quando valores iniciais mudarem (apenas uma vez)
+  const initialValuesRef = useRef(initialValues);
+  const initialUploadsRef = useRef(initialUploads);
+
   useEffect(() => {
-    setAnswers(prev => ({ ...prev, ...initialValues }));
+    if (JSON.stringify(initialValues) !== JSON.stringify(initialValuesRef.current)) {
+      setAnswers(prev => ({ ...prev, ...initialValues }));
+      initialValuesRef.current = initialValues;
+    }
   }, [initialValues]);
 
   useEffect(() => {
-    setUploads(prev => ({ ...prev, ...initialUploads }));
+    if (JSON.stringify(initialUploads) !== JSON.stringify(initialUploadsRef.current)) {
+      setUploads(prev => ({ ...prev, ...initialUploads }));
+      initialUploadsRef.current = initialUploads;
+    }
   }, [initialUploads]);
 
   // Limpar timeouts ao desmontar
@@ -183,8 +264,32 @@ const DynamicActivityQuestionnaire: React.FC<DynamicActivityQuestionnaireProps> 
     };
   }, []);
 
+  // Notificar mudanças apenas quando houver mudanças reais, não durante a inicialização
+  const isInitialized = useRef(false);
+  const prevAnswersRef = useRef<{ [key: string]: any }>({});
+  const prevUploadsRef = useRef<{ [key: string]: UploadFile[] }>({});
+
   useEffect(() => {
-    onChange({ ...answers, uploads });
+    // Só notificar após a inicialização estar completa e se houve mudanças reais
+    if (isInitialized.current) {
+      const answersChanged = JSON.stringify(answers) !== JSON.stringify(prevAnswersRef.current);
+      const uploadsChanged = JSON.stringify(uploads) !== JSON.stringify(prevUploadsRef.current);
+
+      if (answersChanged || uploadsChanged) {
+        prevAnswersRef.current = { ...answers };
+        prevUploadsRef.current = { ...uploads };
+        onChange({ ...answers, uploads });
+      }
+    }
+  }, [answers, uploads]);
+
+  // Marcar como inicializado após o primeiro carregamento
+  useEffect(() => {
+    if (Object.keys(answers).length > 0 || Object.keys(uploads).length > 0) {
+      isInitialized.current = true;
+      prevAnswersRef.current = { ...answers };
+      prevUploadsRef.current = { ...uploads };
+    }
   }, [answers, uploads]);
 
   // Validação de campo
@@ -273,9 +378,23 @@ const DynamicActivityQuestionnaire: React.FC<DynamicActivityQuestionnaireProps> 
           )}
           {field.has_upload && (
             <View style={styles.uploadPreviewContainer}>
-              {fieldUploads.map((file, idx) => (
-                <Image key={idx} source={{ uri: file.uri }} style={styles.uploadPreview} />
-              ))}
+              {fieldUploads.length > 0 ? (
+                fieldUploads.map((file, idx) => {
+                  const fullUri = resolveUri(file.uri);
+                  return (
+                    <TouchableOpacity key={idx} onPress={() => console.log('[DynamicActivityQuestionnaire] Imagem clicada:', fullUri)}>
+                      <Image
+                        source={{ uri: fullUri as string, headers: imageHeaders }}
+                        style={styles.uploadPreview}
+                        resizeMode="cover"
+                        onError={(e) => console.log('[DynamicActivityQuestionnaire] Erro ao carregar imagem:', e.nativeEvent.error)}
+                      />
+                    </TouchableOpacity>
+                  );
+                })
+              ) : (
+                <Text style={styles.uploadErrorText}>Foto obrigatória não adicionada</Text>
+              )}
             </View>
           )}
         </View>
@@ -435,13 +554,16 @@ const DynamicActivityQuestionnaire: React.FC<DynamicActivityQuestionnaireProps> 
               </Text>
             </TouchableOpacity>
             <View style={styles.uploadPreviewContainer}>
-              {fieldUploads.map((file, idx) => (
-                <Image
-                  key={idx}
-                  source={{ uri: file.uri }}
-                  style={styles.uploadPreview}
-                />
-              ))}
+              {fieldUploads.map((file, idx) => {
+                const fullUri = resolveUri(file.uri);
+                return (
+                  <Image
+                    key={idx}
+                    source={{ uri: fullUri as string, headers: imageHeaders }}
+                    style={styles.uploadPreview}
+                  />
+                );
+              })}
             </View>
             {/* Mensagem específica para upload obrigatório */}
             {fieldUploads.length === 0 && (
@@ -581,11 +703,13 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   uploadPreview: {
-    width: 48,
-    height: 48,
+    width: 80,
+    height: 80,
     borderRadius: 8,
-    marginRight: 4,
-    marginBottom: 4,
+    marginRight: 8,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#ddd',
   },
   errorText: {
     color: '#dc3545',

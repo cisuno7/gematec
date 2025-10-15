@@ -2,10 +2,9 @@ import apiClient from "../Context/ApiClient";
 import { RoadmapResponse, RoadmapActivity } from '../Models/Roadmap';
 import OfflineService from './OfflineService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import NetInfo from '@react-native-community/netinfo';
 
 const CURRENT_ROADMAP_CACHE_KEY = 'current_roadmap';
-const ROADMAP_EQUIPMENT_CACHE_KEY_PREFIX = 'roadmap_equipment_';
-const ROADMAP_QUESTIONS_CACHE_KEY_PREFIX = 'roadmap_questions_';
 
 export class RoadmapService {
     /**
@@ -187,32 +186,7 @@ export class RoadmapService {
             console.log('[RoadmapService] Resposta paginada detectada');
             console.log('[RoadmapService] Número de resultados:', data.results.length);
 
-            // Se os resultados são roadmaps (não atividades), precisamos buscar as atividades
-            if (data.results.length > 0 && data.results[0].start_date) {
-                console.log('[RoadmapService] Roadmaps encontrados, buscando atividades...');
-                console.log('[RoadmapService] Primeiro roadmap:', JSON.stringify(data.results[0], null, 2));
-
-                // Buscar atividades do primeiro roadmap
-                try {
-                    const firstRoadmap = data.results[0];
-                    const activitiesResponse = await this.getRoadmapActivities(firstRoadmap.id);
-                    console.log('[RoadmapService] Atividades do roadmap obtidas:', activitiesResponse.activities.length);
-                    return activitiesResponse;
-                } catch (error) {
-                    console.error('[RoadmapService] Erro ao buscar atividades do roadmap:', error);
-                    // Retorna estrutura vazia se não conseguir buscar as atividades
-                    const emptyResponse = {
-                        activities: [],
-                        total: 0,
-                        date: new Date().toISOString().split('T')[0]
-                    } as RoadmapResponse;
-                    console.log('[RoadmapService] Retornando resposta vazia devido a erro');
-                    return emptyResponse;
-                }
-            }
-
-            // Se são atividades diretas
-            console.log('[RoadmapService] Atividades diretas detectadas');
+            // Mapear diretamente os itens de results para a estrutura de activities esperada pela UI
             const processedActivities = processActivities(data.results);
             const response = {
                 activities: processedActivities,
@@ -223,12 +197,13 @@ export class RoadmapService {
             return response;
         }
 
-        // Verifica se tem a estrutura direta com activities
-        if (Array.isArray(data.activities)) {
-            console.log('[RoadmapService] Estrutura direta com activities detectada');
-            console.log('[RoadmapService] Número de atividades:', data.activities.length);
-            console.log('[RoadmapService] Primeira atividade antes do processamento:', JSON.stringify(data.activities[0], null, 2));
-            const processedActivities = processActivities(data.activities);
+        // Verifica se tem a estrutura direta com results ou activities (fallback)
+        const activitiesArray = data.results || data.activities || [];
+        if (Array.isArray(activitiesArray) && activitiesArray.length > 0) {
+            console.log('[RoadmapService] Estrutura com atividades detectada');
+            console.log('[RoadmapService] Número de atividades:', activitiesArray.length);
+            console.log('[RoadmapService] Primeira atividade antes do processamento:', JSON.stringify(activitiesArray[0], null, 2));
+            const processedActivities = processActivities(activitiesArray);
             console.log('[RoadmapService] Primeira atividade após processamento:', JSON.stringify(processedActivities[0], null, 2));
             return {
                 ...data,
@@ -258,80 +233,146 @@ export class RoadmapService {
      * Primeiro tenta buscar do cache, se não encontrar, busca na API e atualiza o cache.
      */
     static async getCurrentRoadmap(forceRefresh: boolean = false): Promise<RoadmapResponse> {
-        try {
-            console.log('[RoadmapService] === INICIANDO getCurrentRoadmap ===');
+        console.log('[RoadmapService] === INICIANDO getCurrentRoadmap ===');
+        console.log('[RoadmapService] 🔄 Force refresh:', forceRefresh);
 
+        // Verificar conectividade com detalhes completos
+        const networkState = await NetInfo.fetch();
+        console.log('[RoadmapService] 🌐 Estado completo da rede:', {
+            isConnected: networkState.isConnected,
+            type: networkState.type,
+            isInternetReachable: networkState.isInternetReachable,
+            details: networkState.details
+        });
+
+        // Tentar buscar do servidor se houver conectividade
+        const shouldTryOnline = networkState.isConnected || networkState.isInternetReachable;
+
+        console.log('[RoadmapService] 📡 Decisão de busca:', {
+            shouldTryOnline,
+            reason: shouldTryOnline ? 'Rede disponível - tentando servidor' : 'Sem conexão - usando cache'
+        });
+
+        // Se não houver conexão e não for forçado, tentar cache primeiro
+        if (!shouldTryOnline && !forceRefresh) {
+            console.log('[RoadmapService] 📴 Sem conexão - buscando do cache...');
+            const cachedRoadmap = await OfflineService.getCachedData<RoadmapResponse>(CURRENT_ROADMAP_CACHE_KEY);
+            if (cachedRoadmap && cachedRoadmap.activities && cachedRoadmap.activities.length > 0) {
+                console.log('[RoadmapService] ✅ Roteiro carregado do CACHE (offline)');
+                console.log('[RoadmapService] 📦 Atividades no cache:', cachedRoadmap.activities.length);
+                const validated = await this.validateRoadmapResponse(cachedRoadmap);
+                return { ...validated, fromCache: true, offline: true };
+            } else {
+                console.warn('[RoadmapService] ⚠️ Sem conexão e sem cache disponível');
+                throw new Error('Sem conexão com a internet. Por favor, conecte-se para carregar o roteiro.');
+            }
+        }
+
+        try {
             // Tenta obter do cache primeiro (se não for forceRefresh)
             if (!forceRefresh) {
                 const cachedRoadmap = await OfflineService.getCachedData<RoadmapResponse>(CURRENT_ROADMAP_CACHE_KEY);
                 if (cachedRoadmap && cachedRoadmap.activities && cachedRoadmap.activities.length > 0) {
-                    console.log('[RoadmapService] Roteiro atual carregado do cache.');
-                    console.log('[RoadmapService] Cache data:', JSON.stringify(cachedRoadmap, null, 2));
-                    // Sempre reprocessar os dados do cache para garantir mapeamento correto
-                    return await this.validateRoadmapResponse(cachedRoadmap);
+                    console.log('[RoadmapService] 💾 Cache encontrado com', cachedRoadmap.activities.length, 'atividades');
+                    console.log('[RoadmapService] 🔄 Mas vamos buscar do servidor para atualizar...');
+                    // Não retornar aqui - continuar para buscar do servidor
                 } else if (cachedRoadmap) {
-                    console.log('[RoadmapService] Cache encontrado mas vazio, buscando da API...');
-                    // Limpa o cache vazio para forçar busca da API
+                    console.log('[RoadmapService] ⚠️ Cache encontrado mas vazio, buscando da API...');
                     await OfflineService.cacheData(CURRENT_ROADMAP_CACHE_KEY, null);
                 } else {
-                    console.log('[RoadmapService] Cache não encontrado, buscando da API...');
+                    console.log('[RoadmapService] 📭 Cache não encontrado, buscando da API...');
                 }
             } else {
-                console.log('[RoadmapService] Force refresh ativado, ignorando cache...');
-                // Limpa o cache para forçar busca da API
+                console.log('[RoadmapService] 🔄 Force refresh ativado, ignorando cache e limpando...');
                 await OfflineService.cacheData(CURRENT_ROADMAP_CACHE_KEY, null);
             }
 
-            // Se não houver cache, busca na API
-            console.log('[RoadmapService] Buscando roteiro atual da API: /me/roadmap');
+            // Buscar na API
+            console.log('[RoadmapService] 🚀 Buscando roteiro atual da API: /me/roadmap');
 
             // apiClient já configura automaticamente a URL dinâmica e Authorization
-            const response = await apiClient.get('/me/roadmap');
+            const response = await apiClient.get('/me/roadmaps');
 
-            console.log('[RoadmapService] Status da resposta:', response.status);
-            console.log('[RoadmapService] Headers da resposta:', response.headers);
-            console.log('[RoadmapService] Resposta da API:', JSON.stringify(response.data, null, 2));
+            console.log('[RoadmapService] ✅ Resposta recebida do servidor!');
+            console.log('[RoadmapService] 📊 Status da resposta:', response.status);
+            console.log('[RoadmapService] 📦 Dados recebidos:', {
+                hasData: !!response.data,
+                dataType: typeof response.data,
+                hasActivities: !!response.data?.activities,
+                activitiesCount: response.data?.activities?.length || 0
+            });
 
             // Valida a resposta da API
+            console.log('[RoadmapService] 🔍 Validando dados recebidos...');
             const validatedData = await this.validateRoadmapResponse(response.data);
+            console.log('[RoadmapService] ✅ Dados validados:', {
+                activitiesCount: validatedData.activities.length
+            });
 
             // Salva no cache
             await OfflineService.cacheData(CURRENT_ROADMAP_CACHE_KEY, validatedData);
-            console.log('[RoadmapService] Roteiro salvo no cache.');
+            console.log('[RoadmapService] 💾 Roteiro salvo no cache.');
 
-            return validatedData;
+            return { ...validatedData, fromCache: false, offline: false };
         } catch (error: any) {
-            console.error('[RoadmapService] Erro ao buscar roteiro atual:', error);
+            console.error('[RoadmapService] ❌❌❌ ERRO ao buscar roteiro atual ❌❌❌');
+            console.error('[RoadmapService] 🔴 Tipo do erro:', error?.constructor?.name || typeof error);
+            console.error('[RoadmapService] 🔴 Mensagem:', error?.message);
 
-            // Em caso de erro de rede, tenta usar o cache como fallback
-            const cachedRoadmap = await OfflineService.getCachedData<RoadmapResponse>(CURRENT_ROADMAP_CACHE_KEY);
-            if (cachedRoadmap) {
-                console.warn('[RoadmapService] Usando roteiro do cache como fallback devido a erro de rede.');
-                return await this.validateRoadmapResponse(cachedRoadmap);
+            if (error.response) {
+                console.error('[RoadmapService] 🔴 Status HTTP:', error.response.status);
+                console.error('[RoadmapService] 🔴 Dados da resposta:', error.response.data);
+
+                // Tratamento especial para 404 (sem roteiro para o dia)
+                if (error.response.status === 404) {
+                    console.log('[RoadmapService] ℹ️ Nenhum roteiro encontrado para hoje (404)');
+                    // Retornar resposta vazia em vez de erro
+                    return {
+                        activities: [],
+                        total: 0,
+                        date: new Date().toISOString(),
+                        fromCache: false,
+                        offline: false
+                    };
+                }
+            } else if (error.request) {
+                console.error('[RoadmapService] 🔴 Requisição enviada mas sem resposta do servidor');
+                console.error('[RoadmapService] 🔴 Request:', error.request);
             }
 
+            // Em caso de erro de rede, tenta usar o cache como fallback
+            console.warn('[RoadmapService] 🔄 Tentando usar cache como fallback...');
+            const cachedRoadmap = await OfflineService.getCachedData<RoadmapResponse>(CURRENT_ROADMAP_CACHE_KEY);
+            if (cachedRoadmap && cachedRoadmap.activities) {
+                console.warn('[RoadmapService] ✅ Usando roteiro do CACHE como fallback');
+                console.log('[RoadmapService] 📦 Atividades no cache:', cachedRoadmap.activities.length);
+                const validated = await this.validateRoadmapResponse(cachedRoadmap);
+                return { ...validated, fromCache: true, offline: true, error: error.message };
+            }
+
+            console.error('[RoadmapService] ❌ Sem cache disponível para fallback');
             this.handleApiError(error);
         }
     }
 
     /**
-     * Busca as atividades de um roadmap específico
+     * Busca roadmaps por mês e ano conforme documentação roadmap.md
      */
-    static async getRoadmapActivities(roadmapId: number): Promise<RoadmapResponse> {
+    static async getRoadmapsByMonth(month: number, year: number): Promise<any> {
         try {
-            console.log('[RoadmapService] Buscando atividades do roadmap:', `/roadmaps/${roadmapId}/activities`);
+            console.log('[RoadmapService] Buscando roadmaps por mês/ano conforme doc:', `/roadmaps?month=${month}&year=${year}`);
 
             // apiClient já configura automaticamente a URL dinâmica e Authorization
-            const response = await apiClient.get(`/roadmaps/${roadmapId}/activities`);
-            console.log('[RoadmapService] Atividades do roadmap:', JSON.stringify(response.data, null, 2));
+            const response = await apiClient.get('/roadmaps', {
+                params: { month, year }
+            });
 
-            // Valida e retorna as atividades
-            const validatedData = await this.validateRoadmapResponse(response.data);
+            console.log('[RoadmapService] Roadmaps recebidos:', JSON.stringify(response.data, null, 2));
 
             // Salva no cache
-            await OfflineService.cacheData(CURRENT_ROADMAP_CACHE_KEY, validatedData);
+            await OfflineService.cacheData(CURRENT_ROADMAP_CACHE_KEY, response.data);
 
-            return validatedData;
+            return response.data;
         } catch (error: any) {
             console.error('[RoadmapService] Erro ao buscar atividades do roadmap:', error);
             this.handleApiError(error);
@@ -339,130 +380,77 @@ export class RoadmapService {
     }
 
     /**
-     * Busca o roteiro para uma data específica
+     * Cria um novo roadmap conforme documentação roadmap.md
      */
-    static async getRoadmapByDate(date: string): Promise<RoadmapResponse> {
+    static async createRoadmap(activity_id: number, start_date: string, end_date: string): Promise<any> {
         try {
-            // Valida o formato da data
-            if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-                throw new Error('Formato de data inválido. Use YYYY-MM-DD');
-            }
+            console.log('[RoadmapService] Criando roadmap conforme doc:', { activity_id, start_date, end_date });
 
-            console.log('[RoadmapService] Buscando roteiro por data:', `/roadmaps/${date}`);
+            const payload = {
+                activity_id,
+                start_date,
+                end_date
+            };
 
-            // apiClient já configura automaticamente a URL dinâmica e Authorization
-            const response = await apiClient.get(`/roadmaps/${date}`);
-            return await this.validateRoadmapResponse(response.data);
-        } catch (error: any) {
-            console.error('[RoadmapService] Erro ao buscar roteiro por data:', error);
-            this.handleApiError(error);
-        }
-    }
-
-    /**
-     * Busca equipamentos de uma atividade do roadmap
-     */
-    static async getActivityEquipment(activityId: number): Promise<any[]> {
-        try {
-            // Tenta obter do cache primeiro
-            const cacheKey = `${ROADMAP_EQUIPMENT_CACHE_KEY_PREFIX}${activityId}`;
-            const cachedEquipment = await OfflineService.getCachedData<any[]>(cacheKey);
-            if (cachedEquipment) {
-                console.log('[RoadmapService] Equipamentos carregados do cache.');
-                return cachedEquipment;
-            }
-
-
-            console.log('[RoadmapService] Buscando equipamentos da atividade:', `/roadmaps/activities/${activityId}/equipment`);
-
-            // apiClient já configura automaticamente a URL dinâmica e Authorization
-            const response = await apiClient.get(`/roadmaps/activities/${activityId}/equipment`);
-            const equipment = response.data;
-
-            // Salva no cache
-            await OfflineService.cacheData(cacheKey, equipment);
-            console.log('[RoadmapService] Equipamentos salvos no cache.');
-
-            return equipment;
-        } catch (error: any) {
-            console.error('[RoadmapService] Erro ao buscar equipamentos da atividade:', error);
-
-            // Tenta usar cache como fallback
-            const cacheKey = `${ROADMAP_EQUIPMENT_CACHE_KEY_PREFIX}${activityId}`;
-            const cachedEquipment = await OfflineService.getCachedData<any[]>(cacheKey);
-            if (cachedEquipment) {
-                console.warn('[RoadmapService] Usando equipamentos do cache como fallback.');
-                return cachedEquipment;
-            }
-
-            this.handleApiError(error);
-        }
-    }
-
-    /**
-     * Busca questões de um equipamento de uma atividade do roadmap
-     */
-    static async getEquipmentQuestions(activityId: number, equipmentId: number): Promise<any[]> {
-        try {
-            // Tenta obter do cache primeiro
-            const cacheKey = `${ROADMAP_QUESTIONS_CACHE_KEY_PREFIX}${activityId}_${equipmentId}`;
-            const cachedQuestions = await OfflineService.getCachedData<any[]>(cacheKey);
-            if (cachedQuestions) {
-                console.log('[RoadmapService] Questões carregadas do cache.');
-                return cachedQuestions;
-            }
-
-
-            console.log('[RoadmapService] Buscando questões:', `/roadmaps/activities/${activityId}/equipment/${equipmentId}/questions`);
-
-
-            // apiClient já configura automaticamente a URL dinâmica e Authorization
-            const response = await apiClient.get(`/roadmaps/activities/${activityId}/equipment/${equipmentId}/questions`);
-            const questions = response.data;
-
-            // Salva no cache
-            await OfflineService.cacheData(cacheKey, questions);
-            console.log('[RoadmapService] Questões salvas no cache.');
-
-            return questions;
-        } catch (error: any) {
-            console.error('[RoadmapService] Erro ao buscar questões do equipamento:', error);
-
-            // Tenta usar cache como fallback
-            const cacheKey = `${ROADMAP_QUESTIONS_CACHE_KEY_PREFIX}${activityId}_${equipmentId}`;
-            const cachedQuestions = await OfflineService.getCachedData<any[]>(cacheKey);
-            if (cachedQuestions) {
-                console.warn('[RoadmapService] Usando questões do cache como fallback.');
-                return cachedQuestions;
-            }
-
-            this.handleApiError(error);
-        }
-    }
-
-    /**
-     * Submete respostas de questões de um equipamento
-     */
-    static async submitEquipmentAnswers(activityId: number, equipmentId: number, answers: any[]): Promise<void> {
-        try {
-
-
-
-
-            console.log('[RoadmapService] Enviando respostas do equipamento:', `/roadmaps/activities/${activityId}/equipment/${equipmentId}/answers`);
-
-            // apiClient já configura automaticamente a URL dinâmica e Authorization
-            const response = await apiClient.post(`/roadmaps/activities/${activityId}/equipment/${equipmentId}/answers`, { answers });
-
-            // Limpa o cache para forçar atualização
-            await this.clearEquipmentCache(activityId, equipmentId);
-
+            const response = await apiClient.post('/roadmaps', payload);
+            console.log('[RoadmapService] Roadmap criado:', response.data);
             return response.data;
         } catch (error: any) {
-            console.error('[RoadmapService] Erro ao enviar respostas do equipamento:', error);
+            console.error('[RoadmapService] Erro ao criar roadmap:', error);
             this.handleApiError(error);
         }
     }
+
+    /**
+     * Atualiza um roadmap conforme documentação roadmap.md
+     */
+    static async updateRoadmap(roadmap_id: number, activity_id: number, start_date: string, end_date: string): Promise<any> {
+        try {
+            console.log('[RoadmapService] Atualizando roadmap conforme doc:', { roadmap_id, activity_id, start_date, end_date });
+
+            const payload = {
+                activity_id,
+                start_date,
+                end_date
+            };
+
+            const response = await apiClient.put(`/roadmaps/${roadmap_id}`, payload);
+            console.log('[RoadmapService] Roadmap atualizado:', response.data);
+            return response.data;
+        } catch (error: any) {
+            console.error('[RoadmapService] Erro ao atualizar roadmap:', error);
+            this.handleApiError(error);
+        }
+    }
+
+    /**
+     * Deleta um roadmap conforme documentação roadmap.md
+     */
+    static async deleteRoadmap(roadmap_id: number, activity_id: number, start_date: string, end_date: string): Promise<any> {
+        try {
+            console.log('[RoadmapService] Deletando roadmap conforme doc:', { roadmap_id, activity_id, start_date, end_date });
+
+            const payload = {
+                activity_id,
+                start_date,
+                end_date
+            };
+
+            const response = await apiClient.delete(`/roadmaps/${roadmap_id}`, { data: payload });
+            console.log('[RoadmapService] Roadmap deletado com sucesso');
+            return response.data;
+        } catch (error: any) {
+            console.error('[RoadmapService] Erro ao deletar roadmap:', error);
+            this.handleApiError(error);
+        }
+    }
+
+    // ===============================================================
+    // ENDPOINTS NÃO DOCUMENTADOS REMOVIDOS conforme solicitação
+    // Use apenas os endpoints documentados no roadmap.md
+    // ===============================================================
+
+
 
 
 
@@ -488,12 +476,10 @@ export class RoadmapService {
 
 
 
-            // Tentar diferentes endpoints possíveis
+            // Usar apenas endpoints de activities (documentados)
             const possibleEndpoints = [
                 `/activities/${activityId}/status`,
-                `/roadmaps/activities/${activityId}/status`,
-                `/activities/${activityId}`,
-                `/roadmaps/activities/${activityId}`
+                `/activities/${activityId}`
             ];
 
             console.log('[RoadmapService] Tentando endpoints possíveis:', possibleEndpoints);
@@ -555,12 +541,10 @@ export class RoadmapService {
                 throw new Error('Notas não podem estar vazias');
             }
 
-            // Tentar diferentes endpoints possíveis
+            // Usar apenas endpoints de activities (documentados)
             const possibleEndpoints = [
                 `/activities/${activityId}/notes`,
-                `/roadmaps/activities/${activityId}/notes`,
-                `/activities/${activityId}`,
-                `/roadmaps/activities/${activityId}`
+                `/activities/${activityId}`
             ];
 
             console.log('[RoadmapService] Tentando endpoints possíveis:', possibleEndpoints);
@@ -608,46 +592,46 @@ export class RoadmapService {
         }
     }
 
-    /**
-     * Limpa o cache de equipamentos e questões
-     */
-    private static async clearEquipmentCache(activityId: number, equipmentId: number): Promise<void> {
-        try {
-            const equipmentCacheKey = `${ROADMAP_EQUIPMENT_CACHE_KEY_PREFIX}${activityId}`;
-            const questionsCacheKey = `${ROADMAP_QUESTIONS_CACHE_KEY_PREFIX}${activityId}_${equipmentId}`;
-
-            await AsyncStorage.multiRemove([equipmentCacheKey, questionsCacheKey]);
-            console.log('[RoadmapService] Cache de equipamentos e questões limpo.');
-        } catch (error) {
-            console.error('[RoadmapService] Erro ao limpar cache de equipamentos:', error);
-        }
-    }
 
     /**
      * Trata erros da API de forma consistente
      */
     private static handleApiError(error: any): never {
+        console.log('[RoadmapService] 🔍 Analisando erro para gerar mensagem apropriada...');
+
         if (error.response) {
             const status = error.response.status;
+            console.log('[RoadmapService] 📡 Erro com resposta HTTP:', status);
+
             switch (status) {
                 case 401:
+                    console.error('[RoadmapService] 🔐 Erro de autenticação (401)');
                     throw new Error('Token inválido ou expirado. Faça login novamente.');
                 case 403:
-                    throw new Error('Permissão negada para acessar este recurso.');
+                    console.error('[RoadmapService] 🚫 Erro de permissão (403)');
+                    throw new Error('Você não tem permissão para acessar o roteiro.');
                 case 404:
-                    // Para 404 no roadmap, retorna resposta vazia em vez de erro
+                    console.log('[RoadmapService] ℹ️ Roteiro não encontrado (404)');
                     throw new Error('Nenhum roteiro encontrado para o dia atual.');
                 case 422:
+                    console.error('[RoadmapService] ⚠️ Dados inválidos (422)');
                     throw new Error('Dados inválidos enviados para o servidor.');
                 case 500:
-                    throw new Error('Erro interno do servidor. Tente novamente mais tarde.');
+                case 502:
+                case 503:
+                case 504:
+                    console.error('[RoadmapService] 🔥 Erro do servidor (5xx):', status);
+                    throw new Error('Erro no servidor. Tente novamente em alguns instantes.');
                 default:
-                    throw new Error(`Erro do servidor: ${status}.`);
+                    console.error('[RoadmapService] ❓ Erro HTTP desconhecido:', status);
+                    throw new Error(`Erro do servidor: ${status}. Por favor, tente novamente.`);
             }
         } else if (error.request) {
-            throw new Error('Erro ao conectar ao servidor. Verifique sua conexão com a internet.');
+            console.error('[RoadmapService] 🌐 Erro de rede - sem resposta do servidor');
+            throw new Error('Não foi possível conectar ao servidor. Verifique sua conexão com a internet.');
         } else {
-            throw new Error(`Erro inesperado: ${error.message}`);
+            console.error('[RoadmapService] ⚠️ Erro inesperado:', error.message);
+            throw new Error(error.message || 'Erro inesperado ao carregar roteiro.');
         }
     }
 

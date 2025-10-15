@@ -20,6 +20,8 @@ import { usePermissions } from "../Context/PermissionsContext";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import ActivityService from "../Services/ActivityService";
 import EquipmentService from "../Services/EquipamentService";
+import SignatureService from "../Services/SignatureService";
+import SignatureRequiredModal from "../Components/SignatureRequiredModal";
 
 const { width, height } = Dimensions.get("window");
 
@@ -37,6 +39,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
     todayActivities: 0,
     totalEquipment: 0,
   });
+  const [showSignatureModal, setShowSignatureModal] = useState(false);
 
   // Animações
   const fadeAnim = useState(new Animated.Value(0))[0];
@@ -57,6 +60,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
       }),
     ]).start();
 
+    enforceSignature();
     loadStats();
   }, []);
 
@@ -64,9 +68,24 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
   useFocusEffect(
     React.useCallback(() => {
       console.log("[HomeScreen] Tela recebeu foco, recarregando estatísticas...");
+      enforceSignature();
       loadStats();
     }, [])
   );
+
+  const enforceSignature = async () => {
+    try {
+      const token = await AsyncStorage.getItem("access_token");
+      if (!token) return;
+      const needsFromFlag = (await AsyncStorage.getItem('needs_signature_pending')) === '1';
+      const needsSignature = needsFromFlag || await SignatureService.checkNeedsSignature(token);
+      if (needsSignature) {
+        setShowSignatureModal(true);
+      }
+    } catch (e) {
+      console.warn('[HomeScreen] Falha ao verificar assinatura:', (e as any)?.message || e);
+    }
+  };
 
   const loadStats = async () => {
     try {
@@ -80,39 +99,45 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
 
       console.log("[HomeScreen] Carregando estatísticas reais...");
 
-      // 1. Buscar atividades pendentes (status: pending)
-      const pendingActivitiesResponse = await ActivityService.fetchAllActivities({
-        page: 1,
-        per_page: 1, // Só precisamos do count
-        status: ["pending"],
-        token: token,
-      });
+      console.log("[HomeScreen] ===== BUSCANDO CONTADORES DO DASHBOARD =====");
+      console.log("[HomeScreen] Token presente?", !!token);
 
-      // 2. Buscar atividades abertas (status: open)
-      const openActivitiesResponse = await ActivityService.fetchAllActivities({
-        page: 1,
-        per_page: 1, // Só precisamos do count
-        status: ["open"],
-        token: token,
-      });
+      // Calcular estatísticas agregando todas as páginas
+      let createdCount = 0;
+      let openCount = 0;
+      let totalCount = 0;
 
-      // 3. Buscar total de atividades (todas)
-      const totalActivitiesResponse = await ActivityService.fetchAllActivities({
-        page: 1,
-        per_page: 1, // Só precisamos do count
-        token: token,
-      });
+      try {
+        console.log("[HomeScreen] Chamando ActivityService.getDashboardCounts...");
+        const counts = await ActivityService.getDashboardCounts({ token });
+        console.log("[HomeScreen] Contadores recebidos do ActivityService:", counts);
 
-      console.log("[HomeScreen] Estatísticas carregadas:", {
-        pendingActivities: pendingActivitiesResponse.count,
-        openActivities: openActivitiesResponse.count,
-        totalActivities: totalActivitiesResponse.count,
-      });
+        if (!counts || (counts.created === 0 && counts.open === 0 && counts.total === 0)) {
+          console.warn("[HomeScreen] ⚠️ Todos os contadores vieram como zero! Pode haver problema na API.");
+        }
+
+        createdCount = counts.created;
+        openCount = counts.open;
+        totalCount = counts.total;
+
+        console.log("[HomeScreen] Estatísticas carregadas:", {
+          createdActivities: createdCount,
+          openActivities: openCount,
+          totalActivities: totalCount,
+        });
+      } catch (dashboardError: any) {
+        console.error("[HomeScreen] ===== ERRO ESPECÍFICO DO DASHBOARD =====");
+        console.error("[HomeScreen] Erro ao buscar contadores:", dashboardError);
+        console.error("[HomeScreen] Tipo do erro:", typeof dashboardError);
+        console.error("[HomeScreen] Stack trace:", dashboardError?.stack);
+
+        console.warn("[HomeScreen] Usando valores zero como fallback");
+      }
 
       setStats({
-        pendingActivities: pendingActivitiesResponse.count || 0,
-        todayActivities: openActivitiesResponse.count || 0, // Atividades abertas como "hoje"
-        totalEquipment: totalActivitiesResponse.count || 0, // Total de atividades como "equipamentos" por enquanto
+        pendingActivities: createdCount, // Atividades criadas como "pendentes"
+        todayActivities: openCount, // Atividades abertas como "hoje"
+        totalEquipment: totalCount, // Total de atividades como "equipamentos" por enquanto
       });
 
       setLoading(false);
@@ -152,7 +177,6 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
     },
     {
       label: "Roteiro",
-      icon: "map",
       screen: "RoadmapScreen",
       implemented: true,
       color: "#2196F3",
@@ -250,18 +274,11 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
       <View style={styles.header}>
         <View style={styles.headerContent}>
           <View style={styles.userInfo}>
-            <FontAwesome name="user-circle" size={40} color="#fff" />
             <View style={styles.userText}>
               <Text style={styles.welcomeText}>{t('common.welcome')}</Text>
               <Text style={styles.userName}>{username || t('common.user')}</Text>
             </View>
           </View>
-          <TouchableOpacity style={styles.notificationButton}>
-            <Ionicons name="notifications" size={24} color="#fff" />
-            <View style={styles.notificationBadge}>
-              <Text style={styles.notificationText}>3</Text>
-            </View>
-          </TouchableOpacity>
         </View>
       </View>
 
@@ -319,7 +336,6 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
 
           {/* Mais Opções */}
           <View style={styles.moreOptionsSection}>
-            <Text style={styles.sectionTitle}>{t('dashboard.moreOptions')}</Text>
             <View style={styles.moreOptionsGrid}>
               {menuItems.slice(4).map((item, index) => (
                 <QuickActionCard
@@ -332,8 +348,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
           </View>
         </Animated.View>
       </ScrollView>
-
-
+      <SignatureRequiredModal visible={showSignatureModal} onSignatureSaved={() => setShowSignatureModal(false)} />
     </View>
   );
 };

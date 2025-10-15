@@ -11,6 +11,9 @@ import { jwtDecode } from "jwt-decode";
 import { useUser } from "../Context/UserContext";
 import { RootStackParamList } from "../Routers/AppRouter";
 import { useAppNavigation } from "../Context/NavigationContext";
+import CacheService from "../Services/CacheService";
+import SignatureService from "../Services/SignatureService";
+import SignatureRequiredModal from "../Components/SignatureRequiredModal";
 
 interface LoginScreenProps {
   route: RouteProp<RootStackParamList, 'LoginScreen'>;
@@ -24,6 +27,10 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ route, navigation }) => {
   const [isPasswordVisible, setPasswordVisible] = useState(false);
   const [isChecked, setChecked] = useState(false);
   const [accountError, setAccountError] = useState("");
+  const [showSignatureModal, setShowSignatureModal] = useState(false);
+  const [pendingAccess, setPendingAccess] = useState<string | null>(null);
+  const [pendingRefresh, setPendingRefresh] = useState<string | null>(null);
+  const [pendingAccount, setPendingAccount] = useState<string | null>(null);
   const { setUsername, login } = useUser();
   const appNavigation = useAppNavigation();
   useEffect(() => {
@@ -117,7 +124,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ route, navigation }) => {
         throw new Error('Resposta inválida da API: tokens não encontrados.');
       }
 
-      // Usar a função login do UserContext para salvar os tokens e o estado de "manter logado"
+      // Salvar tokens e conta imediatamente (antes de navegar)
       await login(response.access, response.refresh, account || '', isChecked);
       console.log('Login bem-sucedido. Tokens, conta e preferência de "manter logado" salvos via UserContext.');
 
@@ -130,6 +137,36 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ route, navigation }) => {
         console.error('Erro ao decodificar token:', tokenError);
         // Não bloquear o login por isso, apenas usar valores padrão
       }
+
+      // Verificar se precisa de assinatura antes de liberar o app
+      try {
+        const loginPayloadNeeds = (response as any).needs_signature;
+        const needsFromLogin = loginPayloadNeeds === true || loginPayloadNeeds === 'true' || loginPayloadNeeds === 1 || loginPayloadNeeds === '1';
+        let needsSignature = needsFromLogin;
+        if (!needsSignature) {
+          // Double-check via /me para garantir consistência
+          needsSignature = await SignatureService.checkNeedsSignature(response.access);
+        }
+        console.log('[LoginScreen] needs_signature (final):', needsSignature);
+        if (needsSignature) {
+          // Marcar pendência e reter tokens/conta para uso do modal
+          setPendingAccess(response.access);
+          setPendingRefresh(response.refresh);
+          setPendingAccount(account || '');
+          try { await AsyncStorage.setItem('needs_signature_pending', '1'); } catch { }
+          setShowSignatureModal(true);
+          return; // Não navega até salvar a assinatura
+        }
+      } catch (signatureError: any) {
+        console.warn('[LoginScreen] Erro ao verificar assinatura, prosseguindo:', signatureError?.message || signatureError);
+      }
+
+      // Pré-carregar dados essenciais em background
+      console.log('[LoginScreen] Iniciando pré-carregamento de dados em background');
+      CacheService.preloadEssentials(response.access).catch(error => {
+        console.error('[LoginScreen] Erro no pré-carregamento (não bloqueia login):', error);
+      });
+
       // Navegar explicitamente para a HomeScreen após o login
       navigation.navigate('AuthenticatedFlow');
       // A navegação para a tela inicial será tratada automaticamente pelo AppRouter
@@ -160,6 +197,16 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ route, navigation }) => {
         [{ text: "OK" }]
       );
     }
+  };
+
+  const handleSignatureSaved = () => {
+    console.log('[LoginScreen] Assinatura salva. Liberando aplicativo...');
+    setShowSignatureModal(false);
+    // Garantir que os tokens e a conta estão salvos (idempotente)
+    if (pendingAccess && pendingRefresh) {
+      login(pendingAccess, pendingRefresh, pendingAccount || '', isChecked).catch(() => { });
+    }
+    navigation.navigate('AuthenticatedFlow');
   };
 
   return (
@@ -228,6 +275,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ route, navigation }) => {
           <Text style={styles.loginButtonText}>Entrar</Text>
         </TouchableOpacity>
       </View>
+      <SignatureRequiredModal visible={showSignatureModal} onSignatureSaved={handleSignatureSaved} />
     </LinearGradient>
   );
 };

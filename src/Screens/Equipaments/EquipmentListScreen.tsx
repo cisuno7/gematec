@@ -16,15 +16,14 @@ import { FontAwesome } from "@expo/vector-icons";
 import EquipmentService from "../../Services/EquipamentService";
 import ActivityService from "../../Services/ActivityService";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { RouteProp } from "@react-navigation/native";
+import { RouteProp, useFocusEffect } from "@react-navigation/native";
 import { DrawerNavigationProp } from "@react-navigation/drawer";
 import { RootStackParamList } from "../../Routers/AppRouter";
 import { Equipment } from "../../Models/Equipament";
 import { usePermissions } from "../../Context/PermissionsContext";
 import ClientService from "../../Services/ClientService";
 import CustomPicker from "../../Components/CustomPicker";
-import axios from "axios";
-import { buildApiUrlForAccount } from "../../config/apiConfig";
+import apiClient from "../../Context/ApiClient";
 
 interface EquipmentListScreenProps {
   route: RouteProp<RootStackParamList, "EquipmentListScreen">;
@@ -55,6 +54,8 @@ const EquipmentListScreen: React.FC<EquipmentListScreenProps> = ({
   const [brandFilter, setBrandFilter] = useState("");
   const [equipmentTypeFilter, setEquipmentTypeFilter] = useState("");
   const [subsectorFilter, setSubsectorFilter] = useState<number | undefined>(undefined);
+  const [statusFilter, setStatusFilter] = useState<string>("");
+  const [subsectors, setSubsectors] = useState<any[]>([]);
   const [brands, setBrands] = useState([]);
   const [equipmentTypes, setEquipmentTypes] = useState([]);
   const [loadingBrands, setLoadingBrands] = useState(false);
@@ -79,16 +80,22 @@ const EquipmentListScreen: React.FC<EquipmentListScreenProps> = ({
   const fetchBrands = async () => {
     setLoadingBrands(true);
     try {
+      console.log("[EquipmentListScreen] Fazendo requisição (apiClient) para /brands");
       const token = await AsyncStorage.getItem("access_token");
-      const apiUrl = await buildApiUrlForAccount();
-      console.log("[EquipmentListScreen] Fazendo requisição para brands:", `${apiUrl}/brands`);
-      const res = await axios.get(`${apiUrl}/brands`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      console.log("[EquipmentListScreen] Marcas carregadas:", res.data.results?.length || 0);
-      setBrands(res.data.results || []);
+      let res;
+      try {
+        res = await apiClient.get(`/brands`, { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" } });
+      } catch (err) {
+        console.warn("[EquipmentListScreen] Falha com Authorization. Tentando sem Authorization");
+        res = await apiClient.get(`/brands`, { headers: { Accept: "application/json" } });
+      }
+      const payload = res.data;
+      const list = Array.isArray(payload) ? payload : (payload?.results || []);
+      console.log("[EquipmentListScreen] Marcas carregadas:", list.length);
+      setBrands(list);
     } catch (error) {
       console.error("[EquipmentListScreen] Erro ao buscar marcas:", error);
+      setBrands([]);
     } finally {
       setLoadingBrands(false);
     }
@@ -97,16 +104,16 @@ const EquipmentListScreen: React.FC<EquipmentListScreenProps> = ({
   const fetchEquipmentTypes = async () => {
     setLoadingEquipmentTypes(true);
     try {
+      console.log("[EquipmentListScreen] Fazendo requisição (apiClient) para /equipment_types");
       const token = await AsyncStorage.getItem("access_token");
-      const apiUrl = await buildApiUrlForAccount();
-      console.log("[EquipmentListScreen] Fazendo requisição para equipment_types:", `${apiUrl}/equipment_types`);
-      const res = await axios.get(`${apiUrl}/equipment_types`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      console.log("[EquipmentListScreen] Tipos de equipamento carregados:", res.data.results?.length || 0);
-      setEquipmentTypes(res.data.results || []);
+      const res = await apiClient.get(`/equipment_types`, { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" } });
+      const payload = res.data;
+      const list = Array.isArray(payload) ? payload : (payload?.results || []);
+      console.log("[EquipmentListScreen] Tipos de equipamento carregados:", list.length);
+      setEquipmentTypes(list);
     } catch (error) {
       console.error("[EquipmentListScreen] Erro ao buscar tipos de equipamento:", error);
+      setEquipmentTypes([]);
     } finally {
       setLoadingEquipmentTypes(false);
     }
@@ -158,12 +165,17 @@ const EquipmentListScreen: React.FC<EquipmentListScreenProps> = ({
         setTotalPages(1); // Paginação local, ajuste se backend suportar
       } else {
         // Listagem normal
-        const filters: { client_id?: number; sector_id?: number; page: number; per_page: number } = {
+        const filters: { client_id?: number; sector_id?: number; page: number; per_page: number; search?: string; brand?: string; equipmentType?: string; status?: string; subsector_id?: number } = {
           page: page,
           per_page: 10,
         };
         if (selectedClientId) filters.client_id = parseInt(selectedClientId);
         if (selectedSectorId) filters.sector_id = parseInt(selectedSectorId);
+        if (searchTerm) filters.search = searchTerm;
+        if (brandFilter) filters.brand = brandFilter;
+        if (equipmentTypeFilter) filters.equipmentType = equipmentTypeFilter;
+        if (statusFilter) filters.status = statusFilter;
+        if (subsectorFilter) filters.subsector_id = subsectorFilter;
         const response = await EquipmentService.fetchEquipments(token, filters);
         setEquipmentList(response.results || []);
         setTotalPages(Math.ceil(response.count / 10) || 1);
@@ -178,13 +190,40 @@ const EquipmentListScreen: React.FC<EquipmentListScreenProps> = ({
   useEffect(() => {
     fetchClientAndSectorNames();
     fetchEquipments();
-  }, [selectedClientId, selectedSectorId, page, activityId, subsectorFilter, searchTerm, brandFilter, equipmentTypeFilter]);
+  }, [selectedClientId, selectedSectorId, page, activityId, subsectorFilter, searchTerm, brandFilter, equipmentTypeFilter, statusFilter]);
 
   // Carregar dados iniciais
   useEffect(() => {
     fetchBrands();
     fetchEquipmentTypes();
   }, []);
+
+  // Recarregar lista quando a tela ganhar foco (após criar/editar equipamento)
+  useFocusEffect(
+    React.useCallback(() => {
+      fetchEquipments();
+    }, [selectedClientId, selectedSectorId, page, activityId, subsectorFilter, searchTerm, brandFilter, equipmentTypeFilter, statusFilter])
+  );
+
+  // Carregar subsetores sempre que cliente e setor estiverem definidos
+  useEffect(() => {
+    (async () => {
+      try {
+        const token = await AsyncStorage.getItem("access_token");
+        if (!token) return;
+        if (selectedClientId && selectedSectorId) {
+          const response = await ClientService.getClientSectors(String(selectedClientId), token, undefined, parseInt(String(selectedSectorId)));
+          const list = Array.isArray(response) ? response : (response?.results || []);
+          setSubsectors(list);
+        } else {
+          setSubsectors([]);
+        }
+      } catch (e) {
+        console.warn("[EquipmentListScreen] Erro ao carregar subsetores:", e);
+        setSubsectors([]);
+      }
+    })();
+  }, [selectedClientId, selectedSectorId]);
 
 
 
@@ -215,6 +254,8 @@ const EquipmentListScreen: React.FC<EquipmentListScreenProps> = ({
               <Text style={styles.headerText}>Setor: {sectorName}</Text>
             )}
           </View>
+
+
           {hasPermission("add_equipment") && (
             <TouchableOpacity
               style={styles.createButton}
@@ -241,11 +282,41 @@ const EquipmentListScreen: React.FC<EquipmentListScreenProps> = ({
         <View style={styles.filtersSection}>
           <Text style={styles.filtersTitle}>Filtros</Text>
 
+          {/* Filtro de Status */}
+          <View style={styles.filterRow}>
+            <Text style={styles.filterLabel}>Status:</Text>
+            <CustomPicker
+              selectedValue={statusFilter}
+              onValueChange={(value) => setStatusFilter(value || "")}
+              items={[
+                { label: "Todos", value: "" },
+                { label: "Ativo", value: "active" },
+                { label: "Inativo", value: "inactive" },
+              ]}
+              placeholder="Selecione um status"
+              style={styles.picker}
+            />
+          </View>
+
+          {/* Filtro de Subsetor */}
+          {selectedClientId && selectedSectorId && (
+            <View style={styles.filterRow}>
+              <Text style={styles.filterLabel}>Subsetor:</Text>
+              <CustomPicker
+                selectedValue={subsectorFilter ? String(subsectorFilter) : ""}
+                onValueChange={(value) => setSubsectorFilter(value ? parseInt(String(value)) : undefined)}
+                items={subsectors.map((s: any) => ({ label: s.complete_name || s.name, value: s.id.toString() }))}
+                placeholder="Selecione um subsetor"
+                style={styles.picker}
+              />
+            </View>
+          )}
+
 
 
           <TextInput
             style={styles.searchInput}
-            placeholder="Buscar por Tag ou Patrimônio"
+            placeholder="Buscar por Tag"
             placeholderTextColor="#999"
             value={searchTerm}
             onChangeText={setSearchTerm}
@@ -299,7 +370,7 @@ const EquipmentListScreen: React.FC<EquipmentListScreenProps> = ({
               <View key={item.id} style={styles.itemContainer}>
                 <View style={styles.equipmentInfo}>
                   <Text style={styles.itemText}>Tag: {item.tag || "N/A"}</Text>
-                  <Text style={styles.itemText}>Patrimônio: {item.patrimony || "N/A"}</Text>
+                  {/* Removido campo Patrimônio conforme solicitado */}
                   <Text style={styles.itemText}>Fabricante: {item.brand?.name || "N/A"}</Text>
                   <Text style={styles.itemText}>Tipo: {item.equipment_type?.name || "N/A"}</Text>
                 </View>

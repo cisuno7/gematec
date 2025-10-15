@@ -84,7 +84,6 @@ const PersonalDataScreen: React.FC<PersonalDataScreenProps> = ({ route, navigati
   ];
 
   const canEdit = hasPermission("change_me");
-  const canView = hasPermission("view_user");
 
   // Animate in on mount
   useEffect(() => {
@@ -320,16 +319,7 @@ const PersonalDataScreen: React.FC<PersonalDataScreenProps> = ({ route, navigati
     );
   }
 
-  if (!canView) {
-    return (
-      <View style={styles.container}>
-        <View style={styles.errorContainer}>
-          <FontAwesome name="exclamation-triangle" size={48} color="#FF6B6B" />
-          <Text style={styles.errorText}>Você não tem permissão para visualizar seus dados.</Text>
-        </View>
-      </View>
-    );
-  }
+  // Todos podem visualizar; edição depende de permissão (canEdit)
 
   return (
     <KeyboardAvoidingView
@@ -440,7 +430,7 @@ const PersonalDataScreen: React.FC<PersonalDataScreenProps> = ({ route, navigati
               <Text style={styles.cardTitle}>Documentos</Text>
             </View>
 
-            {renderField('CPF/CNPJ', document, true, setDocument, 'Digite seu documento')}
+            {renderField('Documento', document, true, setDocument, 'Digite seu documento')}
             {renderField('RG', rg, true, setRg, 'Digite seu RG')}
             {renderField('CTPS', ctps, true, setCtps, 'Digite sua CTPS')}
           </View>

@@ -23,7 +23,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { DynamicField, EquipmentTemplate } from "../../Models/EquipmentTemplate";
 import { Equipment } from "../../Models/Equipament";
 import { setDynamicApiUrl } from "../../config/apiConfig";
-import apiClient from "../../Context/ApiClient";
+import apiClient, { getRequestStats, addRequestListener, removeRequestListener, addResponseListener, removeResponseListener, resetRequestStats, EquipmentLock } from "../../Context/ApiClient";
 
 const { width } = Dimensions.get('window');
 
@@ -60,20 +60,67 @@ const EditEquipmentScreen: React.FC<EditEquipmentScreenProps> = ({
 
   // Estados para campos dinâmicos
   const [dynamicFields, setDynamicFields] = useState<{ [key: string]: any }>({});
+  const [hasUserChangedType, setHasUserChangedType] = useState<boolean>(false);
 
   useEffect(() => {
+    // Monitor de requisições específico desta tela (menos frequente para reduzir logs)
+    resetRequestStats();
+    const reqLogger = (ev: any) => {
+      // Só loga requisições importantes desta tela
+      if (ev.url?.includes('/equipments') || ev.url?.includes('/brands') || ev.url?.includes('/equipment_types')) {
+        console.log('[EditEquipmentScreen][REQ]', ev.method?.toUpperCase(), ev.url);
+      }
+    };
+    const resLogger = (ev: any) => {
+      // Só loga respostas de erro ou requisições importantes
+      if (ev.status >= 400 || ev.url?.includes('/equipments') || ev.url?.includes('/brands') || ev.url?.includes('/equipment_types')) {
+        console.log('[EditEquipmentScreen][RES]', ev.method?.toUpperCase(), ev.url, ev.status);
+      }
+    };
+    addRequestListener(reqLogger);
+    addResponseListener(resLogger);
+
+    // Estatísticas a cada 10 segundos (menos frequente)
+    const interval = setInterval(() => {
+      const stats = getRequestStats();
+      console.log('[EditEquipmentScreen][STATS/min]', {
+        totalInWindow: stats.totalInWindow,
+        byUrl: stats.byUrl,
+      });
+    }, 10000);
+
+    return () => {
+      clearInterval(interval);
+      removeRequestListener(reqLogger);
+      removeResponseListener(resLogger);
+    };
+  }, []);
+
+  useEffect(() => {
+    console.log('[EditEquipmentScreen] UseEffect executado! Equipment ID:', equipmentId);
+
     const fetchData = async () => {
+      console.log('[EditEquipmentScreen] FetchData iniciado');
       try {
+        console.log('[EditEquipmentScreen] Definindo loading como true');
         setLoading(true);
+
+        console.log('[EditEquipmentScreen] Buscando token do AsyncStorage');
         const accessToken = await AsyncStorage.getItem("access_token");
+
+        console.log('[EditEquipmentScreen] Token encontrado?', !!accessToken);
         if (!accessToken) throw new Error("Token de acesso não encontrado.");
 
-        // Buscar template de equipamento
-        const template = await EquipmentService.getEquipmentTemplate(accessToken);
-        setEquipmentTemplate(template);
+        console.log('[EditEquipmentScreen] ===== INICIANDO CARREGAMENTO =====');
+        console.log('[EditEquipmentScreen] Equipment ID:', equipmentId);
 
         // Buscar detalhes do equipamento
+        console.log('[EditEquipmentScreen] Buscando detalhes do equipamento...');
         const equipmentDetails = await EquipmentService.fetchEquipmentDetails(equipmentId, accessToken);
+        console.log('[EditEquipmentScreen] ===== DADOS DO EQUIPAMENTO RECEBIDOS =====');
+        console.log('[EditEquipmentScreen] Equipment details completo:', JSON.stringify(equipmentDetails, null, 2));
+        console.log('[EditEquipmentScreen] Additional fields do backend:', equipmentDetails?.additional_fields);
+        console.log('[EditEquipmentScreen] Tipo de additional_fields:', typeof equipmentDetails?.additional_fields);
         setEquipment(equipmentDetails);
 
         // Preencher campos fixos (fallback para objetos quando *_id não vierem)
@@ -92,57 +139,264 @@ const EditEquipmentScreen: React.FC<EditEquipmentScreenProps> = ({
         setTag(equipmentDetails.tag || "");
         setIsActive(equipmentDetails.is_active !== false);
 
-        // Preencher campos dinâmicos (extraindo value/label quando vier objeto). Fallback por label quando key não bater
+        // Buscar template vinculado ao tipo do equipamento (conforme tarefas.md)
+        let currentTemplate: EquipmentTemplate | null = null;
+        if (equipmentDetails?.equipment_type?.id || equipmentDetails?.equipment_type_id) {
+          const typeId = Number(equipmentDetails.equipment_type?.id || equipmentDetails.equipment_type_id);
+          console.log('[EditEquipmentScreen] Buscando template por tipo de equipamento:', typeId);
+          try {
+            const templateByType = await EquipmentService.getEquipmentTemplateByEquipmentType(typeId, accessToken);
+            setEquipmentTemplate(templateByType);
+            currentTemplate = templateByType;
+          } catch (e) {
+            console.error('[EditEquipmentScreen] Falha ao buscar template por tipo, seguindo sem template:', e);
+            setEquipmentTemplate(null);
+            currentTemplate = null;
+          }
+        } else {
+          console.warn('[EditEquipmentScreen] Tipo de equipamento não encontrado no equipamento, sem template');
+          setEquipmentTemplate(null);
+          currentTemplate = null;
+        }
+
+        // Preencher campos dinâmicos com fallback robusto (rastreia label/value/name/arrays e justificativa)
+        const normalizeText = (text: any) =>
+          (text || '')
+            .toString()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .replace(/[^a-z0-9]/gi, '')
+            .toLowerCase();
+
+        const extractPrimitive = (val: any): any => {
+          if (val === undefined || val === null) return null;
+          if (typeof val !== 'object') return val;
+          if (Array.isArray(val)) {
+            const mapped = val
+              .map((item) => extractPrimitive(item))
+              .filter((v) => v !== null && v !== undefined && v !== '');
+            return mapped.join(', ');
+          }
+          if (Object.prototype.hasOwnProperty.call(val, 'value')) {
+            return extractPrimitive((val as any).value);
+          }
+          if (Object.prototype.hasOwnProperty.call(val, 'label')) {
+            return (val as any).label;
+          }
+          if (Object.prototype.hasOwnProperty.call(val, 'name')) {
+            return (val as any).name;
+          }
+          if (Object.prototype.hasOwnProperty.call(val, 'id')) {
+            return (val as any).id;
+          }
+          try { return JSON.stringify(val); } catch { return String(val); }
+        };
+
         const dynamicData: { [key: string]: any } = {};
-        template.fields.forEach(field => {
-          const fieldKey = field.key || field.name || '';
-          if (!fieldKey) return;
-          let value = (equipmentDetails as any)?.additional_fields?.[fieldKey];
-          if (value === undefined || value === null) {
-            // Fallback por label
-            const af = (equipmentDetails as any)?.additional_fields;
-            if (af && typeof af === 'object') {
-              const fieldLabel = field.label || field.name || fieldKey;
-              const match = Object.values(af as any).find((entry: any) => {
-                try {
-                  const lbl = (entry?.label || '').toString().trim().toLowerCase();
-                  const fld = (fieldLabel || '').toString().trim().toLowerCase();
-                  return lbl && fld && lbl === fld;
-                } catch { return false; }
+        const sources = [
+          (equipmentDetails as any)?.additional_fields,
+          (equipmentDetails as any)?.dynamic_fields,
+          (equipmentDetails as any)?.fields,
+          (equipmentDetails as any)?.attributes,
+          (equipmentDetails as any)?.custom_fields,
+        ];
+
+        const getFromArray = (arr: any[], targetKey: string, targetLabel: string) => {
+          const byKey = arr.find((e: any) => e?.key === targetKey || normalizeText(e?.key) === normalizeText(targetKey));
+          if (byKey) return byKey?.value ?? byKey;
+          const tgt = normalizeText(targetLabel);
+          const byLabel = arr.find((e: any) => {
+            try {
+              const candidates = [e?.label, e?.name, e?.value?.label, e?.value?.name];
+              return candidates.some((c) => {
+                const norm = normalizeText(c);
+                return norm && (norm === tgt || norm.includes(tgt) || tgt.includes(norm));
               });
-              if (match) value = match as any;
+            } catch { return false; }
+          });
+          if (byLabel) return byLabel?.value ?? byLabel;
+          return undefined;
+        };
+
+        const getFromObject = (obj: any, targetKey: string, targetLabel: string) => {
+          if (!obj) return undefined;
+          if (Object.prototype.hasOwnProperty.call(obj, targetKey)) return obj[targetKey];
+          // tenta normalizar keys simples (quando additional_fields é { key: valor })
+          try {
+            const normKey = normalizeText(targetKey);
+            for (const k of Object.keys(obj)) {
+              if (normalizeText(k) === normKey) return (obj as any)[k];
             }
+          } catch { }
+          const tgt = normalizeText(targetLabel);
+          const values = Object.values(obj);
+          const match = values.find((entry: any) => {
+            try {
+              const candidates = [entry?.label, entry?.name, entry?.value?.label, entry?.value?.name];
+              return candidates.some((c) => {
+                const norm = normalizeText(c);
+                return norm && (norm === tgt || norm.includes(tgt) || tgt.includes(norm));
+              });
+            } catch { return false; }
+          });
+          if (match) return (match as any).value ?? match;
+          return undefined;
+        };
+
+        const getDynamicValue = (fieldKey: string, fieldLabel: string) => {
+          // Adicionar busca específica para 'especificações técnicas'
+          const specTecKey = normalizeText('especificacoes tecnicas');
+          if (normalizeText(fieldKey) === specTecKey || normalizeText(fieldLabel) === specTecKey) {
+            const specVal = (equipmentDetails as any)?.especificacoes_tecnicas || (equipmentDetails as any)?.specs || '';
+            if (specVal) return specVal;
           }
-          if (value === undefined || value === null) {
-            value = (equipmentDetails as any)[fieldKey];
+          for (const src of sources) {
+            if (!src) continue;
+            try {
+              if (Array.isArray(src)) {
+                const val = getFromArray(src, fieldKey, fieldLabel);
+                if (val !== undefined && val !== null) return val;
+              } else if (typeof src === 'object') {
+                const val = getFromObject(src, fieldKey, fieldLabel);
+                if (val !== undefined && val !== null) return val;
+              } else if (typeof src === 'string') { // Caso raro de string serializada
+                try { const parsed = JSON.parse(src); return getDynamicValue(fieldKey, fieldLabel); } catch { }
+              }
+            } catch { }
           }
-          // Se o valor vier como objeto { value, label } ou { id, name }, extrair o representativo
-          if (value && typeof value === 'object') {
-            if ('value' in value) {
-              value = (value as any).value;
-            } else if ('name' in value) {
-              value = (value as any).name;
-            } else if ('id' in value) {
-              value = (value as any).id;
+          return (equipmentDetails as any)[fieldKey] || '';
+        };
+
+        console.log('[EditEquipmentScreen] ===== PROCESSANDO CAMPOS DINÂMICOS =====');
+        if (currentTemplate) {
+          console.log('[EditEquipmentScreen] Template fields:', currentTemplate.fields.length);
+          try {
+            console.log('[EditEquipmentScreen] Template completo:', JSON.stringify(currentTemplate, null, 2));
+          } catch (e) {
+            console.error('[EditEquipmentScreen] Erro ao serializar template:', e);
+            console.log('[EditEquipmentScreen] Template (básico):', { id: currentTemplate.id, fields: currentTemplate.fields?.length || 0 });
+          }
+        } else {
+          console.log('[EditEquipmentScreen] Sem template disponível para processamento de campos dinâmicos.');
+        }
+
+        console.log('[EditEquipmentScreen] Sources para busca de dados:', sources.map((s, i) => ({ index: i, hasData: !!s, type: typeof s })));
+
+        try {
+          const totalFields = (currentTemplate?.fields || []).length;
+          (currentTemplate?.fields || []).forEach((field: DynamicField, index: number) => {
+            console.log(`[EditEquipmentScreen] ===== PROCESSANDO CAMPO ${index + 1}/${totalFields} =====`);
+            const fieldKey = field.key || field.name || '';
+            if (!fieldKey) {
+              console.warn('[EditEquipmentScreen] Campo sem key/name:', field);
+              return;
             }
-          }
-          dynamicData[fieldKey] = value !== undefined && value !== null ? value : (field.default_value || "");
-        });
+            const fieldLabel = field.label || field.name || fieldKey;
+
+            console.log(`[EditEquipmentScreen] Processando campo: ${fieldKey} (${fieldLabel})`);
+
+            const raw = getDynamicValue(fieldKey, fieldLabel);
+            console.log(`[EditEquipmentScreen] Valor raw para ${fieldKey}:`, raw);
+
+            // Pré-preencher justificativa quando aplicável
+            if (field.type === 'radio_with_justification') {
+              const af = (equipmentDetails as any)?.additional_fields || {};
+              const just = (af[fieldKey]?.value?.justification) || (af[fieldKey]?.justification) || '';
+              if (just) {
+                dynamicData[`${fieldKey}_justification`] = String(just);
+              }
+            }
+
+            let value = extractPrimitive(raw);
+            if (value === null || value === undefined || value === '') {
+              value = field.default_value || '';
+            }
+            // Medida: garantir string/número amigável para o input
+            if (field.type === 'measure' && typeof value === 'object' && value !== null) {
+              const num = (value as any).value ?? '';
+              value = num;
+            }
+
+            // Mapear selects/radios para opções do template (case-insensitive)
+            if ((field.type === 'select' || field.type === 'radio' || field.type === 'radio_with_justification') && Array.isArray(field.options) && field.options.length > 0) {
+              const norm = (s: any) => normalizeText(String(s));
+              // normalizar booleans comuns
+              const boolMap: Record<string, string> = { 'true': 'Sim', '1': 'Sim', 'sim': 'Sim', 'yes': 'Sim', 'false': 'Não', '0': 'Não', 'nao': 'Não', 'não': 'Não', 'no': 'Não' };
+              const normalizedValue = boolMap[norm(value)] ?? value;
+              const matched = field.options.find((opt: any) => norm(opt) === norm(normalizedValue));
+              if (matched) value = matched;
+            }
+
+            console.log(`[EditEquipmentScreen] Valor final para ${fieldKey}:`, value);
+            dynamicData[fieldKey] = value;
+          });
+
+          console.log('[EditEquipmentScreen] ===== RESULTADO FINAL DO PROCESSAMENTO =====');
+          console.log('[EditEquipmentScreen] DynamicData keys:', Object.keys(dynamicData));
+          console.log('[EditEquipmentScreen] DynamicData com valores:', Object.entries(dynamicData).filter(([k, v]) => v !== '' && v !== null && v !== undefined));
+          console.log('[EditEquipmentScreen] DynamicData final completo:', dynamicData);
+          console.log('[EditEquipmentScreen] ===== FIM PROCESSAMENTO =====');
+        } catch (fieldError: any) {
+          console.error('[EditEquipmentScreen] ERRO ao processar campos dinâmicos:', fieldError);
+          console.error('[EditEquipmentScreen] Stack trace:', fieldError.stack);
+        }
+
         setDynamicFields(dynamicData);
 
         // Buscar dados dos selects, garantindo inclusão dos valores atuais do equipamento
         await fetchSelectData(accessToken, equipmentDetails);
 
       } catch (error: any) {
+        console.error("[EditEquipmentScreen] ===== ERRO GERAL NO CARREGAMENTO =====");
         console.error("[EditEquipmentScreen] Erro ao buscar dados:", error);
+        console.error("[EditEquipmentScreen] Stack trace completo:", error.stack);
+        console.error("[EditEquipmentScreen] Tipo do erro:", typeof error);
+        console.error("[EditEquipmentScreen] ===== FIM ERRO GERAL =====");
         Alert.alert("Erro", error.message || "Falha ao carregar dados.");
       } finally {
         setLoading(false);
       }
     };
 
+    console.log('[EditEquipmentScreen] Chamando fetchData()...');
     fetchData();
+    console.log('[EditEquipmentScreen] fetchData() chamado!');
   }, [equipmentId]);
+
+  // Buscar template somente quando o usuário alterar o tipo de equipamento
+  useEffect(() => {
+    const loadTemplateOnTypeChange = async () => {
+      try {
+        if (!hasUserChangedType) return;
+        if (!equipmentTypeId) {
+          setEquipmentTemplate(null);
+          setDynamicFields({});
+          return;
+        }
+        const accessToken = await AsyncStorage.getItem("access_token");
+        if (!accessToken) return;
+
+        const typeIdNum = Number(equipmentTypeId);
+        if (!Number.isFinite(typeIdNum)) return;
+
+        const templateByType = await EquipmentService.getEquipmentTemplateByEquipmentType(typeIdNum, accessToken);
+        setEquipmentTemplate(templateByType);
+
+        // Inicializar dynamicFields com defaults do template
+        const defaults: { [key: string]: any } = {};
+        (templateByType?.fields || []).forEach((field: DynamicField) => {
+          const fieldKey = field.key || field.name || '';
+          if (fieldKey) defaults[fieldKey] = field.default_value || '';
+        });
+        setDynamicFields(defaults);
+      } catch (e: any) {
+        console.error('[EditEquipmentScreen] Erro ao carregar template por tipo:', e);
+        setEquipmentTemplate(null);
+        setDynamicFields({});
+      }
+    };
+    loadTemplateOnTypeChange();
+  }, [equipmentTypeId, hasUserChangedType]);
 
   // Buscar setores quando o cliente mudar
   useEffect(() => {
@@ -234,30 +488,68 @@ const EditEquipmentScreen: React.FC<EditEquipmentScreenProps> = ({
   };
 
   const handleUpdateEquipment = async () => {
+    console.log("[EditEquipmentScreen] ===== INICIANDO ATUALIZAÇÃO =====");
+    console.log("[EditEquipmentScreen] Equipment template presente?:", !!equipmentTemplate);
+    console.log("[EditEquipmentScreen] Dynamic fields atual:", dynamicFields);
+    console.log("[EditEquipmentScreen] Template fields:", equipmentTemplate?.fields?.length || 0);
+
+    // Verifica se o equipamento já está sendo modificado por outra tela
+    console.log("[EditEquipmentScreen] Verificando lock para equipamento:", equipmentId);
+    console.log("[EditEquipmentScreen] Status do lock:", EquipmentLock.isLocked(equipmentId));
+
+    if (EquipmentLock.isLocked(equipmentId)) {
+      console.warn("[EditEquipmentScreen] ❌ BLOQUEADO: Equipamento já está bloqueado por outra operação:", equipmentId);
+      Alert.alert("Aguarde", "Este equipamento está sendo modificado por outra tela. Aguarde a operação terminar.");
+      return;
+    }
+
+    console.log("[EditEquipmentScreen] ✅ Lock liberado, prosseguindo com operação");
+
+    console.log("[EditEquipmentScreen] Valores atuais:", {
+      clientId, sectorId, brandId, equipmentTypeId, tag, isActive
+    });
+
     // Validar campos obrigatórios fixos
     if (!clientId || !sectorId || !brandId || !equipmentTypeId || !tag) {
+      console.log("[EditEquipmentScreen] Campos obrigatórios faltando:", {
+        clientId: !!clientId,
+        sectorId: !!sectorId,
+        brandId: !!brandId,
+        equipmentTypeId: !!equipmentTypeId,
+        tag: !!tag
+      });
       Alert.alert("Erro", "Preencha todos os campos obrigatórios.");
       return;
     }
 
+    console.log("[EditEquipmentScreen] Campos obrigatórios validados com sucesso");
+
     // Validar campos dinâmicos obrigatórios
     if (equipmentTemplate) {
+      console.log("[EditEquipmentScreen] Validando campos dinâmicos obrigatórios");
       const requiredFields = equipmentTemplate.fields.filter(field => field.required);
+      console.log("[EditEquipmentScreen] Campos obrigatórios dinâmicos:", requiredFields.map(f => ({ key: f.key, label: f.label })));
+
       const missingFields = requiredFields.filter((field: DynamicField) => {
         const fieldKey = field.key || field.name || '';
         const value = dynamicFields[fieldKey];
+        console.log(`[EditEquipmentScreen] Campo ${fieldKey}:`, { value, required: field.required });
         return fieldKey && (value === undefined || value === null || value === "");
       });
 
       if (missingFields.length > 0) {
+        console.log("[EditEquipmentScreen] Campos obrigatórios faltando:", missingFields.map(f => f.key || f.label));
         Alert.alert("Erro", `Campos obrigatórios não preenchidos: ${missingFields.map((f: DynamicField) => f.label || f.name || f.key).join(", ")}`);
         return;
       }
+      console.log("[EditEquipmentScreen] Campos dinâmicos validados com sucesso");
     }
 
     try {
+      console.log("[EditEquipmentScreen] Iniciando construção do payload");
       setSaving(true);
       const accessToken = await AsyncStorage.getItem("access_token");
+      console.log("[EditEquipmentScreen] Token obtido:", !!accessToken);
       if (!accessToken) throw new Error("Token de acesso não encontrado.");
 
       const payload: any = {
@@ -266,49 +558,112 @@ const EditEquipmentScreen: React.FC<EditEquipmentScreenProps> = ({
         brand_id: parseInt(brandId),
         equipment_type_id: parseInt(equipmentTypeId),
         tag,
-        is_active: isActive,
       };
+
+      console.log("[EditEquipmentScreen] Payload base construído:", payload);
+      console.log("[EditEquipmentScreen] DynamicFields no momento da construção:", dynamicFields);
+      console.log("[EditEquipmentScreen] Número de campos no template:", equipmentTemplate?.fields?.length || 0);
 
       // Montar additional_fields a partir do template e dos valores atuais
       if (equipmentTemplate) {
-        const additionalFields: { [key: string]: any } = {};
+        const additionalFields: { [key: string]: { value: any; justification?: string | null } } = {};
+        console.log("[EditEquipmentScreen] ===== MONTANDO ADDITIONAL_FIELDS =====");
+
         equipmentTemplate.fields.forEach((field: DynamicField) => {
           const fieldKey = field.key || field.name || '';
-          if (!fieldKey) return;
 
-          const rawValue = dynamicFields[fieldKey];
-          if (rawValue === undefined) return;
+          console.log(`[EditEquipmentScreen] Verificando campo: ${fieldKey}`);
 
-          if (field.type === 'radio_with_justification') {
-            const justification = dynamicFields[`${fieldKey}_justification`] || '';
-            additionalFields[fieldKey] = {
-              label: field.label || field.name || fieldKey,
-              value: {
-                label: field.label || field.name || fieldKey,
-                value: String(rawValue),
-                justification: String(justification || ''),
-              },
-            };
+          // Validar que temos uma chave válida
+          if (!fieldKey || fieldKey.trim() === '') {
+            console.warn(`[EditEquipment] Campo sem chave válida:`, field);
             return;
           }
 
-          let value: any = rawValue;
-          if (field.type === 'number') {
-            const parsed = parseFloat(value);
-            value = Number.isNaN(parsed) ? null : parsed;
-          } else if (field.type === 'boolean') {
-            value = Boolean(value);
-          } else if (field.type === 'text' || field.type === 'measure' || field.type === 'select' || field.type === 'radio' || field.type === 'date') {
-            value = value !== null && value !== undefined ? String(value).trim() : '';
+          const rawValue = dynamicFields[fieldKey];
+          console.log(`[EditEquipmentScreen] Valor de dynamicFields[${fieldKey}]:`, rawValue);
+
+          if (rawValue === undefined || rawValue === null || rawValue === '') {
+            console.log(`[EditEquipmentScreen] Campo ${fieldKey} ignorado: valor vazio`);
+            return;
           }
-          additionalFields[fieldKey] = value;
+
+          console.log(`[EditEquipment] Processando campo ${fieldKey} (${field.type}): valor =`, rawValue);
+
+          // Estrutura conforme exemplo do backend: { value: X, justification: Y }
+          let fieldValue: any = rawValue;
+          let justification: string | null = null;
+
+          if (field.type === 'radio_with_justification') {
+            justification = dynamicFields[`${fieldKey}_justification`] || null;
+          }
+
+          // Converter números para number, strings para string
+          if (field.type === 'number' || field.type === 'measure') {
+            fieldValue = parseFloat(rawValue) || 0;
+          } else {
+            fieldValue = String(rawValue);
+          }
+
+          console.log(`[EditEquipmentScreen] Adicionando ${fieldKey} = {value: ${fieldValue}, justification: ${justification}} em additional_fields`);
+          additionalFields[fieldKey] = {
+            value: fieldValue,
+            justification: justification
+          };
         });
+
+        console.log("[EditEquipmentScreen] ===== RESULTADO ADDITIONAL_FIELDS =====");
+        console.log("[EditEquipmentScreen] Additional fields keys:", Object.keys(additionalFields));
+        console.log("[EditEquipment] Additional fields construído:", JSON.stringify(additionalFields, null, 2));
         payload.additional_fields = additionalFields;
       } else {
+        console.log("[EditEquipment] Nenhum template encontrado, enviando additional_fields vazio");
         payload.additional_fields = {};
       }
 
-      await EquipmentService.updateEquipment(accessToken, equipmentId, payload);
+      // Garantir que additional_fields sempre existe no payload
+      if (!payload.additional_fields) {
+        console.warn("[EditEquipment] additional_fields estava undefined, definindo como objeto vazio");
+        payload.additional_fields = {};
+      }
+
+      console.log("[EditEquipmentScreen] Payload final antes da API:", JSON.stringify(payload, null, 2));
+
+      // Log detalhado do payload antes de enviar
+      try {
+        console.log("[EditEquipmentScreen] Payload UPDATE (resumo):", {
+          client_id: payload.client_id,
+          sector_id: payload.sector_id,
+          brand_id: payload.brand_id,
+          equipment_type_id: payload.equipment_type_id,
+          tag: payload.tag,
+          additional_fields_keys: payload.additional_fields ? Object.keys(payload.additional_fields) : [],
+        });
+        // Opcional: log completo (cuidado com tamanho)
+        console.log("[EditEquipmentScreen] Payload UPDATE (completo):", payload);
+      } catch { }
+
+      console.log("[EditEquipmentScreen] ===== CHAMANDO EQUIPMENT SERVICE =====");
+      console.log("[EditEquipmentScreen] Payload tem additional_fields?:", !!payload?.additional_fields);
+      console.log("[EditEquipmentScreen] Payload keys:", Object.keys(payload));
+      console.log("[EditEquipmentScreen] Additional fields content:", payload?.additional_fields);
+
+      try {
+        await EquipmentService.updateEquipment(accessToken, equipmentId, payload);
+      } catch (apiError: any) {
+        if (apiError.response?.status === 500) {
+          console.error("[EditEquipmentScreen] Erro 500 no servidor. Detalhes:", apiError.response.data);
+          console.error("[EditEquipmentScreen] Tentando fallback sem additional_fields...");
+          const fallbackPayload = { ...payload };
+          delete fallbackPayload.additional_fields;
+          await EquipmentService.updateEquipment(accessToken, equipmentId, fallbackPayload);
+          Alert.alert("Sucesso Parcial", "Atualizado sem campos adicionais devido a erro no servidor.");
+        } else if (apiError.message.includes('activities')) {
+          Alert.alert("Aviso", "Falha ao carregar histórico de atividades, mas atualização prosseguiu.");
+        } else {
+          throw apiError;
+        }
+      }
 
       Alert.alert("Sucesso", "Equipamento atualizado com sucesso!");
       navigation.goBack();
@@ -527,7 +882,7 @@ const EditEquipmentScreen: React.FC<EditEquipmentScreenProps> = ({
             {renderSelectField("Cliente", clientId, setClientId, clients, "Selecione o cliente")}
             {renderSelectField("Setor", sectorId, setSectorId, sectors, "Selecione o setor")}
             {renderSelectField("Fabricante", brandId, setBrandId, brands, "Selecione o fabricante")}
-            {renderSelectField("Tipo de Equipamento", equipmentTypeId, setEquipmentTypeId, equipmentTypes, "Selecione o tipo")}
+            {renderSelectField("Tipo de Equipamento", equipmentTypeId, (val: string) => { setEquipmentTypeId(val); setHasUserChangedType(true); }, equipmentTypes, "Selecione o tipo")}
 
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Status Ativo</Text>
@@ -551,18 +906,27 @@ const EditEquipmentScreen: React.FC<EditEquipmentScreenProps> = ({
                 <Text style={styles.sectionTitle}>Especificações Técnicas</Text>
               </View>
 
+
               {equipmentTemplate.fields
                 .filter((field: DynamicField) => (field.key || field.name) && (field.key || field.name)?.trim() !== '')
                 .sort((a, b) => (a.order || 0) - (b.order || 0))
-                .map((field: DynamicField) => (
-                  <View key={field.id || field.key} style={styles.inputGroup}>
-                    <Text style={styles.inputLabel}>
-                      {field.label || field.name || field.key}
-                      {field.required && <Text style={styles.required}>*</Text>}
-                    </Text>
-                    {renderField(field)}
-                  </View>
-                ))}
+                .map((field: DynamicField) => {
+                  console.log('[EditEquipmentScreen] Renderizando campo:', {
+                    key: field.key,
+                    label: field.label,
+                    name: field.name,
+                    type: field.type
+                  });
+                  return (
+                    <View key={field.id || field.key} style={styles.inputGroup}>
+                      <Text style={[styles.inputLabel, { backgroundColor: '#f0f0f0' }]}>
+                        {field.label || field.name || field.key || 'SEM LABEL'}
+                        {field.required && <Text style={styles.required}>*</Text>}
+                      </Text>
+                      {renderField(field)}
+                    </View>
+                  );
+                })}
             </View>
           )}
         </View>
