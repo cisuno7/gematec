@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
     View,
     Text,
@@ -10,12 +10,20 @@ import {
     ActivityIndicator,
     Alert,
     RefreshControl,
+    ScrollView,
+    Platform,
+    Keyboard,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import EquipamentService from '../Services/EquipamentService';
 import ActivityService from '../Services/ActivityService';
+import BrandService from '../Services/BrandService';
+import EquipmentTypeService from '../Services/EquipmentTypeService';
 import { Equipment } from '../Models/Equipament';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import apiClient from '../Context/ApiClient';
+import CustomPicker from './CustomPicker';
+import DynamicEquipmentFields from './DynamicEquipmentFields';
 
 interface AddMultipleEquipmentsModalProps {
     visible: boolean;
@@ -23,50 +31,44 @@ interface AddMultipleEquipmentsModalProps {
     onSuccess: (addedCount: number) => void;
     activityId: number;
     clientId?: number;
+    sectorId?: number;
 }
+
+const EMPTY_FIELDS = {};
 
 const AddMultipleEquipmentsModal: React.FC<AddMultipleEquipmentsModalProps> = ({
     visible,
     onClose,
     onSuccess,
     activityId,
-    clientId
+    clientId,
+    sectorId
 }) => {
     const [equipments, setEquipments] = useState<Equipment[]>([]);
-    const [filteredEquipments, setFilteredEquipments] = useState<Equipment[]>([]);
     const [selectedEquipmentsIds, setSelectedEquipmentsIds] = useState<number[]>([]);
     const [search, setSearch] = useState('');
     const [loading, setLoading] = useState(false);
     const [refreshing, setRefreshing] = useState(false);
     const [adding, setAdding] = useState(false);
+    const [keyboardPadding, setKeyboardPadding] = useState(0);
 
-    // Debounce para busca
-    useEffect(() => {
-        const timer = setTimeout(() => {
-            filterEquipments(search);
-        }, 300);
+    const [showCreate, setShowCreate] = useState(false);
+    const [brands, setBrands] = useState<any[]>([]);
+    const [equipmentTypes, setEquipmentTypes] = useState<any[]>([]);
+    const [loadingMeta, setLoadingMeta] = useState(false);
+    const [newTag, setNewTag] = useState('');
+    const [newBrandId, setNewBrandId] = useState<string>('');
+    const [newEquipmentTypeId, setNewEquipmentTypeId] = useState<string>('');
+    const [newDynamicFields, setNewDynamicFields] = useState<{ [key: string]: any }>(EMPTY_FIELDS);
+    const [pendingNewEquipments, setPendingNewEquipments] = useState<Array<{
+        tempId: number;
+        tag: string;
+        brand_id: number;
+        equipment_type_id: number;
+        additional_fields: { [key: string]: any };
+    }>>([]);
 
-        return () => clearTimeout(timer);
-    }, [search, equipments]);
-
-    const filterEquipments = (searchText: string) => {
-        if (!searchText.trim()) {
-            setFilteredEquipments(equipments);
-        } else {
-            const filtered = equipments.filter(equipment => {
-                const matchesTag = equipment.tag?.toLowerCase().includes(searchText.toLowerCase());
-                const matchesClient = equipment.client?.name?.toLowerCase().includes(searchText.toLowerCase());
-                const matchesSector = equipment.sector?.complete_name?.toLowerCase().includes(searchText.toLowerCase());
-                const matchesBrand = equipment.brand?.name?.toLowerCase().includes(searchText.toLowerCase());
-                const matchesType = equipment.equipment_type?.name?.toLowerCase().includes(searchText.toLowerCase());
-
-                return matchesTag || matchesClient || matchesSector || matchesBrand || matchesType;
-            });
-            setFilteredEquipments(filtered);
-        }
-    };
-
-    const loadEquipments = async (isRefreshing: boolean = false) => {
+    const loadEquipments = useCallback(async (isRefreshing: boolean = false) => {
         if (isRefreshing) {
             setRefreshing(true);
         } else {
@@ -77,40 +79,86 @@ const AddMultipleEquipmentsModal: React.FC<AddMultipleEquipmentsModalProps> = ({
             const token = await AsyncStorage.getItem('access_token');
             if (!token) throw new Error('Token não encontrado');
 
-            console.log('[AddMultipleEquipmentsModal] Carregando equipamentos...');
+            if (!clientId) {
+                setEquipments([]);
+            } else {
+                const filters: any = {
+                    page: 1,
+                    per_page: 100,
+                    is_active: true,
+                    client_id: clientId
+                };
 
-            // Buscar equipamentos do cliente específico ou todos
-            const filters: any = {
-                page: 1,
-                per_page: 100, // Carregar muitos para ter opções
-                is_active: true
-            };
-
-            if (clientId) {
-                filters.client_id = clientId;
+                const response = await EquipamentService.fetchEquipments(String(token), filters as any);
+                const list = response.results || [];
+                setEquipments(list as any);
             }
-
-            const response = await EquipamentService.fetchEquipmentsList(filters, token);
-
-            console.log('[AddMultipleEquipmentsModal] Equipamentos carregados:', response.results.length);
-            setEquipments(response.results);
-            setFilteredEquipments(response.results);
         } catch (error: any) {
-            console.error('[AddMultipleEquipmentsModal] Erro ao carregar equipamentos:', error);
-            Alert.alert('Erro', error.message || 'Erro ao carregar equipamentos');
+            setEquipments([]);
         } finally {
             setLoading(false);
             setRefreshing(false);
         }
-    };
+    }, [clientId]);
+
+    const loadMeta = useCallback(async () => {
+        setLoadingMeta(true);
+        try {
+            const [brandsResponse, typesResponse] = await Promise.all([
+                BrandService.fetchBrands(),
+                EquipmentTypeService.fetchEquipmentTypes()
+            ]);
+
+            setBrands(brandsResponse);
+            setEquipmentTypes(typesResponse);
+        } catch (error) {
+            console.error('[AddMultipleEquipmentsModal] Erro ao carregar metadados:', error);
+        } finally {
+            setLoadingMeta(false);
+        }
+    }, []);
+
+    const filteredEquipments = useMemo(() => {
+        if (!search.trim()) return equipments;
+        const searchLower = search.toLowerCase();
+        return equipments.filter(eq =>
+            eq.tag?.toLowerCase().includes(searchLower) ||
+            eq.client?.name?.toLowerCase().includes(searchLower) ||
+            eq.sector?.complete_name?.toLowerCase().includes(searchLower)
+        );
+    }, [equipments, search]);
 
     useEffect(() => {
         if (visible) {
             loadEquipments();
             setSelectedEquipmentsIds([]);
             setSearch('');
+            setShowCreate(false);
+            setNewTag('');
+            setNewBrandId('');
+            setNewEquipmentTypeId('');
+            setNewDynamicFields(EMPTY_FIELDS);
+            setPendingNewEquipments([]);
+            loadMeta();
         }
-    }, [visible]);
+    }, [visible, loadEquipments, loadMeta]);
+
+    // Ajusta padding e posição do footer conforme altura do teclado
+    useEffect(() => {
+        const onShow = (e: any) => {
+            const h = e?.endCoordinates?.height ?? 0;
+            setKeyboardPadding(h);
+        };
+        const onHide = () => setKeyboardPadding(0);
+
+        const showSub = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', onShow);
+        const hideSub = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide', onHide);
+
+        return () => {
+            showSub.remove();
+            hideSub.remove();
+        };
+    }, []);
 
     const toggleEquipment = (equipmentId: number) => {
         setSelectedEquipmentsIds(prev => {
@@ -130,52 +178,321 @@ const AddMultipleEquipmentsModal: React.FC<AddMultipleEquipmentsModalProps> = ({
         }
     };
 
-    const handleAddEquipments = async () => {
+    const getCreatedEquipmentId = (created: any): number | null => {
+        if (!created) return null;
+        const directId = (created as any)?.id;
+        const nestedId = (created as any)?.data?.id;
+        const resultsFirstId = Array.isArray((created as any)?.results) ? (created as any).results[0]?.id : undefined;
+        const idCandidate = Number(directId ?? nestedId ?? resultsFirstId);
+        return Number.isFinite(idCandidate) ? idCandidate : null;
+    };
+
+    const handleConfirm = async () => {
+        if (!activityId) {
+            Alert.alert('Erro', 'ID da atividade não encontrado.');
+            return;
+        }
+
+        if (clientId && pendingNewEquipments.length > 0) {
+            if (!sectorId) {
+                Alert.alert('Setor Obrigatório', 'É necessário selecionar um setor para criar equipamentos.');
+                return;
+            }
+        }
+
         if (selectedEquipmentsIds.length === 0) {
             Alert.alert('Atenção', 'Selecione pelo menos um equipamento');
             return;
         }
 
         setAdding(true);
+
         try {
             const token = await AsyncStorage.getItem('access_token');
-            if (!token) throw new Error('Token não encontrado');
+            if (!token) throw new Error('Token não encontrado.');
 
-            console.log('[AddMultipleEquipmentsModal] Adicionando equipamentos...', {
-                activityId,
-                equipmentsIds: selectedEquipmentsIds,
-                count: selectedEquipmentsIds.length
-            });
+            const selectedSet = new Set(selectedEquipmentsIds);
+            const isPendingId = (id: number) => id < 0;
+            const existingIds = selectedEquipmentsIds.filter(id => !isPendingId(id));
+            const pendingSelected = pendingNewEquipments.filter(p => selectedSet.has(p.tempId));
 
             const activityService = new ActivityService();
-            await activityService.addMultipleEquipmentsToActivity(
-                activityId,
-                selectedEquipmentsIds,
-                token
-            );
 
-            console.log('[AddMultipleEquipmentsModal] Equipamentos adicionados com sucesso!');
+            if (clientId) {
+                const createdIds: number[] = [];
+                if (pendingSelected.length > 0) {
+                    const created = await Promise.all(pendingSelected.map(async (p) => {
+                        const payload: any = {
+                            client_id: parseInt(String(clientId), 10),
+                            sector_id: parseInt(String(sectorId), 10),
+                            brand_id: parseInt(String(p.brand_id), 10),
+                            equipment_type_id: parseInt(String(p.equipment_type_id), 10),
+                            tag: p.tag?.trim?.() || '',
+                            additional_fields: p.additional_fields || {}
+                        };
 
+                        if (!payload.additional_fields || typeof payload.additional_fields !== 'object' || Array.isArray(payload.additional_fields)) {
+                            payload.additional_fields = {};
+                        }
+
+                        const createdEq = await EquipamentService.createEquipment(String(token), payload);
+                        const createdId = getCreatedEquipmentId(createdEq);
+                        if (!createdId) {
+                            throw new Error('Resposta inválida do servidor ao criar equipamento.');
+                        }
+                        return createdId;
+                    }));
+                    createdIds.push(...created);
+                }
+
+                const finalIds = [...existingIds, ...createdIds];
+                if (finalIds.length === 0) throw new Error('Nada para adicionar.');
+
+                await activityService.addMultipleEquipmentsToActivity(
+                    activityId,
+                    finalIds,
+                    String(token)
+                );
+            } else {
+                if (pendingSelected.length === 0) {
+                    throw new Error('Nenhum equipamento novo informado.');
+                }
+
+                const equipmentsPayload = pendingSelected.map(p => ({
+                    brand_id: parseInt(String(p.brand_id), 10),
+                    equipment_type_id: parseInt(String(p.equipment_type_id), 10),
+                    tag: p.tag?.trim() || '',
+                    additional_fields: p.additional_fields || {}
+                }));
+
+                await activityService.addEquipmentsPayloadToActivity(
+                    activityId,
+                    equipmentsPayload,
+                    String(token)
+                );
+            }
+
+            const total = existingIds.length + pendingSelected.length;
             Alert.alert(
                 'Sucesso',
-                `${selectedEquipmentsIds.length} equipamento${selectedEquipmentsIds.length > 1 ? 's' : ''} adicionado${selectedEquipmentsIds.length > 1 ? 's' : ''} com sucesso!`,
-                [{
-                    text: 'OK', onPress: () => {
-                        onSuccess(selectedEquipmentsIds.length);
-                        onClose();
-                    }
-                }]
+                `${total} equipamento${total > 1 ? 's' : ''} adicionado${total > 1 ? 's' : ''} com sucesso!`,
+                [{ text: 'OK' }]
             );
+
+            onSuccess(total);
+            onClose();
         } catch (error: any) {
-            console.error('[AddMultipleEquipmentsModal] Erro ao adicionar:', error);
-            Alert.alert('Erro', error.message || 'Erro ao adicionar equipamentos');
+            Alert.alert('Erro', error?.message || 'Falha ao adicionar equipamentos');
         } finally {
             setAdding(false);
         }
     };
 
+    const handleAddPending = () => {
+        try {
+            const brandNum = parseInt(newBrandId || '');
+            const typeNum = parseInt(newEquipmentTypeId || '');
+            if (!Number.isFinite(brandNum) || !Number.isFinite(typeNum)) {
+                Alert.alert('Atenção', 'Preencha Fabricante e Tipo de Equipamento');
+                return;
+            }
+
+            const tempId = -1 * (Date.now() % 1000000);
+            const brandName = (brands.find(b => String(b.id) === String(brandNum)) || {}).name || 'Fabricante';
+            const typeName = (equipmentTypes.find(t => String(t.id) === String(typeNum)) || {}).name || 'Tipo';
+
+            const displayItem: Equipment = {
+                id: tempId,
+                tag: newTag.trim() || 'Sem Tag',
+                patrimony: '',
+                sector_id: null,
+                equipment_type_id: typeNum,
+                brand_id: brandNum,
+                client_id: clientId || null,
+                sector: { id: 0, name: '', complete_name: '' },
+                client: { id: clientId || 0, name: clientId ? 'Cliente atual' : 'Novo cliente' },
+                brand: { id: brandNum, name: brandName },
+                equipment_type: { id: typeNum, name: typeName },
+                coil_type: { id: 0, name: '' },
+                evaporator_type: { id: 0, name: '' },
+                condenser_type: { id: 0, name: '' },
+            } as any;
+
+            setEquipments(prev => [displayItem, ...prev]);
+            setSelectedEquipmentsIds(prev => [tempId, ...prev]);
+
+            setPendingNewEquipments(prev => [
+                {
+                    tempId,
+                    tag: newTag.trim(),
+                    brand_id: brandNum,
+                    equipment_type_id: typeNum,
+                    additional_fields: { ...newDynamicFields }
+                },
+                ...prev,
+            ]);
+
+            setNewTag('');
+            setNewDynamicFields(EMPTY_FIELDS);
+        } catch (error: any) {
+            Alert.alert('Erro', 'Falha ao adicionar equipamento pendente.');
+        }
+    };
+
+    const handleTagChange = useCallback((text: string) => {
+        setNewTag(text);
+    }, []);
+
+    const handleBrandChange = useCallback((value: string) => {
+        setNewBrandId(value);
+    }, []);
+
+    const handleEquipmentTypeChange = useCallback((value: string) => {
+        setNewEquipmentTypeId(value);
+    }, []);
+
+    const handleDynamicFieldsChange = useCallback((fields: { [key: string]: any }) => {
+        setNewDynamicFields(prev => {
+            // Só atualiza se mudou de verdade
+            if (JSON.stringify(prev) === JSON.stringify(fields)) return prev;
+            return fields;
+        });
+    }, []);
+
+    const handleClearFields = useCallback(() => {
+        setNewTag('');
+        setNewDynamicFields(EMPTY_FIELDS);
+    }, []);
+
+    const brandItems = useMemo(() => brands.map(b => ({
+        label: b.name,
+        value: String(b.id)
+    })), [brands]);
+
+    const equipmentTypeItems = useMemo(() => equipmentTypes.map(t => ({
+        label: t.name,
+        value: String(t.id)
+    })), [equipmentTypes]);
+
+    const renderSearchBar = useCallback(() => (
+        <View style={styles.searchContainer}>
+            <MaterialIcons name="search" size={20} color="#999" style={styles.searchIcon} />
+            <TextInput
+                style={styles.searchInput}
+                placeholder="Buscar por tag, cliente ou setor..."
+                value={search}
+                onChangeText={setSearch}
+                placeholderTextColor="#999"
+                blurOnSubmit={false}
+                returnKeyType="search"
+                autoFocus={false}
+                onSubmitEditing={() => { }}
+                showSoftInputOnFocus={true}
+            />
+            {search.length > 0 && (
+                <TouchableOpacity onPress={() => setSearch('')}>
+                    <MaterialIcons name="close" size={20} color="#999" />
+                </TouchableOpacity>
+            )}
+        </View>
+    ), [search]);
+
+    const renderCreateForm = useMemo(() => (
+        <View style={styles.createContainer}>
+            <TouchableOpacity onPress={() => setShowCreate(v => !v)} style={styles.createHeader}>
+                <Text style={styles.createTitle}>Criar novo equipamento</Text>
+                <MaterialIcons name={showCreate ? 'expand-less' : 'expand-more'} size={24} color="#667eea" />
+            </TouchableOpacity>
+
+            {showCreate && (
+                <View style={styles.createContent}>
+                    {loadingMeta ? (
+                        <View style={styles.loadingContainer}>
+                            <ActivityIndicator size="small" color="#667eea" />
+                            <Text style={styles.loadingText}>Carregando opções...</Text>
+                        </View>
+                    ) : (
+                        <React.Fragment key="form-stable">
+                            <TextInput
+                                style={styles.input}
+                                placeholder="Tag (opcional)"
+                                placeholderTextColor="#999"
+                                value={newTag}
+                                onChangeText={handleTagChange}
+                                maxLength={64}
+                                returnKeyType="done"
+                                blurOnSubmit={false}
+                                autoFocus={false}
+                                onSubmitEditing={() => { }}
+                                showSoftInputOnFocus={true}
+                            />
+                            <CustomPicker
+                                selectedValue={newBrandId}
+                                onValueChange={handleBrandChange}
+                                items={brandItems}
+                                placeholder="Selecione o fabricante"
+                                style={styles.picker}
+                            />
+                            <CustomPicker
+                                selectedValue={newEquipmentTypeId}
+                                onValueChange={handleEquipmentTypeChange}
+                                items={equipmentTypeItems}
+                                placeholder="Selecione o tipo de equipamento"
+                                style={styles.picker}
+                            />
+
+                            <View style={{ maxHeight: 320 }}>
+                                <ScrollView
+                                    nestedScrollEnabled={true}
+                                    keyboardShouldPersistTaps="always"
+                                    showsVerticalScrollIndicator={false}
+                                >
+                                    <DynamicEquipmentFields
+                                        key={newEquipmentTypeId || 'default'}
+                                        onFieldsChange={handleDynamicFieldsChange}
+                                        equipmentTypeId={newEquipmentTypeId ? Number(newEquipmentTypeId) : undefined}
+                                        initialValues={newDynamicFields}
+                                    />
+                                </ScrollView>
+                            </View>
+
+                            <View style={styles.inlineActions}>
+                                <TouchableOpacity style={[styles.button, styles.cancelButton]} onPress={handleClearFields}>
+                                    <Text style={styles.cancelButtonText}>Limpar campos</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    style={[styles.button, styles.addButton]}
+                                    onPress={handleAddPending}
+                                >
+                                    <MaterialIcons name="add" size={18} color="#fff" style={{ marginRight: 8 }} />
+                                    <Text style={styles.addButtonText}>Criar e adicionar</Text>
+                                </TouchableOpacity>
+                            </View>
+                        </React.Fragment>
+                    )}
+                </View>
+            )}
+        </View>
+    ), [
+        showCreate,
+        loadingMeta,
+        newTag,
+        newBrandId,
+        newEquipmentTypeId,
+        newDynamicFields,
+        brands,
+        equipmentTypes,
+        handleTagChange,
+        handleBrandChange,
+        handleEquipmentTypeChange,
+        handleDynamicFieldsChange,
+        handleClearFields,
+        handleAddPending
+    ]);
+
     const renderEquipment = ({ item }: { item: Equipment }) => {
         const isSelected = selectedEquipmentsIds.includes(item.id);
+        const isActive = (item as any)?.is_active === true;
 
         return (
             <TouchableOpacity
@@ -183,7 +500,7 @@ const AddMultipleEquipmentsModal: React.FC<AddMultipleEquipmentsModalProps> = ({
                 onPress={() => toggleEquipment(item.id)}
                 activeOpacity={0.7}
             >
-                <View style={styles.checkbox}>
+                <View style={[styles.checkbox, isSelected && styles.checkboxSelected]}>
                     {isSelected && (
                         <MaterialIcons name="check" size={18} color="#fff" />
                     )}
@@ -193,7 +510,7 @@ const AddMultipleEquipmentsModal: React.FC<AddMultipleEquipmentsModalProps> = ({
                         <Text style={styles.equipmentTag} numberOfLines={1}>
                             {item.tag || 'Sem Tag'}
                         </Text>
-                        {item.is_active && (
+                        {isActive && (
                             <View style={styles.activeBadge}>
                                 <Text style={styles.activeBadgeText}>Ativo</Text>
                             </View>
@@ -210,6 +527,11 @@ const AddMultipleEquipmentsModal: React.FC<AddMultipleEquipmentsModalProps> = ({
             </TouchableOpacity>
         );
     };
+
+    // Espaçador de rodapé para garantir rolagem quando o teclado estiver aberto
+    const listFooterSpacer = useMemo(() => (
+        <View style={{ height: 160 + keyboardPadding }} />
+    ), [keyboardPadding]);
 
     const renderListHeader = () => {
         if (filteredEquipments.length === 0) return null;
@@ -238,13 +560,13 @@ const AddMultipleEquipmentsModal: React.FC<AddMultipleEquipmentsModalProps> = ({
     return (
         <Modal
             visible={visible}
-            transparent
             animationType="slide"
+            presentationStyle="fullScreen"
+            statusBarTranslucent={true}
             onRequestClose={onClose}
         >
             <View style={styles.overlay}>
                 <View style={styles.modalContainer}>
-                    {/* Header */}
                     <View style={styles.header}>
                         <Text style={styles.title}>Adicionar Equipamentos</Text>
                         <TouchableOpacity onPress={onClose} style={styles.closeButton}>
@@ -252,65 +574,69 @@ const AddMultipleEquipmentsModal: React.FC<AddMultipleEquipmentsModalProps> = ({
                         </TouchableOpacity>
                     </View>
 
-                    {/* Search */}
-                    <View style={styles.searchContainer}>
-                        <MaterialIcons name="search" size={20} color="#999" style={styles.searchIcon} />
-                        <TextInput
-                            style={styles.searchInput}
-                            placeholder="Buscar por tag, cliente, setor..."
-                            placeholderTextColor="#999"
-                            value={search}
-                            onChangeText={setSearch}
-                        />
-                        {search.length > 0 && (
-                            <TouchableOpacity onPress={() => setSearch('')}>
-                                <MaterialIcons name="clear" size={20} color="#999" />
-                            </TouchableOpacity>
-                        )}
+                    {/* Inputs fora do FlatList para evitar remount e perda de foco */}
+                    <View style={styles.topContent}>
+                        {renderSearchBar()}
+                        {renderCreateForm}
                     </View>
 
-                    {/* Equipments List */}
-                    <View style={styles.listContainer}>
-                        {loading ? (
-                            <View style={styles.loadingContainer}>
-                                <ActivityIndicator size="large" color="#667eea" />
-                                <Text style={styles.loadingText}>Carregando equipamentos...</Text>
-                            </View>
-                        ) : filteredEquipments.length === 0 ? (
-                            <View style={styles.emptyContainer}>
-                                <MaterialIcons name="devices" size={48} color="#ccc" />
-                                <Text style={styles.emptyText}>
-                                    {search ? 'Nenhum equipamento encontrado' : 'Nenhum equipamento disponível'}
-                                </Text>
-                                {!search && (
-                                    <Text style={styles.emptySubtext}>
-                                        Cadastre equipamentos para poder adicioná-los
+                    <FlatList
+                        style={styles.listContainer}
+                        contentContainerStyle={styles.scrollContent}
+                        data={filteredEquipments}
+                        keyExtractor={(item) => item.id.toString()}
+                        renderItem={renderEquipment}
+                        initialNumToRender={10}
+                        removeClippedSubviews={false}
+                        ListHeaderComponent={filteredEquipments.length > 0 ? renderListHeader : undefined}
+                        ListFooterComponent={listFooterSpacer}
+                        ListEmptyComponent={() => (
+                            !loading && filteredEquipments.length === 0 ? (
+                                <View style={styles.emptyContainer}>
+                                    <MaterialIcons name="devices" size={64} color="#ccc" />
+                                    <Text style={styles.emptyText}>
+                                        {search ? 'Nenhum equipamento encontrado' : 'Nenhum equipamento disponível'}
                                     </Text>
-                                )}
-                            </View>
-                        ) : (
-                            <FlatList
-                                data={filteredEquipments}
-                                renderItem={renderEquipment}
-                                keyExtractor={(item) => item.id.toString()}
-                                ListHeaderComponent={renderListHeader}
-                                refreshControl={
-                                    <RefreshControl
-                                        refreshing={refreshing}
-                                        onRefresh={() => loadEquipments(true)}
-                                        colors={['#667eea']}
-                                    />
-                                }
-                                maxToRenderPerBatch={15}
-                                windowSize={5}
-                                removeClippedSubviews={true}
-                                initialNumToRender={15}
-                            />
+                                    {!search && !clientId && (
+                                        <>
+                                            <Text style={styles.emptySubtext}>
+                                                Cadastre equipamentos para poder adicioná-los
+                                            </Text>
+                                            <TouchableOpacity
+                                                style={styles.createPromptButton}
+                                                onPress={() => setShowCreate(true)}
+                                            >
+                                                <MaterialIcons name="add-circle" size={20} color="#667eea" />
+                                                <Text style={styles.createPromptText}>Criar equipamento</Text>
+                                            </TouchableOpacity>
+                                        </>
+                                    )}
+                                    {!search && clientId && (
+                                        <Text style={styles.emptySubtext}>
+                                            Cadastre equipamentos para poder adicioná-los
+                                        </Text>
+                                    )}
+                                </View>
+                            ) : loading ? (
+                                <View style={styles.loadingContainer}>
+                                    <ActivityIndicator size="large" color="#667eea" />
+                                    <Text style={styles.loadingText}>Carregando equipamentos...</Text>
+                                </View>
+                            ) : null
                         )}
-                    </View>
+                        keyboardDismissMode="on-drag"
+                        keyboardShouldPersistTaps="handled"
+                        showsVerticalScrollIndicator={true}
+                        refreshControl={
+                            <RefreshControl
+                                refreshing={refreshing}
+                                onRefresh={() => loadEquipments(true)}
+                                colors={['#667eea']}
+                            />
+                        }
+                    />
 
-                    {/* Footer */}
-                    <View style={styles.footer}>
+                    <View style={[styles.footer, { bottom: keyboardPadding }]}>
                         <View style={styles.summary}>
                             <MaterialIcons name="playlist-add-check" size={20} color="#667eea" />
                             <Text style={styles.summaryText}>
@@ -318,6 +644,13 @@ const AddMultipleEquipmentsModal: React.FC<AddMultipleEquipmentsModalProps> = ({
                             </Text>
                         </View>
                         <View style={styles.actions}>
+                            <TouchableOpacity
+                                style={[styles.button, styles.cancelButton]}
+                                onPress={() => setSelectedEquipmentsIds([])}
+                                disabled={adding}
+                            >
+                                <Text style={styles.cancelButtonText}>Limpar seleção</Text>
+                            </TouchableOpacity>
                             <TouchableOpacity
                                 style={[styles.button, styles.cancelButton]}
                                 onPress={onClose}
@@ -331,7 +664,7 @@ const AddMultipleEquipmentsModal: React.FC<AddMultipleEquipmentsModalProps> = ({
                                     styles.addButton,
                                     (selectedEquipmentsIds.length === 0 || adding) && styles.addButtonDisabled
                                 ]}
-                                onPress={handleAddEquipments}
+                                onPress={handleConfirm}
                                 disabled={selectedEquipmentsIds.length === 0 || adding}
                             >
                                 {adding ? (
@@ -355,14 +688,16 @@ const styles = StyleSheet.create({
     overlay: {
         flex: 1,
         backgroundColor: 'rgba(0, 0, 0, 0.5)',
-        justifyContent: 'flex-end',
+        justifyContent: 'center',
     },
     modalContainer: {
         backgroundColor: '#fff',
-        borderTopLeftRadius: 20,
-        borderTopRightRadius: 20,
-        maxHeight: '90%',
-        paddingBottom: 20,
+        borderRadius: 0,
+        maxHeight: '100%',
+        height: '100%',
+        width: '100%',
+        overflow: 'hidden',
+        flexDirection: 'column',
     },
     header: {
         flexDirection: 'row',
@@ -371,9 +706,10 @@ const styles = StyleSheet.create({
         padding: 20,
         borderBottomWidth: 1,
         borderBottomColor: '#f0f0f0',
+        flexShrink: 0,
     },
     title: {
-        fontSize: 20,
+        fontSize: 24,
         fontWeight: 'bold',
         color: '#333',
     },
@@ -387,7 +723,7 @@ const styles = StyleSheet.create({
         margin: 16,
         paddingHorizontal: 12,
         borderRadius: 8,
-        height: 44,
+        height: 48,
     },
     searchIcon: {
         marginRight: 8,
@@ -399,7 +735,59 @@ const styles = StyleSheet.create({
     },
     listContainer: {
         flex: 1,
-        minHeight: 300,
+        paddingBottom: 160,
+    },
+    scrollContent: {
+        paddingBottom: 160,
+        flexGrow: 1,
+    },
+    topContent: {
+        paddingTop: 0,
+    },
+    createContainer: {
+        marginHorizontal: 16,
+        marginBottom: 8,
+        borderWidth: 1,
+        borderColor: '#f0f0f0',
+        borderRadius: 12,
+        overflow: 'hidden',
+        backgroundColor: '#fafafa'
+    },
+    createHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+    },
+    createTitle: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: '#333',
+    },
+    createContent: {
+        padding: 16,
+        gap: 12,
+    },
+    input: {
+        borderWidth: 1,
+        borderColor: '#ddd',
+        borderRadius: 8,
+        padding: 12,
+        fontSize: 16,
+        backgroundColor: '#fff',
+        color: '#333',
+    },
+    picker: {
+        borderWidth: 1,
+        borderColor: '#ddd',
+        borderRadius: 8,
+        backgroundColor: '#fff',
+        height: 50,
+    },
+    inlineActions: {
+        flexDirection: 'row',
+        gap: 12,
     },
     listHeader: {
         paddingHorizontal: 16,
@@ -426,7 +814,7 @@ const styles = StyleSheet.create({
     },
     loadingText: {
         marginTop: 12,
-        fontSize: 14,
+        fontSize: 16,
         color: '#666',
     },
     emptyContainer: {
@@ -438,7 +826,7 @@ const styles = StyleSheet.create({
     },
     emptyText: {
         marginTop: 12,
-        fontSize: 16,
+        fontSize: 18,
         color: '#666',
         textAlign: 'center',
     },
@@ -448,12 +836,31 @@ const styles = StyleSheet.create({
         color: '#999',
         textAlign: 'center',
     },
+    createPromptButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginTop: 16,
+        paddingVertical: 12,
+        paddingHorizontal: 24,
+        backgroundColor: '#f0f4ff',
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: '#667eea',
+    },
+    createPromptText: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: '#667eea',
+        marginLeft: 8,
+    },
     equipmentItem: {
         flexDirection: 'row',
         alignItems: 'center',
-        padding: 16,
+        padding: 24,
         borderBottomWidth: 1,
         borderBottomColor: '#f0f0f0',
+        minHeight: 90,
     },
     equipmentItemSelected: {
         backgroundColor: '#f0f4ff',
@@ -482,7 +889,7 @@ const styles = StyleSheet.create({
         marginBottom: 4,
     },
     equipmentTag: {
-        fontSize: 16,
+        fontSize: 18,
         fontWeight: '600',
         color: '#333',
         flex: 1,
@@ -495,31 +902,36 @@ const styles = StyleSheet.create({
         borderRadius: 4,
     },
     activeBadgeText: {
-        fontSize: 10,
-        fontWeight: '600',
+        fontSize: 12,
+        fontWeight: 'bold',
         color: '#fff',
     },
     equipmentDetails: {
-        fontSize: 14,
+        fontSize: 16,
         color: '#666',
         marginBottom: 2,
     },
     equipmentLocation: {
-        fontSize: 12,
+        fontSize: 14,
         color: '#999',
     },
     footer: {
+        position: 'absolute',
+        bottom: 0,
+        width: '100%',
         borderTopWidth: 1,
         borderTopColor: '#f0f0f0',
         padding: 16,
+        backgroundColor: '#fff',
+        flexShrink: 0,
     },
     summary: {
         flexDirection: 'row',
         alignItems: 'center',
-        marginBottom: 16,
+        marginBottom: 20,
     },
     summaryText: {
-        fontSize: 14,
+        fontSize: 16,
         fontWeight: '600',
         color: '#333',
         marginLeft: 8,
@@ -530,7 +942,7 @@ const styles = StyleSheet.create({
     },
     button: {
         flex: 1,
-        height: 48,
+        height: 56,
         borderRadius: 8,
         justifyContent: 'center',
         alignItems: 'center',
@@ -558,4 +970,3 @@ const styles = StyleSheet.create({
 });
 
 export default AddMultipleEquipmentsModal;
-

@@ -9,6 +9,9 @@ import {
     Alert,
     Modal,
     TextInput,
+    Dimensions,
+    KeyboardAvoidingView,
+    Platform,
 } from "react-native";
 import { MaterialIcons, Ionicons } from "@expo/vector-icons";
 import { DrawerNavigationProp } from "@react-navigation/drawer";
@@ -23,6 +26,7 @@ import { Picker } from "@react-native-picker/picker";
 import apiClient from "../../Context/ApiClient";
 import DynamicEquipmentFields from "../../Components/DynamicEquipmentFields";
 import CustomPicker from "../../Components/CustomPicker";
+// Modal antigo substituído por tela dedicada AddMultipleEquipmentsScreen
 
 interface NewActivityModalProps {
     navigation: DrawerNavigationProp<RootStackParamList, any>;
@@ -136,8 +140,16 @@ const NewActivityModal: React.FC<NewActivityModalProps> = ({ navigation, route }
     const [brands, setBrands] = useState<any[]>([]);
     const [equipmentTypes, setEquipmentTypes] = useState<any[]>([]);
     const [newEquipmentDynamicFields, setNewEquipmentDynamicFields] = useState<{ [key: string]: any }>({});
+    const [newEquipments, setNewEquipments] = useState<Array<{
+        tag?: string;
+        brand_id?: string;
+        equipment_type_id?: string;
+        additional_fields?: { [key: string]: any };
+    }>>([{}]);
     const [createNewEquipment, setCreateNewEquipment] = useState(false);
     const [equipmentTemplate, setEquipmentTemplate] = useState<any>(null);
+
+    // Fluxo atual: navegar para AddMultipleEquipmentsScreen (sem modal)
 
     // Services
     const activityService = new ActivityService();
@@ -187,7 +199,7 @@ const NewActivityModal: React.FC<NewActivityModalProps> = ({ navigation, route }
 
             console.log('[NewActivityModal] Buscando clientes...');
             const response = await ClientService.getClients(
-                false, // hasContract - buscar clientes sem contrato
+                'all', // listar todos os clientes (com e sem contrato) para Ordem de Serviço
                 1, // page
                 token, // accessToken
                 "" // searchQuery
@@ -320,8 +332,11 @@ const NewActivityModal: React.FC<NewActivityModalProps> = ({ navigation, route }
             };
 
             if (selectedClient) filters.client_id = selectedClient.id;
-            if (selectedSector) filters.sector_id = selectedSector.id;
-            if (selectedSubsector) filters.subsector_id = selectedSubsector.id;
+            if (selectedSubsector) {
+                filters.subsector_id = selectedSubsector.id; // se houver subsetor, filtra por subsetor
+            } else if (selectedSector) {
+                filters.sector_id = selectedSector.id; // caso contrário, filtra por setor
+            }
 
             const response = await EquipamentService.fetchEquipments(token, filters);
             setEquipments(response.results || []);
@@ -351,6 +366,7 @@ const NewActivityModal: React.FC<NewActivityModalProps> = ({ navigation, route }
     useEffect(() => {
         if (selectedClient) {
             fetchEquipments();
+            setSelectedEquipment(null); // resetar seleção quando escopo muda
         }
     }, [selectedClient, selectedSector, selectedSubsector]);
 
@@ -388,11 +404,7 @@ const NewActivityModal: React.FC<NewActivityModalProps> = ({ navigation, route }
             Alert.alert("Atenção", "Nome do setor é obrigatório");
             return false;
         }
-        // Validações de equipamento (obrigatório para avançar)
-        if (!newEquipmentBrandId || !newEquipmentTypeId) {
-            Alert.alert("Atenção", "É preciso preencher um equipamento (Fabricante e Tipo) para avançar.");
-            return false;
-        }
+        // Equipamentos serão criados no modal após criar a atividade
         return true;
     };
 
@@ -577,24 +589,21 @@ const NewActivityModal: React.FC<NewActivityModalProps> = ({ navigation, route }
             }
             setCurrentStep(2);
         } else if (currentStep === 2) {
+            console.log('[NewActivityModal] ▶️ Entrou no Step 2 (validação antes do envio)', {
+                clientOption,
+                selectedActivityTypeId: selectedActivityType?.id,
+                selectedClientId: selectedClient?.id,
+                selectedSectorId: selectedSector?.id,
+                selectedSubsectorId: selectedSubsector?.id,
+                createNewEquipment,
+                selectedEquipmentId: selectedEquipment?.id,
+            });
             if (clientOption === "existing") {
                 if (!selectedSector) {
                     Alert.alert("Atenção", "Selecione um setor");
                     return;
                 }
-                // Se estiver criando novo equipamento
-                if (createNewEquipment) {
-                    if (!newEquipmentBrandId || !newEquipmentTypeId) {
-                        Alert.alert("Atenção", "É preciso preencher um equipamento (Fabricante e Tipo) para avançar.");
-                        return;
-                    }
-                } else {
-                    // Se não, precisa ter selecionado um equipamento existente
-                    if (!selectedEquipment) {
-                        Alert.alert("Atenção", "Selecione um equipamento ou crie um novo");
-                        return;
-                    }
-                }
+                // Equipamentos serão selecionados no modal após criar a atividade
             } else if (clientOption === "new") {
                 if (!validateNewClientData()) {
                     return;
@@ -625,7 +634,7 @@ const NewActivityModal: React.FC<NewActivityModalProps> = ({ navigation, route }
                 console.log('[NewActivityModal] ✅ Token encontrado');
 
                 let clientId: number;
-                let equipmentId: number;
+                let equipmentId: number | undefined;
 
                 // Se for novo cliente, criar primeiro
                 if (clientOption === "new") {
@@ -650,92 +659,53 @@ const NewActivityModal: React.FC<NewActivityModalProps> = ({ navigation, route }
                     const createdClient = await ClientService.createClient(clientData, token);
                     console.log('[NewActivityModal] Cliente criado:', createdClient);
                     clientId = createdClient.id;
-
-                    // Criar equipamento (formulário) para o novo cliente
-                    const createdEquipment = await createFormEquipment(clientId, token);
-                    equipmentId = createdEquipment.id;
                 } else {
-                    // Cliente existente
+                    // Cliente existente - simplesmente criar a atividade
                     clientId = selectedClient!.id;
+                }
 
-                    // Se estiver criando novo equipamento
-                    if (createNewEquipment) {
-                        console.log('[NewActivityModal] Criando novo equipamento para cliente existente...');
+                // Resolver sectorId para passar à tela de múltiplos equipamentos
+                let sectorIdToPass: number | undefined = undefined;
 
-                        // Usar o sector_id selecionado (obrigatório)
-                        const sectorId = selectedSubsector?.id || selectedSector!.id;
-
-                        // Preparar tag (opcional)
-                        const providedTag = (newEquipmentTag || '').trim();
-
-                        // Mapear campos dinâmicos
-                        let additionalFields: { [key: string]: any } = {};
-                        try {
-                            if (equipmentTemplate && Array.isArray((equipmentTemplate as any).fields)) {
-                                (equipmentTemplate as any).fields.forEach((field: any) => {
-                                    const fieldKey = field.key || field.name || '';
-                                    if (!fieldKey) return;
-                                    let rawValue = newEquipmentDynamicFields[fieldKey];
-                                    if (rawValue === undefined) return;
-                                    if (field.type === 'radio_with_justification') {
-                                        const justification = newEquipmentDynamicFields[`${fieldKey}_justification`] || '';
-                                        additionalFields[fieldKey] = {
-                                            label: field.label || field.name || fieldKey,
-                                            value: {
-                                                label: field.label || field.name || fieldKey,
-                                                value: String(rawValue),
-                                                justification: String(justification || ''),
-                                            },
-                                        };
-                                        return;
-                                    }
-                                    let value: any = rawValue;
-                                    if (field.type === 'number') {
-                                        const parsed = parseFloat(value);
-                                        value = Number.isNaN(parsed) ? null : parsed;
-                                    } else if (field.type === 'boolean') {
-                                        value = Boolean(value);
-                                    } else {
-                                        value = value !== null && value !== undefined ? String(value).trim() : '';
-                                    }
-                                    additionalFields[fieldKey] = value;
-                                });
-                            } else {
-                                additionalFields = { ...newEquipmentDynamicFields };
+                if (clientOption === 'existing') {
+                    sectorIdToPass = selectedSubsector?.id || selectedSector?.id;
+                } else {
+                    // cliente novo: tentar descobrir o setor criado a partir do nome informado
+                    try {
+                        if (newClientSector.trim()) {
+                            console.log('[NewActivityModal] Buscando setor recém-criado para cliente novo...');
+                            // buscar setores pai (level 0)
+                            const resp0 = await ClientService.getClientSectors(clientId.toString(), token, 0);
+                            const list0 = resp0?.results || resp0 || [];
+                            const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+                            const wantedSector = norm(newClientSector);
+                            const found0 = list0.find((s: any) => norm(s?.name || '') === wantedSector || norm(s?.complete_name || '') === wantedSector);
+                            if (found0?.id) {
+                                sectorIdToPass = found0.id;
+                                console.log('[NewActivityModal] Setor pai encontrado:', found0.id, found0.name);
                             }
-                        } catch (e) {
-                            console.warn('[NewActivityModal] Falha ao processar campos dinâmicos:', (e as any)?.message);
-                            additionalFields = { ...newEquipmentDynamicFields };
+
+                            // opcional: se tiver subsector e não achou ainda, buscar nível 1
+                            if (!sectorIdToPass && newClientSubsector.trim()) {
+                                const resp1 = await ClientService.getClientSectors(clientId.toString(), token, 1);
+                                const list1 = resp1?.results || resp1 || [];
+                                const wantedSub = norm(newClientSubsector);
+                                const found1 = list1.find((s: any) => norm(s?.name || '') === wantedSub || norm(s?.complete_name || '') === wantedSub);
+                                if (found1?.id) {
+                                    sectorIdToPass = found1.id;
+                                    console.log('[NewActivityModal] Subsetor encontrado:', found1.id, found1.name);
+                                }
+                            }
                         }
-
-                        const equipmentData: any = {
-                            client_id: clientId,
-                            sector_id: sectorId,
-                            brand_id: parseInt(newEquipmentBrandId, 10),
-                            equipment_type_id: parseInt(newEquipmentTypeId, 10),
-                            name: `Equipamento ${selectedClient!.name}`,
-                            additional_fields: additionalFields
-                        };
-                        if (providedTag) equipmentData.tag = providedTag;
-
-                        console.log('[NewActivityModal] Dados do equipamento:', equipmentData);
-                        const createdEquipment = await EquipamentService.createEquipment(token, equipmentData);
-                        console.log('[NewActivityModal] Equipamento criado:', createdEquipment);
-
-                        equipmentId = createdEquipment.id;
-                    } else {
-                        // Usar equipamento selecionado
-                        equipmentId = selectedEquipment!.id;
+                    } catch (e: any) {
+                        console.warn('[NewActivityModal] Não foi possível resolver setor recém-criado:', e?.message || e);
                     }
                 }
 
-                // 1. Criar a atividade
+                // Criar a atividade
                 const today = new Date();
-
-
-                // Gerar nome único com timestamp para evitar duplicatas
                 const timestamp = new Date().getTime();
-                const uniqueSuffix = timestamp.toString().slice(-6); // Últimos 6 dígitos do timestamp
+                const uniqueSuffix = timestamp.toString().slice(-6);
                 const activityName = `${selectedActivityType?.name} ${clientOption === "existing" ? selectedClient?.name : newClientName} ${today.toLocaleDateString('pt-BR')} #${uniqueSuffix}`;
 
                 const activityData = {
@@ -745,82 +715,43 @@ const NewActivityModal: React.FC<NewActivityModalProps> = ({ navigation, route }
                     observation: "",
                 };
 
-                console.log('[NewActivityModal] 🎯 ETAPA 1/3: Criando atividade no servidor...');
-                console.log('[NewActivityModal] 📦 Dados da atividade:', activityData);
-                const createdActivity = await activityService.createActivity(activityData, token);
-                console.log('[NewActivityModal] ✅ ETAPA 1/3 CONCLUÍDA: Atividade criada com ID', createdActivity.id);
-
-                // 2. Adicionar equipamento à atividade
-                const equipmentData = {
-                    equipments_ids: [equipmentId]
-                };
-
-                console.log('[NewActivityModal] 🔗 ETAPA 2/3: Vinculando equipamento à atividade...');
-                console.log('[NewActivityModal] 📦 Dados do vínculo:', equipmentData);
-                const linkResult = await activityService.addEquipmentToActivity(
-                    createdActivity.id,
-                    equipmentData,
-                    token
-                );
-                console.log('[NewActivityModal] ✅ ETAPA 2/3 CONCLUÍDA: Equipamento vinculado');
-                console.log('[NewActivityModal] 📦 Resultado do vínculo:', linkResult);
-
-                // 3. Garantir que o backend concluiu e retornou o vínculo antes de navegar
-                console.log('[NewActivityModal] 🔍 ETAPA 3/3: Confirmando vínculo atividade-equipamento...');
-                const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-                let activityEquipmentId = (linkResult && (linkResult.id || linkResult[0]?.id || linkResult.results?.[0]?.id)) || undefined;
-
-                if (!activityEquipmentId) {
-                    console.warn('[NewActivityModal] ⚠️ ID do vínculo não retornado diretamente. Iniciando polling...');
-                    const maxAttempts = 8; // ~4s com 500ms
-                    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-                        try {
-                            const equipmentsPayload = await ActivityService.fetchActivityEquipments(createdActivity.id, { token });
-                            const list = Array.isArray(equipmentsPayload) ? equipmentsPayload : (equipmentsPayload?.results || []);
-                            const found = list.find((ev: any) => ev?.equipment?.id === equipmentId || ev?.equipment_id === equipmentId);
-                            if (found) {
-                                activityEquipmentId = found.id;
-                                console.log(`[NewActivityModal] Vínculo encontrado na tentativa ${attempt}:`, activityEquipmentId);
-                                break;
-                            }
-                        } catch (pollErr) {
-                            console.warn('[NewActivityModal] Polling falhou, tentativa', attempt, (pollErr as any)?.message);
-                        }
-                        await sleep(500);
-                    }
-                }
-
-                if (!activityEquipmentId) {
-                    console.error('[NewActivityModal] ❌ Vínculo não confirmado após polling');
-                    Alert.alert(
-                        'Atenção',
-                        'Ainda estamos finalizando a criação do vínculo de atividade. Tente novamente em alguns segundos.',
-                        [{ text: "OK" }]
-                    );
-                    return; // não navega sem vínculo confirmado
-                }
-
-                console.log('[NewActivityModal] ✅ ETAPA 3/3 CONCLUÍDA: Vínculo confirmado com ID', activityEquipmentId);
-                console.log('[NewActivityModal] 🎉 Todas as etapas concluídas com sucesso!');
-
-                // 4. Navegar para o questionário apenas após confirmação
-                console.log('[NewActivityModal] 🧭 Navegando para tela de questionário...');
-                navigation.navigate("ActivityQuestionnaireScreen", {
-                    activityId: createdActivity.id,
-                    activityEquipmentId: activityEquipmentId,
-                    equipmentId: equipmentId,
-                    equipmentTag: clientOption === "existing"
-                        ? (createNewEquipment ? (newEquipmentTag || "SEM_TAG") : (selectedEquipment?.tag || "SEM_TAG"))
-                        : (newEquipmentTag || `NOVO_${timestamp.toString().slice(-6)}`),
-                    activityName: activityName,
-                    budgetPolicy: selectedActivityType?.budgetPolicy,
-                    fromNewActivityFlow: true,
+                // NOVO FLUXO: não criar a atividade aqui.
+                // Apenas navegar para a tela de múltiplos equipamentos com dados suficientes
+                // para criar a atividade no confirmar (se necessário).
+                console.log('[NewActivityModal] 🔄 Navegando para tela de múltiplos equipamentos (adiando criação da atividade)');
+                console.log('[NewActivityModal] Params:', {
+                    activityName,
+                    activityTypeId: selectedActivityType!.id,
+                    clientId,
+                    clientName: clientOption === 'existing' ? selectedClient?.name : newClientName,
+                    sectorId: sectorIdToPass,
                 });
+                setLoading(false);
+
+                (navigation as any).navigate('AddMultipleEquipmentsScreen', {
+                    // activityId indefinido: tela criará ao confirmar
+                    activityName,
+                    activityTypeId: selectedActivityType!.id,
+                    clientId,
+                    clientName: clientOption === 'existing' ? selectedClient?.name : newClientName,
+                    sectorId: sectorIdToPass,
+                });
+                return;
             } catch (error: any) {
                 console.error('[NewActivityModal] ❌❌❌ ERRO NO FLUXO DE CRIAÇÃO ❌❌❌');
                 console.error('[NewActivityModal] 🔴 Tipo:', error?.constructor?.name || typeof error);
                 console.error('[NewActivityModal] 🔴 Mensagem:', error?.message);
                 console.error('[NewActivityModal] 🔴 Stack:', error?.stack);
+                if (error?.response) {
+                    try {
+                        console.error('[NewActivityModal] 🔎 ERR RESPONSE status:', error.response.status);
+                        console.error('[NewActivityModal] 🔎 ERR RESPONSE data:', typeof error.response.data === 'string' ? error.response.data.slice(0, 500) : JSON.stringify(error.response.data, null, 2));
+                        console.error('[NewActivityModal] 🔎 ERR REQUEST:', {
+                            method: error.config?.method,
+                            url: (error.config?.baseURL || '') + (error.config?.url || ''),
+                        });
+                    } catch { }
+                }
 
                 // Determinar mensagem apropriada baseada no erro
                 let errorTitle = "Erro ao Criar Atividade";
@@ -896,7 +827,7 @@ const NewActivityModal: React.FC<NewActivityModalProps> = ({ navigation, route }
             <View style={[styles.step, currentStep >= 2 && styles.stepActive]}>
                 <Text style={[styles.stepNumber, currentStep >= 2 && styles.stepNumberActive]}>2</Text>
                 <Text style={styles.stepLabel}>
-                    {clientOption === "new" ? "Novo Cliente" : "Selecionar Equipamento"}
+                    {clientOption === "new" ? "Novo Cliente" : "Cliente e Setor"}
                 </Text>
             </View>
         </View>
@@ -961,7 +892,7 @@ const NewActivityModal: React.FC<NewActivityModalProps> = ({ navigation, route }
 
     const renderStep2ExistingClient = () => (
         <View style={styles.stepContent}>
-            <Text style={styles.sectionTitle}>{t('activity.selectEquipment')}</Text>
+            <Text style={styles.sectionTitle}>Dados do Cliente</Text>
 
             {/* Filtro Cliente */}
             <Text style={styles.filterLabel}>Cliente</Text>
@@ -1006,102 +937,34 @@ const NewActivityModal: React.FC<NewActivityModalProps> = ({ navigation, route }
                 </>
             )}
 
-            {/* Opção de criar novo equipamento */}
-            <TouchableOpacity
-                style={[
-                    styles.optionButton,
-                    { marginTop: 16, marginBottom: 16 }
-                ]}
-                onPress={() => setCreateNewEquipment(!createNewEquipment)}
-            >
-                <MaterialIcons
-                    name={createNewEquipment ? "cancel" : "add-circle"}
-                    size={24}
-                    color="#007bff"
-                />
-                <Text style={styles.optionButtonText}>
-                    {createNewEquipment ? "Cancelar novo equipamento" : "Criar novo equipamento"}
+            {/* Mensagem informativa sobre seleção de equipamentos */}
+            <View style={{
+                backgroundColor: '#e7f3ff',
+                padding: 16,
+                borderRadius: 12,
+                marginTop: 20,
+                borderWidth: 1,
+                borderColor: '#007bff',
+            }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                    <MaterialIcons name="info" size={24} color="#007bff" />
+                    <Text style={{
+                        fontSize: 16,
+                        fontWeight: '600',
+                        color: '#007bff',
+                        marginLeft: 8
+                    }}>
+                        Próxima Etapa: Equipamentos
+                    </Text>
+                </View>
+                <Text style={{
+                    fontSize: 14,
+                    color: '#333',
+                    lineHeight: 20
+                }}>
+                    Após avançar, você poderá selecionar múltiplos equipamentos existentes ou criar novos equipamentos para esta atividade.
                 </Text>
-            </TouchableOpacity>
-
-            {/* Se criar novo equipamento */}
-            {createNewEquipment ? (
-                <>
-                    <Text style={[styles.sectionTitle, { marginTop: 16 }]}>{t('equipment.title')}</Text>
-
-                    {/* Tag (Opcional) */}
-                    <Text style={styles.inputLabel}>Tag (Opcional)</Text>
-                    <TextInput
-                        style={styles.input}
-                        value={newEquipmentTag}
-                        onChangeText={setNewEquipmentTag}
-                        placeholder="Defina uma tag (opcional)"
-                        placeholderTextColor="#999"
-                    />
-
-                    {/* Fabricante */}
-                    <Text style={styles.inputLabel}>Fabricante *</Text>
-                    <CustomPicker
-                        selectedValue={newEquipmentBrandId || ""}
-                        onValueChange={(itemValue) => setNewEquipmentBrandId(String(itemValue || ''))}
-                        items={brands.map(b => ({ label: b.name, value: b.id.toString() }))}
-                        placeholder="Selecione um fabricante"
-                        style={styles.pickerContainer}
-                    />
-
-                    {/* Tipo de Equipamento */}
-                    <Text style={styles.inputLabel}>Tipo de Equipamento *</Text>
-                    <CustomPicker
-                        selectedValue={newEquipmentTypeId || ""}
-                        onValueChange={(itemValue) => setNewEquipmentTypeId(String(itemValue || ''))}
-                        items={equipmentTypes.map(t => ({ label: t.name, value: t.id.toString() }))}
-                        placeholder="Selecione um tipo de equipamento"
-                        style={styles.pickerContainer}
-                    />
-
-                    {/* Campos adicionais - Template (carregado por tipo) */}
-                    <View style={{ marginTop: 8 }}>
-                        <DynamicEquipmentFields onFieldsChange={setNewEquipmentDynamicFields} equipmentTypeId={newEquipmentTypeId} />
-                    </View>
-                </>
-            ) : (
-                <>
-                    {/* Lista de Equipamentos */}
-                    <Text style={styles.filterLabel}>Equipamentos</Text>
-                    <ScrollView style={styles.equipmentList}>
-                        {equipments.map((equipment) => (
-                            <TouchableOpacity
-                                key={equipment.id}
-                                style={[
-                                    styles.equipmentItem,
-                                    selectedEquipment?.id === equipment.id && styles.equipmentItemSelected,
-                                ]}
-                                onPress={() => setSelectedEquipment(equipment)}
-                            >
-                                <View style={styles.equipmentInfo}>
-                                    <Text style={[
-                                        styles.equipmentTag,
-                                        selectedEquipment?.id === equipment.id && styles.equipmentTagSelected,
-                                    ]}>
-                                        {equipment.tag}
-                                    </Text>
-                                    {equipment.equipment_type && (
-                                        <Text style={[
-                                            styles.equipmentType,
-                                            selectedEquipment?.id === equipment.id && styles.equipmentTypeSelected,
-                                        ]}>
-                                            {equipment.equipment_type.name}
-                                        </Text>
-                                    )}
-                                </View>
-                                {selectedEquipment?.id === equipment.id && (
-                                    <MaterialIcons name="check-circle" size={24} color="#007bff" />
-                                )}
-                            </TouchableOpacity>
-                        ))}
-                    </ScrollView>
-                </>
-            )}
+            </View>
         </View>
     );
 
@@ -1177,42 +1040,33 @@ const NewActivityModal: React.FC<NewActivityModalProps> = ({ navigation, route }
                 placeholderTextColor="#999"
             />
 
-            {/* Seção: Equipamento obrigatório */}
-            <Text style={[styles.sectionTitle, { marginTop: 16 }]}>{t('equipment.title')}</Text>
-
-            {/* Tag (Opcional) */}
-            <Text style={styles.inputLabel}>Tag (Opcional)</Text>
-            <TextInput
-                style={styles.input}
-                value={newEquipmentTag}
-                onChangeText={setNewEquipmentTag}
-                placeholder="Defina uma tag (opcional)"
-                placeholderTextColor="#999"
-            />
-
-            {/* Fabricante */}
-            <Text style={styles.inputLabel}>Fabricante *</Text>
-            <CustomPicker
-                selectedValue={newEquipmentBrandId || ""}
-                onValueChange={(itemValue) => setNewEquipmentBrandId(String(itemValue || ''))}
-                items={brands.map(b => ({ label: b.name, value: b.id.toString() }))}
-                placeholder="Selecione um fabricante"
-                style={styles.pickerContainer}
-            />
-
-            {/* Tipo de Equipamento */}
-            <Text style={styles.inputLabel}>Tipo de Equipamento *</Text>
-            <CustomPicker
-                selectedValue={newEquipmentTypeId || ""}
-                onValueChange={(itemValue) => setNewEquipmentTypeId(String(itemValue || ''))}
-                items={equipmentTypes.map(t => ({ label: t.name, value: t.id.toString() }))}
-                placeholder="Selecione um tipo de equipamento"
-                style={styles.pickerContainer}
-            />
-
-            {/* Campos adicionais - Template (carregado por tipo) */}
-            <View style={{ marginTop: 8 }}>
-                <DynamicEquipmentFields onFieldsChange={setNewEquipmentDynamicFields} equipmentTypeId={newEquipmentTypeId} />
+            {/* Mensagem informativa sobre seleção de equipamentos */}
+            <View style={{
+                backgroundColor: '#e7f3ff',
+                padding: 16,
+                borderRadius: 12,
+                marginTop: 20,
+                borderWidth: 1,
+                borderColor: '#007bff',
+            }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                    <MaterialIcons name="info" size={24} color="#007bff" />
+                    <Text style={{
+                        fontSize: 16,
+                        fontWeight: '600',
+                        color: '#007bff',
+                        marginLeft: 8
+                    }}>
+                        Próxima Etapa: Equipamentos
+                    </Text>
+                </View>
+                <Text style={{
+                    fontSize: 14,
+                    color: '#333',
+                    lineHeight: 20
+                }}>
+                    Após criar o cliente, você poderá criar múltiplos equipamentos para esta atividade.
+                </Text>
             </View>
         </View>
     );
@@ -1232,47 +1086,68 @@ const NewActivityModal: React.FC<NewActivityModalProps> = ({ navigation, route }
 
             {renderStepIndicator()}
 
-            {loading ? (
-                <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="large" color="#007bff" />
-                    <Text style={styles.loadingText}>Carregando...</Text>
-                </View>
-            ) : (
-                <ScrollView style={styles.content}>
-                    {currentStep === 1 && renderStep1()}
-                    {currentStep === 2 && clientOption === "existing" && renderStep2ExistingClient()}
-                    {currentStep === 2 && clientOption === "new" && renderStep2NewClient()}
-                </ScrollView>
-            )}
-
-            <View style={styles.footer}>
-                {currentStep > 1 && (
-                    <TouchableOpacity
-                        style={[styles.footerButton, styles.backButton]}
-                        onPress={handlePreviousStep}
+            <KeyboardAvoidingView 
+                style={styles.keyboardView} 
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 20}
+            >
+                {loading ? (
+                    <View style={styles.loadingContainer}>
+                        <ActivityIndicator size="large" color="#007bff" />
+                        <Text style={styles.loadingText}>Carregando...</Text>
+                    </View>
+                ) : (
+                    <ScrollView 
+                        style={styles.content}
+                        contentContainerStyle={styles.contentContainer}
+                        keyboardShouldPersistTaps="handled"
+                        showsVerticalScrollIndicator={true}
+                        bounces={false}
                     >
-                        <Ionicons name="arrow-back" size={20} color="#666" />
-                        <Text style={styles.backButtonText}>Voltar</Text>
-                    </TouchableOpacity>
+                        {currentStep === 1 && renderStep1()}
+                        {currentStep === 2 && clientOption === "existing" && renderStep2ExistingClient()}
+                        {currentStep === 2 && clientOption === "new" && renderStep2NewClient()}
+                    </ScrollView>
                 )}
-                <TouchableOpacity
-                    style={[styles.footerButton, styles.nextButton]}
-                    onPress={handleNextStep}
-                >
-                    <Text style={styles.nextButtonText}>
-                        {currentStep === 2 ? t('activity.continueToQuestionnaire') : t('common.advance')}
-                    </Text>
-                    <Ionicons name="arrow-forward" size={20} color="#fff" />
-                </TouchableOpacity>
-            </View>
-        </View >
+
+                <View style={styles.footer}>
+                    {currentStep > 1 && (
+                        <TouchableOpacity
+                            style={[styles.footerButton, styles.backButton]}
+                            onPress={handlePreviousStep}
+                        >
+                            <Ionicons name="arrow-back" size={20} color="#666" />
+                            <Text style={styles.backButtonText}>Voltar</Text>
+                        </TouchableOpacity>
+                    )}
+                    <TouchableOpacity
+                        style={[styles.footerButton, styles.nextButton]}
+                        onPress={handleNextStep}
+                    >
+                        <Text style={styles.nextButtonText}>
+                            {currentStep === 2 ? 'Criar Atividade' : t('common.advance')}
+                        </Text>
+                        <Ionicons name="arrow-forward" size={20} color="#fff" />
+                    </TouchableOpacity>
+                </View>
+            </KeyboardAvoidingView>
+        </View>
     );
 };
+
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 const styles = StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: "#f8f9fa",
+    },
+    keyboardView: {
+        flex: 1,
+    },
+    contentContainer: {
+        flexGrow: 1,
+        paddingBottom: 20,
     },
     header: {
         backgroundColor: "#667eea",
@@ -1347,7 +1222,8 @@ const styles = StyleSheet.create({
         flex: 1,
     },
     stepContent: {
-        padding: 20,
+        padding: Math.max(16, SCREEN_WIDTH * 0.04),
+        minHeight: SCREEN_HEIGHT * 0.4,
     },
     sectionTitle: {
         fontSize: 18,
@@ -1359,21 +1235,24 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         borderColor: "#ddd",
         borderRadius: 8,
-        marginBottom: 20,
+        marginBottom: Math.max(12, SCREEN_HEIGHT * 0.02),
         backgroundColor: "#fff",
+        minHeight: 50,
     },
     picker: {
         height: 50,
+        width: '100%',
     },
     optionButton: {
         flexDirection: "row",
         alignItems: "center",
-        padding: 16,
+        padding: Math.max(12, SCREEN_HEIGHT * 0.018),
         borderWidth: 1,
         borderColor: "#007bff",
         borderRadius: 8,
-        marginBottom: 12,
+        marginBottom: Math.max(10, SCREEN_HEIGHT * 0.015),
         backgroundColor: "#fff",
+        minHeight: 50,
     },
     optionButtonSelected: {
         backgroundColor: "#007bff",
@@ -1443,9 +1322,10 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         borderColor: "#ddd",
         borderRadius: 8,
-        padding: 12,
-        fontSize: 16,
+        padding: Math.max(10, SCREEN_HEIGHT * 0.014),
+        fontSize: Math.max(14, SCREEN_WIDTH * 0.04),
         backgroundColor: "#fff",
+        minHeight: 44,
     },
     loadingContainer: {
         flex: 1,
@@ -1460,17 +1340,20 @@ const styles = StyleSheet.create({
     footer: {
         flexDirection: "row",
         justifyContent: "space-between",
-        padding: 16,
+        padding: Math.max(12, SCREEN_WIDTH * 0.04),
         backgroundColor: "#fff",
         borderTopWidth: 1,
         borderTopColor: "#e0e0e0",
+        paddingBottom: Platform.OS === 'ios' ? Math.max(20, SCREEN_HEIGHT * 0.02) : Math.max(12, SCREEN_HEIGHT * 0.015),
     },
     footerButton: {
         flexDirection: "row",
         alignItems: "center",
-        paddingVertical: 12,
-        paddingHorizontal: 20,
+        paddingVertical: Math.max(10, SCREEN_HEIGHT * 0.014),
+        paddingHorizontal: Math.max(16, SCREEN_WIDTH * 0.04),
         borderRadius: 8,
+        minHeight: 44,
+        justifyContent: 'center',
     },
     backButton: {
         backgroundColor: "#f0f0f0",

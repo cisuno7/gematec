@@ -3,6 +3,9 @@ import 'react-native-gesture-handler';
 import React, { useRef, useEffect } from 'react';
 import { NavigationContainer, useNavigationContainerRef } from '@react-navigation/native';
 import * as Notifications from 'expo-notifications';
+import { useFonts } from 'expo-font';
+import { MaterialIcons, Ionicons, FontAwesome } from '@expo/vector-icons';
+import { ActivityIndicator, View } from 'react-native';
 import AppRouter from './src/Routers/AppRouter';
 import { PermissionProvider } from './src/Context/PermissionsContext';
 import { UserProvider } from './src/Context/UserContext';
@@ -13,6 +16,13 @@ import { useSyncManager } from './src/hooks/useSyncManager';
 
 const App = () => {
     const navigationRef = useNavigationContainerRef<RootStackParamList>();
+
+    // Carregar fontes dos ícones
+    const [fontsLoaded] = useFonts({
+        ...MaterialIcons.font,
+        ...Ionicons.font,
+        ...FontAwesome.font,
+    });
 
     // Configurar notificações
     useEffect(() => {
@@ -38,6 +48,15 @@ const App = () => {
 
     // Inicializa o gerenciador de sincronização
     useSyncManager();
+
+    // Aguardar carregamento das fontes
+    if (!fontsLoaded) {
+        return (
+            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                <ActivityIndicator size="large" color="#667eea" />
+            </View>
+        );
+    }
 
     return (
         <LanguageProvider>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
     View,
     Text,
@@ -20,16 +20,42 @@ interface DynamicEquipmentFieldsProps {
     equipmentTypeId?: number | string; // opcional: quando fornecido, carrega template por tipo
 }
 
-const DynamicEquipmentFields: React.FC<DynamicEquipmentFieldsProps> = ({
+// Constante para evitar criar novo objeto em cada render
+const DEFAULT_INITIAL_VALUES = {};
+
+const DynamicEquipmentFields: React.FC<DynamicEquipmentFieldsProps> = React.memo(({
     onFieldsChange,
-    initialValues = {},
+    initialValues = DEFAULT_INITIAL_VALUES,
     equipmentTypeId,
 }) => {
     const [template, setTemplate] = useState<EquipmentTemplateModel | null>(null);
     const [loading, setLoading] = useState(true);
-    const [fieldValues, setFieldValues] = useState<{ [key: string]: any }>(initialValues);
+    const [fieldValues, setFieldValues] = useState<{ [key: string]: any }>(() => initialValues || DEFAULT_INITIAL_VALUES);
 
     useEffect(() => {
+        const fetchTemplateByType = async (equipmentTypeId: number | string) => {
+            try {
+                setLoading(true);
+                const token = await AsyncStorage.getItem('access_token');
+                if (!token) throw new Error('Token de acesso não encontrado.');
+
+                const typeId = Number(equipmentTypeId);
+                if (!Number.isFinite(typeId)) {
+                    setTemplate(null);
+                    return;
+                }
+
+                const templateData = await EquipmentService.getEquipmentTemplateByEquipmentType(typeId, token);
+                setTemplate(templateData);
+            } catch (error: any) {
+                console.error('[DynamicEquipmentFields] Erro ao buscar template por tipo:', error);
+                Alert.alert('Erro', 'Não foi possível carregar o template para o tipo selecionado.');
+                setTemplate(null);
+            } finally {
+                setLoading(false);
+            }
+        };
+
         // Não buscar template ao abrir sem tipo selecionado (tarefas.md)
         if (equipmentTypeId) {
             fetchTemplateByType(equipmentTypeId);
@@ -41,32 +67,16 @@ const DynamicEquipmentFields: React.FC<DynamicEquipmentFieldsProps> = ({
 
     useEffect(() => {
         onFieldsChange(fieldValues);
-    }, [fieldValues]);
+    }, [fieldValues, onFieldsChange]);
 
-    // Removido fetchTemplate genérico: não chamar endpoint antigo sem tipo
-
-    const fetchTemplateByType = async (equipmentTypeId: number | string) => {
-        try {
-            setLoading(true);
-            const token = await AsyncStorage.getItem('access_token');
-            if (!token) throw new Error('Token de acesso não encontrado.');
-
-            const typeId = Number(equipmentTypeId);
-            if (!Number.isFinite(typeId)) {
-                setTemplate(null);
-                return;
-            }
-
-            const templateData = await EquipmentService.getEquipmentTemplateByEquipmentType(typeId, token);
-            setTemplate(templateData);
-        } catch (error: any) {
-            console.error('[DynamicEquipmentFields] Erro ao buscar template por tipo:', error);
-            Alert.alert('Erro', 'Não foi possível carregar o template para o tipo selecionado.');
-            setTemplate(null);
-        } finally {
-            setLoading(false);
+    // Sincronizar fieldValues quando initialValues mudar (usando ref para evitar loop)
+    const prevInitialValuesRef = useRef(initialValues);
+    useEffect(() => {
+        if (initialValues && initialValues !== DEFAULT_INITIAL_VALUES && initialValues !== prevInitialValuesRef.current) {
+            setFieldValues(initialValues);
+            prevInitialValuesRef.current = initialValues;
         }
-    };
+    }, [initialValues]);
 
     const handleFieldChange = (fieldName: string, value: any) => {
         setFieldValues(prev => ({
@@ -256,7 +266,11 @@ const DynamicEquipmentFields: React.FC<DynamicEquipmentFieldsProps> = ({
     }
 
     return (
-        <ScrollView style={styles.container}>
+        <ScrollView
+            style={styles.container}
+            keyboardShouldPersistTaps="handled"
+            nestedScrollEnabled={true}
+        >
             <Text style={styles.sectionTitle}>Campos Adicionais</Text>
             {template.getOrderedFields().map((field: DynamicField, index: number) => (
                 <View key={`${field.id ?? field.key ?? field.name ?? index}`} style={styles.fieldContainer}>
@@ -269,7 +283,16 @@ const DynamicEquipmentFields: React.FC<DynamicEquipmentFieldsProps> = ({
             ))}
         </ScrollView>
     );
-};
+}, (prevProps, nextProps) => {
+    // Comparação customizada para evitar re-renders desnecessários
+    return (
+        prevProps.equipmentTypeId === nextProps.equipmentTypeId &&
+        prevProps.initialValues === nextProps.initialValues &&
+        prevProps.onFieldsChange === nextProps.onFieldsChange
+    );
+});
+
+DynamicEquipmentFields.displayName = 'DynamicEquipmentFields';
 
 const styles = StyleSheet.create({
     container: {

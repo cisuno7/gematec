@@ -1,5 +1,6 @@
 import axios from "axios";
 import { API_BASE_URL, buildApiUrlForAccount, setDynamicApiUrl } from "../config/apiConfig";
+import { REQUEST_TIMEOUT } from "../config/timeoutConfig";
 import apiClient from "../Context/ApiClient";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
@@ -11,7 +12,9 @@ export default class AuthService {
       const apiUrl = await buildApiUrlForAccount(account); // Adicione await
       const endpoint = `${apiUrl}/token`;
       console.log('[AuthService] Endpoint de login dinâmico:', endpoint);
-      const response = await axios.post(endpoint, { email, password });
+      const response = await axios.post(endpoint, { email, password }, {
+        timeout: REQUEST_TIMEOUT
+      });
       return response.data;
     } catch (error: any) {
       console.error('[AuthService] Erro ao realizar a requisição de login:', error);

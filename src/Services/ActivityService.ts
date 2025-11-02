@@ -159,9 +159,27 @@ export default class ActivityService {
 
         } catch (error: any) {
             console.error('[ActivityService] Erro ao buscar atividades:', error);
+
+            // ✅ TRATAMENTO ESPECIAL PARA ERRO 500 COM DADOS VÁLIDOS
             if (error.response?.status === 500) {
-                return { results: [], count: 0 }; // Fallback para lista vazia
+                // Verificar se apesar do erro 500, há dados válidos na resposta
+                const responseData = error.response?.data;
+
+                if (responseData && typeof responseData === 'object') {
+                    const results = responseData.results || responseData.activities || [];
+                    const count = responseData.count || results.length;
+
+                    if (Array.isArray(results) && results.length > 0) {
+                        console.warn('[ActivityService] ⚠️ Erro 500 mas dados válidos encontrados, retornando:', results.length, 'atividades');
+                        return { results, count };
+                    }
+                }
+
+                // Se não tem dados válidos, retornar lista vazia
+                console.warn('[ActivityService] ⚠️ Erro 500 sem dados válidos, retornando lista vazia');
+                return { results: [], count: 0 };
             }
+
             throw error;
         }
     }
@@ -184,22 +202,48 @@ export default class ActivityService {
                 break;
             }
 
-            const response = await apiClient.get<ActivitiesListResponse>(nextUrl, {
-                headers: { Authorization: `Bearer ${params.token}` },
-            });
+            try {
+                const response = await apiClient.get<ActivitiesListResponse>(nextUrl, {
+                    headers: { Authorization: `Bearer ${params.token}` },
+                });
 
-            const data: ActivitiesListResponse = response.data || {} as ActivitiesListResponse;
-            console.log(`[ActivityService] Página ${pageCount} - Count: ${data.count}, Results: ${data.results?.length || 0}`);
+                const data: ActivitiesListResponse = response.data || {} as ActivitiesListResponse;
+                console.log(`[ActivityService] Página ${pageCount} - Count: ${data.count}, Results: ${data.results?.length || 0}`);
 
-            const pageResults: Activity[] = Array.isArray(data.results)
-                ? data.results
-                : (Array.isArray(data.activities) ? data.activities : []);
+                const pageResults: Activity[] = Array.isArray(data.results)
+                    ? data.results
+                    : (Array.isArray(data.activities) ? data.activities : []);
 
-            console.log(`[ActivityService] Página ${pageCount} - Atividades adicionadas: ${pageResults.length}`);
-            aggregated.push(...pageResults);
+                console.log(`[ActivityService] Página ${pageCount} - Atividades adicionadas: ${pageResults.length}`);
+                aggregated.push(...pageResults);
 
-            nextUrl = toRelativeApiPath(data.links?.next) || null;
-            console.log(`[ActivityService] Página ${pageCount} - Next URL: ${nextUrl}`);
+                nextUrl = toRelativeApiPath(data.links?.next) || null;
+                console.log(`[ActivityService] Página ${pageCount} - Next URL: ${nextUrl}`);
+            } catch (error: any) {
+                // ✅ TRATAMENTO ESPECIAL PARA ERRO 500 COM DADOS VÁLIDOS
+                if (error.response?.status === 500) {
+                    const responseData = error.response?.data;
+
+                    if (responseData && typeof responseData === 'object') {
+                        const pageResults = responseData.results || responseData.activities || [];
+
+                        if (Array.isArray(pageResults) && pageResults.length > 0) {
+                            console.warn(`[ActivityService] ⚠️ Página ${pageCount} - Erro 500 mas ${pageResults.length} atividades encontradas, continuando...`);
+                            aggregated.push(...pageResults);
+                            nextUrl = toRelativeApiPath(responseData.links?.next) || null;
+                            continue;
+                        }
+                    }
+
+                    // Se erro 500 sem dados, parar paginação mas não crashar
+                    console.warn(`[ActivityService] ⚠️ Página ${pageCount} - Erro 500 sem dados, interrompendo paginação`);
+                    break;
+                }
+
+                // Outros erros: parar paginação
+                console.error(`[ActivityService] ❌ Erro na página ${pageCount}:`, error.message);
+                break;
+            }
         }
 
         console.log(`[ActivityService] ===== FINALIZADO - ${pageCount} páginas, ${aggregated.length} atividades =====`);
@@ -340,6 +384,51 @@ export default class ActivityService {
                 count: 0
             };
         }
+    }
+
+    // 2.1. Buscar TODOS os equipamentos vinculados (todas as páginas)
+    static async fetchAllActivityEquipments(activityId: number, params: { token: string }): Promise<any> {
+        console.log('[ActivityService] ===== BUSCANDO TODAS AS PÁGINAS DE EQUIPAMENTOS =====');
+        console.log('[ActivityService] activityId:', activityId);
+
+        const aggregated: any[] = [];
+        let nextUrl: string | null = `/activities/${activityId}/equipments`;
+        let safety = 0;
+        let pageCount = 0;
+
+        while (nextUrl) {
+            safety += 1;
+            pageCount += 1;
+
+            if (safety > 100) {
+                console.warn('[ActivityService] Interrompido por segurança após 100 páginas (5000 equipamentos)');
+                break;
+            }
+
+            console.log(`[ActivityService] Buscando página ${pageCount}, URL: ${nextUrl}`);
+
+            const response: any = await apiClient.get(nextUrl, {
+                headers: { Authorization: `Bearer ${params.token}` },
+            });
+
+            const data: any = response.data || {};
+            console.log(`[ActivityService] Página ${pageCount} - count: ${data.count}, results: ${data.results?.length || 0}`);
+
+            const pageResults = Array.isArray(data.results) ? data.results : [];
+            aggregated.push(...pageResults);
+
+            // Usa helper existente para normalizar URL do próximo
+            nextUrl = toRelativeApiPath(data.links?.next) || null;
+            console.log(`[ActivityService] Página ${pageCount} - Next URL: ${nextUrl}`);
+        }
+
+        console.log(`[ActivityService] ===== FINALIZADO - ${pageCount} páginas, ${aggregated.length} equipamentos =====`);
+
+        return {
+            results: aggregated,
+            count: aggregated.length,
+            links: { next: null, previous: null }
+        };
     }
 
     // 3. Iniciar/fechar atividade em equipamento
@@ -835,8 +924,16 @@ export default class ActivityService {
             if (error.response) {
                 console.error('[ActivityService] 🔴 Erro com resposta do servidor');
                 console.error('[ActivityService] 📡 Status HTTP:', error.response.status);
-                console.error('[ActivityService] 📦 Dados da resposta:', JSON.stringify(error.response.data, null, 2));
+                try {
+                    const data = error.response.data;
+                    const preview = typeof data === 'string' ? (data as string).slice(0, 500) : JSON.stringify(data, null, 2);
+                    console.error('[ActivityService] 📦 Dados da resposta (preview):', preview);
+                } catch { }
                 console.error('[ActivityService] 📋 Headers:', error.response.headers);
+                try {
+                    console.error('[ActivityService] 🌐 METHOD:', error.config?.method);
+                    console.error('[ActivityService] 🌐 URL:', (error.config?.baseURL || '') + (error.config?.url || ''));
+                } catch { }
 
                 if (error.response.status === 400) {
                     console.error('[ActivityService] ⚠️ Erro 400 - Requisição inválida');
@@ -907,6 +1004,11 @@ export default class ActivityService {
                 equipmentsCount: data.equipments_ids?.length || 0
             });
 
+            // Log explícito do payload enviado
+            try {
+                console.log(`[ActivityService] >>> POST /activities/${activityId}/equipments BODY:`, JSON.stringify(data));
+            } catch { console.log(`[ActivityService] >>> POST /activities/${activityId}/equipments BODY: [object]`); }
+
             console.log('[ActivityService] 🚀 Enviando requisição POST /activities/:id/equipments...');
             const response = await apiClient.post(`/activities/${activityId}/equipments`, data, {
                 headers: { Authorization: `Bearer ${token}` },
@@ -920,6 +1022,11 @@ export default class ActivityService {
                 status: response.status,
                 linkId: response.data?.id || response.data?.[0]?.id || response.data?.results?.[0]?.id
             });
+
+            // Log explícito do corpo retornado
+            try {
+                console.log(`[ActivityService] <<< /activities/${activityId}/equipments STATUS: ${response.status} BODY:`, JSON.stringify(response.data, null, 2));
+            } catch { console.log(`[ActivityService] <<< /activities/${activityId}/equipments STATUS: ${response.status} BODY: [object]`); }
 
             return response.data;
         } catch (error: any) {
@@ -992,78 +1099,117 @@ export default class ActivityService {
             throw new Error('Sem conexão com a internet. Por favor, conecte-se e tente novamente.');
         }
 
+        // Validação local
+        if (!activityId || activityId <= 0) {
+            throw new Error('ID da atividade inválido.');
+        }
+        if (!equipmentsIds || equipmentsIds.length === 0) {
+            throw new Error('Selecione pelo menos um equipamento.');
+        }
+
+        console.log('[ActivityService] 📦 Vínculo alvo:', { activityId, equipmentsCount: equipmentsIds.length });
+
+        // Endpoints e payloads alternativos
+        const endpoints = [
+            `/activities/${activityId}/equipments`,
+            `/activities/${activityId}/equipments/`,
+            `/activities/${activityId}/equipment`,
+            `/activities/${activityId}/equipment/`,
+        ];
+        const payloads: any[] = [
+            { equipments_ids: equipmentsIds },
+            { equipment_ids: equipmentsIds },
+            { equipments: equipmentsIds },
+            equipmentsIds,
+        ];
+
+        let lastError: any = null;
+        for (const ep of endpoints) {
+            for (const body of payloads) {
+                try {
+                    const keys = typeof body === 'object' && !Array.isArray(body) ? Object.keys(body) : ['<array>'];
+                    console.log(`[ActivityService] 🚀 Tentando POST ${ep} com payload keys:`, keys);
+                    const response = await apiClient.post(ep, body, {
+                        headers: { Authorization: `Bearer ${token}` },
+                    });
+                    console.log('[ActivityService] ✅ Vinculação concluída!', { endpoint: ep, status: response.status });
+                    try { console.log(`[ActivityService] <<< ${ep} BODY:`, JSON.stringify(response.data, null, 2)); } catch { }
+                    return response.data;
+                } catch (e: any) {
+                    lastError = e;
+                    const status = e?.response?.status;
+                    const data = e?.response?.data;
+                    const isHtml = typeof data === 'string' && (data.includes('<!DOCTYPE') || data.includes('<html'));
+                    console.warn(`[ActivityService] ❌ Falha em ${ep} (status=${status || 'sem'} html=${isHtml}) – próxima variação...`);
+                    continue;
+                }
+            }
+        }
+
+        console.error('[ActivityService] ❌ Todas as variações de endpoint/payload falharam');
+        if (lastError?.response?.status === 404) throw new Error(`Endpoint de vínculo não encontrado para atividade ${activityId}.`);
+        if (lastError?.response?.status >= 500) throw new Error('Erro no servidor ao vincular equipamentos. Tente novamente.');
+        throw new Error(lastError?.message || 'Falha ao vincular equipamentos à atividade.');
+    }
+
+    // 7.2. Adicionar equipamentos via payload completo (clientes novos)
+    async addEquipmentsPayloadToActivity(
+        activityId: number,
+        equipments: any[],
+        token: string
+    ): Promise<any> {
+        console.log('[ActivityService] 🔗📄 === ADICIONANDO EQUIPAMENTOS (payload completo) À ATIVIDADE ===');
+
+        // Verificar conectividade
+        const networkState = await NetInfo.fetch();
+        console.log('[ActivityService] 🌐 Estado da rede:', {
+            isConnected: networkState.isConnected,
+            type: networkState.type,
+            isInternetReachable: networkState.isInternetReachable
+        });
+
+        const hasConnection = networkState.isConnected || networkState.isInternetReachable;
+        if (!hasConnection) {
+            console.error('[ActivityService] ❌ Sem conexão com a internet');
+            throw new Error('Sem conexão com a internet. Por favor, conecte-se e tente novamente.');
+        }
+
         try {
-            // Validar dados
             if (!activityId || activityId <= 0) {
                 throw new Error('ID da atividade inválido.');
             }
-            if (!equipmentsIds || equipmentsIds.length === 0) {
-                throw new Error('Selecione pelo menos um equipamento.');
+            if (!Array.isArray(equipments) || equipments.length === 0) {
+                throw new Error('Informe ao menos um equipamento no payload.');
             }
 
-            console.log('[ActivityService] 📦 Dados dos vínculos:', {
-                activityId,
-                equipmentsCount: equipmentsIds.length,
-                equipmentsIds
-            });
+            const payload = { equipments };
+            console.log('[ActivityService] 📦 Payload equipments (qtd):', equipments.length);
 
-            const payload = {
-                equipments_ids: equipmentsIds
-            };
-
-            console.log('[ActivityService] 🚀 Enviando requisição POST /activities/:id/equipments...');
+            console.log('[ActivityService] 🚀 Enviando requisição POST /activities/:id/equipments (equipments payload)...');
             const response = await apiClient.post(`/activities/${activityId}/equipments`, payload, {
                 headers: { Authorization: `Bearer ${token}` },
             });
 
-            console.log('[ActivityService] ✅ Equipamentos adicionados com SUCESSO!');
-            console.log('[ActivityService] 📦 Resposta do servidor:', {
-                hasData: !!response.data,
-                dataType: typeof response.data,
-                isArray: Array.isArray(response.data),
-                status: response.status,
-                itemsCount: Array.isArray(response.data) ? response.data.length :
-                    (response.data?.results ? response.data.results.length : '?')
-            });
-
+            console.log('[ActivityService] ✅ Equipamentos (payload) adicionados com SUCESSO!');
             return response.data;
         } catch (error: any) {
-            console.error('[ActivityService] ❌❌❌ ERRO ao adicionar múltiplos equipamentos ❌❌❌');
-            console.error('[ActivityService] 🔴 Tipo do erro:', error?.constructor?.name || typeof error);
-            console.error('[ActivityService] 🔴 Mensagem:', error?.message);
-
+            console.error('[ActivityService] ❌❌❌ ERRO ao adicionar equipments (payload) ❌❌❌');
             if (error.response) {
-                console.error('[ActivityService] 🔴 Erro com resposta do servidor');
-                console.error('[ActivityService] 📡 Status HTTP:', error.response.status);
-                console.error('[ActivityService] 📦 Dados da resposta:', JSON.stringify(error.response.data, null, 2));
-
-                if (error.response.status === 404) {
-                    console.error('[ActivityService] 🔍 Erro 404 - Atividade não encontrada');
+                const status = error.response.status;
+                const serverMsg = error.response.data?.message || error.response.data?.error;
+                if (status === 404) {
                     throw new Error(`Atividade ID ${activityId} não encontrada no servidor.`);
-                } else if (error.response.status === 400 || error.response.status === 422) {
-                    console.error('[ActivityService] ⚠️ Erro de validação');
-                    const errorMsg = error.response.data?.message || error.response.data?.error || "Dados inválidos para vincular equipamentos.";
-                    throw new Error(errorMsg);
-                } else if (error.response.status === 401) {
-                    console.error('[ActivityService] 🔐 Erro 401 - Não autorizado');
-                    throw new Error("Sua sessão expirou. Por favor, faça login novamente.");
-                } else if (error.response.status === 403) {
-                    console.error('[ActivityService] 🚫 Erro 403 - Sem permissão');
-                    throw new Error("Você não tem permissão para adicionar equipamentos a esta atividade.");
-                } else if (error.response.status >= 500) {
-                    console.error('[ActivityService] 🔥 Erro do servidor (5xx)');
-                    throw new Error("Erro no servidor ao vincular equipamentos. Tente novamente em alguns instantes.");
-                } else {
-                    console.error('[ActivityService] ❓ Erro HTTP desconhecido');
-                    throw new Error(error.response.data?.message || `Erro ao adicionar equipamentos (${error.response.status}).`);
+                } else if (status === 400 || status === 422) {
+                    throw new Error(serverMsg || 'Dados inválidos para vincular equipamentos.');
+                } else if (status === 401) {
+                    throw new Error('Sua sessão expirou. Por favor, faça login novamente.');
+                } else if (status === 403) {
+                    throw new Error('Você não tem permissão para adicionar equipamentos a esta atividade.');
+                } else if (status >= 500) {
+                    throw new Error('Erro do servidor ao vincular equipamentos. Tente novamente em instantes.');
                 }
-            } else if (error.request) {
-                console.error('[ActivityService] 🌐 Erro de rede - requisição enviada mas sem resposta');
-                throw new Error("Não foi possível conectar ao servidor. Verifique sua conexão com a internet.");
-            } else {
-                console.error('[ActivityService] ⚠️ Erro ao configurar requisição');
-                throw new Error(error.message || "Erro inesperado ao adicionar equipamentos.");
             }
+            throw new Error(error.message || 'Erro ao adicionar equipamentos (payload).');
         }
     }
 

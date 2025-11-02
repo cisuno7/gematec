@@ -200,20 +200,9 @@ export default class EquipmentService {
         console.error("Dados:", error.response.data);
         console.error("Headers:", error.response.headers);
 
-        // Tratamento específico para erro 400
-        if (error.response.status === 400) {
-          const errorMessage = error.response.data?.message || error.response.data?.error || "Dados inválidos";
-          console.error("[EquipmentService] Erro 400 - Dados inválidos:", errorMessage);
-          throw new Error(`Erro de validação: ${errorMessage}`);
-        } else if (error.response.status === 401) {
-          throw new Error("Token de acesso inválido ou expirado.");
-        } else if (error.response.status === 422) {
-          const validationErrors = error.response.data?.errors || {};
-          const errorMessages = Object.values(validationErrors).flat().join(", ");
-          throw new Error(`Erro de validação: ${errorMessages}`);
-        } else {
-          throw new Error(error.response.data?.message || "Erro inesperado no servidor.");
-        }
+        // ✅ Manter o error.response original para debugging no caller
+        // NÃO criar novo Error que perde o response
+        throw error;
       } else if (error.request) {
         console.error("[EquipmentService] Nenhuma resposta recebida do servidor:", error.request);
         throw new Error("Falha na conexão com o servidor. Verifique sua rede.");

@@ -149,6 +149,17 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const decoded: any = jwtDecode(accessToken);
       console.log("[UserContext] Login - Token decodificado:", decoded);
       console.log("[UserContext] Login - user_name do token:", decoded.user_name);
+      console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+      console.log("🔍 DEBUG TOKEN JWT - CAMPOS COMPLETOS:");
+      console.log("📋 Token completo:", JSON.stringify(decoded, null, 2));
+      console.log("📦 Account informado pelo usuário:", accountName);
+      console.log("🔑 Campos do token que podem conter account:");
+      console.log("   - decoded.account:", decoded.account);
+      console.log("   - decoded.tenant:", decoded.tenant);
+      console.log("   - decoded.schema:", decoded.schema);
+      console.log("   - decoded.aud:", decoded.aud);
+      console.log("   - decoded.iss:", decoded.iss);
+      console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
       setUsername(decoded.user_name || "");
       // Não precisamos mais salvar permissões do token aqui, pois virão do /me/permissions
       // await AsyncStorage.setItem("permissions", decoded.permissions?.join(",") || "");

@@ -5,7 +5,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 export default class ClientService {
 
   static async getClients(
-    hasContract: boolean,
+    hasContract: boolean | 'all',
     page: number,
     accessToken: string,
     searchQuery: string = ""
@@ -19,8 +19,7 @@ export default class ClientService {
 
       console.log("[ClientService] Buscando clientes com apiClient automático");
 
-      const params = {
-        has_contract: hasContract.toString(),
+      const params: any = {
         page: page.toString(),
         // padroniza paginação para evitar 'Invalid page' por discrepância de page_size
         per_page: 10,
@@ -28,6 +27,9 @@ export default class ClientService {
         search: searchQuery,
         include: "sectors,addresses",
       };
+      if (hasContract !== 'all') {
+        params.has_contract = String(!!hasContract);
+      }
 
       console.log("[ClientService] Iniciando requisição com os seguintes parâmetros:");
       console.log("Parâmetros:", params);
@@ -163,40 +165,65 @@ export default class ClientService {
   }
 
   static async getClientSectors(clientId: string, accessToken: string, level?: number, parentId?: number) {
-    try {
-      const accountName = await AsyncStorage.getItem("account") || "default";
-      const dynamicBaseUrl = await setDynamicApiUrl(accountName);
-      const endpoint = `${dynamicBaseUrl}/clients/${clientId}/sectors`;
-      console.log("[ClientService] Obtendo setores do cliente...");
-      console.log("[ClientService] Endpoint:", endpoint);
+    const maxRetries = 2;
+    let lastError: any = null;
 
-      const params: any = {};
-      if (level !== undefined) {
-        params.level = level;
-      }
-      if (parentId !== undefined) {
-        params.parent_id = parentId;
-      }
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const accountName = await AsyncStorage.getItem("account") || "default";
+        const dynamicBaseUrl = await setDynamicApiUrl(accountName);
+        const endpoint = `${dynamicBaseUrl}/clients/${clientId}/sectors`;
+        console.log(`[ClientService] Obtendo setores do cliente (tentativa ${attempt}/${maxRetries})...`);
+        console.log("[ClientService] Endpoint:", endpoint);
+        console.log("[ClientService] Account/Tenant:", accountName);
 
-      // apiClient já configura automaticamente a URL dinâmica e Authorization
-      const response = await apiClient.get(`/clients/${clientId}/sectors`, { params });
-      const payload = response.data;
-      // Normaliza para o payload do Postman: { links, count, results: [...] }
-      const results = Array.isArray(payload) ? payload : (payload?.results || []);
-      const count = typeof payload?.count === 'number' ? payload.count : results.length;
-      const links = payload?.links || { next: null, previous: null };
-      console.log("[ClientService] Setores normalizados:", { results_len: results.length, count });
-      return { results, count, links };
-    } catch (error: any) {
-      console.error("[ClientService] Erro ao buscar setores do cliente:", error);
-      const status = error?.response?.status;
-      // Tratamento silencioso para erros de servidor (500) ou respostas HTML inesperadas
-      if (status >= 500 || typeof error?.response?.data === 'string') {
-        console.warn('[ClientService] Retornando lista vazia para setores devido a erro do servidor.');
-        return { results: [], count: 0, links: { next: null, previous: null } };
+        const params: any = {};
+        if (level !== undefined) {
+          params.level = level;
+        }
+        if (parentId !== undefined) {
+          params.parent_id = parentId;
+        }
+
+        // apiClient já configura automaticamente a URL dinâmica e Authorization
+        const response = await apiClient.get(`/clients/${clientId}/sectors`, { params });
+        const payload = response.data;
+        // Normaliza para o payload do Postman: { links, count, results: [...] }
+        const results = Array.isArray(payload) ? payload : (payload?.results || []);
+        const count = typeof payload?.count === 'number' ? payload.count : results.length;
+        const links = payload?.links || { next: null, previous: null };
+        console.log("[ClientService] ✅ Setores normalizados:", { results_len: results.length, count });
+        return { results, count, links };
+      } catch (error: any) {
+        lastError = error;
+        const status = error?.response?.status;
+        const isHtmlError = typeof error?.response?.data === 'string' && error?.response?.data.includes('<!DOCTYPE html>');
+
+        console.error(`[ClientService] ❌ Erro ao buscar setores (tentativa ${attempt}/${maxRetries}):`, error?.message);
+        console.error("[ClientService] Status:", status);
+        console.error("[ClientService] É HTML?:", isHtmlError);
+
+        // Se for erro 500 com HTML (ProgrammingError do Django)
+        if (status >= 500 || isHtmlError) {
+          if (attempt < maxRetries) {
+            console.warn(`[ClientService] ⚠️ Erro 500/HTML - aguardando ${attempt * 500}ms antes de retry...`);
+            await new Promise(resolve => setTimeout(resolve, attempt * 500));
+            continue; // Tenta novamente
+          } else {
+            // Última tentativa falhou - retornar vazio em vez de crashar
+            console.warn('[ClientService] ⚠️ Todas as tentativas falharam. Retornando lista vazia para evitar crash.');
+            return { results: [], count: 0, links: { next: null, previous: null } };
+          }
+        }
+
+        // Outros erros (401, 403, etc) não fazem retry
+        break;
       }
-      throw new Error("Erro ao obter os setores do cliente.");
     }
+
+    // Se chegou aqui, erro não é 500 - lançar exceção
+    console.error("[ClientService] Erro definitivo ao buscar setores:", lastError?.message);
+    throw new Error("Erro ao obter os setores do cliente.");
   }
 
   static async getSectorDetails(clientId: string, sectorId: number, accessToken: string) {

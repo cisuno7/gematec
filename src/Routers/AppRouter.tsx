@@ -31,6 +31,7 @@ import ActivityHistoryScreen from "../Screens/Activity/ActivityHistoryScreen";
 import ActivityEquipmentListScreen from "../Screens/Activity/ActivityEquipmentListScreen";
 import ActivityQuestionnaireScreen from "../Screens/Activity/ActivityQuestionnaireScreen";
 import NewActivityModal from "../Screens/Activity/NewActivityModal";
+import AddMultipleEquipmentsScreen from "../Screens/Equipaments/AddMultipleEquipmentsScreen";
 import WorkListScreen from "../Screens/Work/WorkListScreen";
 import WorkDetailScreen from "../Screens/Work/WorkDetailScreen";
 import WorkCreateScreen from "../Screens/Work/WorkCreateScreen";
@@ -111,6 +112,7 @@ export type RootStackParamList = {
   ViewResponseActivityScreen: { serviceOrderId: number; equipmentStatus: string };
   RespondOrderScreen: { serviceOrderId: number; questions: string; equipmentId?: number };
   PreferencesScreen: undefined;
+  AddMultipleEquipmentsScreen: { activityId?: number; activityTypeId: number; activityName?: string; clientId: number; clientName?: string; sectorId?: number };
 };
 
 const Stack = createStackNavigator<RootStackParamList>();
@@ -175,6 +177,7 @@ const AppRouter: React.FC = () => {
 
       <Stack.Screen name="SectorDetailScreen" component={SectorDetailScreen} options={{ headerTitle: 'Detalhes do Setor' }} />
       <Stack.Screen name="PreferencesScreen" component={PreferencesScreen} options={{ headerTitle: t('menu.preferences') }} />
+      <Stack.Screen name="AddMultipleEquipmentsScreen" component={AddMultipleEquipmentsScreen} options={{ headerShown: false }} />
     </Stack.Navigator>
   );
 };

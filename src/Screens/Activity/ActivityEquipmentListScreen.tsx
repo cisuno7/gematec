@@ -80,7 +80,7 @@ const ActivityEquipmentListScreen: React.FC<ActivityEquipmentListScreenProps> = 
 
             console.log('[ActivityEquipmentListScreen] Buscando equipamentos da atividade:', activityId);
 
-            const response = await ActivityService.fetchActivityEquipments(activityId, { token });
+            const response = await ActivityService.fetchAllActivityEquipments(activityId, { token });
             console.log('[ActivityEquipmentListScreen] Resposta completa:', JSON.stringify(response, null, 2));
             console.log('[ActivityEquipmentListScreen] Tipo da resposta:', typeof response);
             console.log('[ActivityEquipmentListScreen] É array?', Array.isArray(response));

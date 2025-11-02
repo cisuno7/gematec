@@ -168,6 +168,7 @@ const EquipmentDetailsScreen: React.FC<EquipmentDetailsScreenProps> = ({ route, 
 
 
       console.log('[EquipamentDetails] Atividade criada:', activity);
+      console.log('[EquipamentDetails] budget_policy da atividade:', activity?.budget_policy);
 
       // 2) Vincular equipamento existente à atividade
       // TODAS as atividades devem vincular equipamento (não apenas Ordem de Serviço)
@@ -187,6 +188,10 @@ const EquipmentDetailsScreen: React.FC<EquipmentDetailsScreenProps> = ({ route, 
       if (!activityEquipmentId) {
         Alert.alert('Atenção', 'Atividade criada, mas não foi possível confirmar o vínculo do equipamento. Tente abrir o questionário a partir do histórico.');
       } else {
+        // ✅ Buscar budgetPolicy da atividade criada (conforme plano)
+        const budgetPolicy = activity?.budget_policy || 'on_request';
+        console.log('[EquipamentDetails] ✅ budgetPolicy para navegação:', budgetPolicy);
+
         setShowCreateActivity(false);
         navigation.navigate('ActivityQuestionnaireScreen', {
           activityId: activity.id,
@@ -194,6 +199,7 @@ const EquipmentDetailsScreen: React.FC<EquipmentDetailsScreenProps> = ({ route, 
           equipmentId: parsedEquipmentId,
           equipmentTag: equipment?.tag || 'SEM_TAG',
           activityName: autoName,
+          budgetPolicy: budgetPolicy, // ✅ ADICIONADO conforme plano
           fromNewActivityFlow: true,
         });
       }
@@ -508,7 +514,13 @@ const EquipmentDetailsScreen: React.FC<EquipmentDetailsScreenProps> = ({ route, 
       <View style={styles.actionButtonsContainer}>
         <TouchableOpacity
           style={[styles.actionButton, styles.primaryButton]}
-          onPress={() => navigation.navigate("ActivityHistoryScreen", { equipmentId: parsedEquipmentId })}
+          onPress={() => {
+            if (!parsedEquipmentId || parsedEquipmentId <= 0) {
+              Alert.alert('Erro', 'ID do equipamento inválido');
+              return;
+            }
+            navigation.navigate("ActivityHistoryScreen", { equipmentId: parsedEquipmentId });
+          }}
         >
           <FontAwesome name="history" size={18} color="#fff" />
           <Text style={styles.actionButtonText}>Atividades</Text>

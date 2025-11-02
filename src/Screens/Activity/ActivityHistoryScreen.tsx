@@ -9,6 +9,7 @@ import {
     ScrollView,
     Dimensions,
     RefreshControl,
+    Alert,
 } from "react-native";
 import { RouteProp } from "@react-navigation/native";
 import { RootStackParamList } from "../../Routers/AppRouter";
@@ -447,7 +448,27 @@ const ActivityHistoryScreen: React.FC<ActivityHistoryScreenProps> = ({ route, na
                     </TouchableOpacity>
                     <TouchableOpacity
                         style={styles.detailsButton}
-                        onPress={() => navigation.navigate("WorkListScreen", { activityId: item.id, activityName: item.name || item.title || "Atividade" })}
+                        onPress={() => {
+                            try {
+                                const activityId = item?.id;
+                                const activityName = item?.name || item?.title || "Atividade";
+                                
+                                if (!activityId) {
+                                    console.error('[ActivityHistoryScreen] ID da atividade não encontrado:', item);
+                                    Alert.alert('Erro', 'Não foi possível abrir o histórico de trabalho. ID da atividade não encontrado.');
+                                    return;
+                                }
+                                
+                                console.log('[ActivityHistoryScreen] Navegando para WorkListScreen:', { activityId, activityName });
+                                navigation.navigate("WorkListScreen", { 
+                                    activityId: activityId, 
+                                    activityName: activityName 
+                                });
+                            } catch (error) {
+                                console.error('[ActivityHistoryScreen] Erro ao navegar para WorkListScreen:', error);
+                                Alert.alert('Erro', 'Não foi possível abrir o histórico de trabalho.');
+                            }
+                        }}
                     >
                         <Text style={styles.detailsButtonText}>{t('activityHistory.viewWork')}</Text>
                         <MaterialIcons name="assignment" size={16} color="#007bff" />

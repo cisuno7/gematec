@@ -128,11 +128,17 @@ const EquipamentScreen: React.FC<EquipamentScreenProps> = ({ route, navigation }
       <TouchableOpacity
         style={styles.activitiesButton}
         onPress={() => {
-          if (!item.id) {
-            console.error("Erro: ID do equipamento", { equipmentId: item.id });
+          if (!item.id || item.id <= 0) {
+            console.error("Erro: ID do equipamento inválido", { equipmentId: item.id });
+            Alert.alert('Erro', 'ID do equipamento inválido. Não é possível visualizar o histórico.');
             return;
           }
-          navigation.navigate("ActivityHistoryScreen", { equipmentId: item.id });
+          try {
+            navigation.navigate("ActivityHistoryScreen", { equipmentId: item.id });
+          } catch (error) {
+            console.error("Erro ao navegar para ActivityHistoryScreen:", error);
+            Alert.alert('Erro', 'Falha ao abrir o histórico de atividades. Tente novamente.');
+          }
         }}
       >
         <FontAwesome name="history" size={20} color="#28a745" />

@@ -2,10 +2,11 @@
 import axios, { InternalAxiosRequestConfig, AxiosError, AxiosResponse } from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { setDynamicApiUrl } from "../config/apiConfig";
+import { REQUEST_TIMEOUT, REFRESH_TOKEN_TIMEOUT } from "../config/timeoutConfig";
 // import jwtDecode from "jwt-decode"; // Remova esta linha se não for usada em outro lugar neste arquivo
 
 const apiClient = axios.create({
-    timeout: 15000, // 15 segundos de timeout
+    timeout: REQUEST_TIMEOUT,
 });
 
 // =============== Request Monitor (contagem e listeners) ===============
@@ -170,13 +171,10 @@ export function resetRequestStats() {
 
 apiClient.interceptors.request.use(
     async (config) => {
-        console.log('[ApiClient] ==> INÍCIO DA REQUISIÇÃO <==');
-        console.log('[ApiClient] Config original:', {
-            baseURL: config.baseURL,
-            url: config.url,
-            method: config.method,
-            params: config.params,
-        });
+        console.log('\n');
+        console.log('╔═══════════════════════════════════════════════════════════════╗');
+        console.log('║           🚀 REQUISIÇÃO HTTP - LOG COMPLETO                  ║');
+        console.log('╚═══════════════════════════════════════════════════════════════╝');
 
         // Log específico para PUT de equipamentos
         if (config.method?.toLowerCase() === 'put' && config.url?.includes('/equipments/')) {
@@ -204,23 +202,106 @@ apiClient.interceptors.request.use(
         }
 
         const accessToken = await AsyncStorage.getItem("access_token");
+        const accountName = await AsyncStorage.getItem("account");
+
         if (accessToken) {
             config.headers = config.headers || {};
             config.headers.Authorization = `Bearer ${accessToken}`;
-            // Set dynamic base URL
-            // const decodedToken: any = jwtDecode(accessToken); // Remova esta linha
-            const accountName = await AsyncStorage.getItem("account") || undefined; // Sem fallback "default" para evitar subdomínio inválido
             config.baseURL = await setDynamicApiUrl(accountName as any);
         }
 
-        console.log('[ApiClient] Configuração final:', {
-            baseURL: config.baseURL,
-            url: config.url,
-            method: config.method,
-            params: config.params,
-            hasAuth: !!accessToken,
-        });
-        console.log('[ApiClient] ==> FIM DA CONFIGURAÇÃO <==');
+        // ═══════════════════════════════════════════════════════════════
+        // 📋 LOG DETALHADO DA REQUISIÇÃO (ANTES DE EXECUTAR)
+        // ═══════════════════════════════════════════════════════════════
+
+        const fullUrl = `${config.baseURL || ''}${config.url || ''}`;
+
+        console.log('\n┌─────────────────────────────────────────────────────────────┐');
+        console.log('│  🎯 DETALHES DA REQUISIÇÃO                                 │');
+        console.log('└─────────────────────────────────────────────────────────────┘');
+        console.log('');
+        console.log('🔧 MÉTODO:', config.method?.toUpperCase() || 'GET');
+        console.log('🌐 URL COMPLETA:', fullUrl);
+        console.log('📦 ACCOUNT:', accountName || '(não definido)');
+        console.log('');
+        console.log('🔑 ACCESS TOKEN:');
+        if (accessToken) {
+            console.log('   ✅ Token presente');
+            console.log('   📏 Length:', accessToken.length);
+            console.log('   🔤 Início:', accessToken.substring(0, 60) + '...');
+            console.log('   🔤 Final:', '...' + accessToken.substring(accessToken.length - 40));
+            console.log('');
+            console.log('   📋 TOKEN COMPLETO (copie para testar no Postman):');
+            console.log('   ' + accessToken);
+            console.log('');
+
+            // Tentar decodificar o token
+            try {
+                const parts = accessToken.split('.');
+                if (parts.length === 3) {
+                    const payload = JSON.parse(atob(parts[1]));
+                    const now = Math.floor(Date.now() / 1000);
+                    const isExpired = payload.exp < now;
+
+                    console.log('   🔍 Payload do Token:');
+                    console.log('      - user_id:', payload.user_id);
+                    console.log('      - user_name:', payload.user_name);
+                    console.log('      - exp:', payload.exp);
+                    console.log('      - exp_date:', new Date(payload.exp * 1000).toLocaleString('pt-BR'));
+                    console.log('');
+
+                    if (isExpired) {
+                        console.log('   ⚠️⚠️⚠️  TOKEN EXPIRADO! ⚠️⚠️⚠️');
+                        console.log('      Expirou há:', Math.floor((now - payload.exp) / 60), 'minutos');
+                        console.log('      ⚠️  ESTA REQUISIÇÃO VAI FALHAR!');
+                    } else {
+                        console.log('   ✅ Token válido');
+                        console.log('      Expira em:', Math.floor((payload.exp - now) / 60), 'minutos');
+                    }
+                    console.log('');
+                }
+            } catch (e) {
+                console.log('   ⚠️ Não foi possível decodificar o token');
+            }
+        } else {
+            console.log('   ❌ Nenhum token encontrado!');
+            console.log('   ⚠️  REQUISIÇÃO SEM AUTENTICAÇÃO - VAI FALHAR!');
+        }
+
+        console.log('');
+        console.log('📤 HEADERS:');
+        const authHeaderValue = config.headers?.Authorization;
+        const authDisplay = authHeaderValue && typeof authHeaderValue === 'string'
+            ? authHeaderValue.substring(0, 50) + '...'
+            : 'não definido';
+        console.log('   Authorization:', authDisplay);
+        console.log('   Content-Type:', config.headers?.['Content-Type'] || 'não definido');
+
+        if (config.params && Object.keys(config.params).length > 0) {
+            console.log('');
+            console.log('🔍 QUERY PARAMS:');
+            console.log(JSON.stringify(config.params, null, 2));
+        }
+
+        if (config.data && config.method?.toLowerCase() !== 'get') {
+            console.log('');
+            console.log('📦 PAYLOAD (BODY):');
+            try {
+                if (typeof config.data === 'string') {
+                    console.log(config.data.substring(0, 500));
+                } else {
+                    console.log(JSON.stringify(config.data, null, 2).substring(0, 500));
+                }
+            } catch {
+                console.log('   (não foi possível serializar)');
+            }
+        }
+
+        console.log('');
+        console.log('╔═══════════════════════════════════════════════════════════════╗');
+        console.log('║           ⏳ EXECUTANDO REQUISIÇÃO...                        ║');
+        console.log('╚═══════════════════════════════════════════════════════════════╝');
+        console.log('\n');
 
         // Atualiza estatísticas e notifica listeners
         try {
@@ -271,11 +352,143 @@ apiClient.interceptors.response.use(
         return response;
     },
     async (error: AxiosError) => {
-        console.error('[ApiClient] ==> ERRO NA RESPOSTA <==');
-        console.error('[ApiClient] Status:', error.response?.status);
-        console.error('[ApiClient] URL que falhou:', error.config?.url);
-        console.error('[ApiClient] BaseURL:', error.config?.baseURL);
-        console.error('[ApiClient] Mensagem:', error.message);
+        console.error('\n\n');
+        console.error('╔═══════════════════════════════════════════════════════════════╗');
+        console.error('║               ❌ ERRO NA REQUISIÇÃO HTTP                      ║');
+        console.error('╚═══════════════════════════════════════════════════════════════╝');
+        console.error('');
+
+        const fullUrl = `${error.config?.baseURL || ''}${error.config?.url || ''}`;
+        const authHeader = error.config?.headers?.Authorization;
+        const token = typeof authHeader === 'string' ? authHeader.replace('Bearer ', '') : null;
+
+        console.error('┌─────────────────────────────────────────────────────────────┐');
+        console.error('│  🚨 INFORMAÇÕES DO ERRO                                    │');
+        console.error('└─────────────────────────────────────────────────────────────┘');
+        console.error('');
+        console.error('🔧 MÉTODO:', error.config?.method?.toUpperCase() || 'N/A');
+        console.error('🌐 URL COMPLETA:', fullUrl);
+        console.error('❌ STATUS CODE:', error.response?.status || 'Sem resposta');
+        console.error('💬 MENSAGEM:', error.message);
+        console.error('');
+
+        console.error('🔑 TOKEN USADO NA REQUISIÇÃO:');
+        if (token) {
+            console.error('   ✅ Token estava presente');
+            console.error('   📏 Length:', token.length);
+            console.error('   🔤 Início:', token.substring(0, 60) + '...');
+            console.error('   🔤 Final:', '...' + token.substring(token.length - 40));
+            console.error('');
+            console.error('   📋 TOKEN COMPLETO (teste no Postman para comparar):');
+            console.error('   ' + token);
+            console.error('');
+
+            // Tentar decodificar
+            try {
+                const parts = token.split('.');
+                if (parts.length === 3) {
+                    const payload = JSON.parse(atob(parts[1]));
+                    const now = Math.floor(Date.now() / 1000);
+                    const isExpired = payload.exp < now;
+
+                    console.error('   🔍 Payload do Token:');
+                    console.error('      - user_id:', payload.user_id);
+                    console.error('      - user_name:', payload.user_name);
+                    console.error('      - exp:', payload.exp);
+                    console.error('      - exp_date:', new Date(payload.exp * 1000).toLocaleString('pt-BR'));
+                    console.error('');
+
+                    if (isExpired) {
+                        console.error('   ⚠️⚠️⚠️  TOKEN ESTAVA EXPIRADO! ⚠️⚠️⚠️');
+                        console.error('      🔴 ESTA É A CAUSA DO ERRO!');
+                        console.error('      Expirou há:', Math.floor((now - payload.exp) / 60), 'minutos');
+                        console.error('      ✅ SOLUÇÃO: Limpe o cache e faça login novamente!');
+                    } else {
+                        console.error('   ✅ Token estava válido (não é problema de expiração)');
+                    }
+                    console.error('');
+                }
+            } catch (e) {
+                console.error('   ⚠️ Não foi possível decodificar o token');
+            }
+        } else {
+            console.error('   ❌ Nenhum token foi enviado!');
+            console.error('   🔴 ESTA É A CAUSA DO ERRO!');
+        }
+        console.error('');
+
+        // Payload da REQUEST
+        console.error('\n📤 PAYLOAD DA REQUEST:');
+        if (error.config?.data) {
+            try {
+                const requestPayload = typeof error.config.data === 'string'
+                    ? JSON.parse(error.config.data)
+                    : error.config.data;
+                console.error(JSON.stringify(requestPayload, null, 2));
+            } catch {
+                console.error(error.config.data);
+            }
+        } else {
+            console.error('(vazio ou sem payload)');
+        }
+
+        // Status Code
+        console.error('\n❌ STATUS CODE:', error.response?.status || 'N/A');
+
+        // Payload da RESPONSE
+        console.error('\n📥 PAYLOAD DA RESPONSE:');
+        if (error.response?.data) {
+            try {
+                // Detectar se é HTML (erro do Django)
+                const dataStr = typeof error.response.data === 'string'
+                    ? error.response.data
+                    : JSON.stringify(error.response.data);
+
+                const isHTML = dataStr.includes('<!DOCTYPE') || dataStr.includes('<html') || dataStr.includes('ProgrammingError');
+
+                if (isHTML) {
+                    console.error('🚨 RESPOSTA É HTML (ERRO DO DJANGO)! 🚨');
+                    console.error('');
+                    console.error('Tamanho do HTML:', dataStr.length, 'caracteres');
+                    console.error('');
+                    console.error('╔═══════════════════════════════════════════════════════════════╗');
+                    console.error('║         HTML DO ERRO DO DJANGO (preview 2000 chars)         ║');
+                    console.error('║   (Copie e salve em erro.html para ver no navegador)        ║');
+                    console.error('╚═══════════════════════════════════════════════════════════════╝');
+                    console.error('');
+                    const htmlPreview = dataStr.slice(0, 2000);
+                    console.error(htmlPreview + (dataStr.length > 2000 ? '\n...[HTML truncado - ' + (dataStr.length - 2000) + ' chars restantes]' : ''));
+                    console.error('');
+                    console.error('╔═══════════════════════════════════════════════════════════════╗');
+                    console.error('║                    FIM DO HTML DO ERRO                       ║');
+                    console.error('╚═══════════════════════════════════════════════════════════════╝');
+                    console.error('');
+
+                    // Tentar extrair o erro específico
+                    const errorMatch = dataStr.match(/Exception Type: (\w+) at (.+?)\n/);
+                    const valueMatch = dataStr.match(/Exception Value: (.+?)\n/);
+
+                    if (errorMatch) {
+                        console.error('🔴 Tipo do erro Django:', errorMatch[1]);
+                        console.error('🔴 Local do erro:', errorMatch[2]);
+                    }
+                    if (valueMatch) {
+                        console.error('🔴 Mensagem do erro:', valueMatch[1]);
+                    }
+                } else {
+                    console.error(JSON.stringify(error.response.data, null, 2));
+                }
+            } catch {
+                console.error(error.response.data);
+            }
+        } else {
+            console.error('(sem resposta do servidor)');
+        }
+
+        // Mensagem de erro
+        console.error('\n💬 MENSAGEM:', error.message || 'Sem mensagem');
+
+        console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
         if (error.request) {
             // Evitar despejar HTML completo (ex.: páginas de erro do servidor) no console
             let responsePreview: string | undefined;
@@ -310,20 +523,39 @@ apiClient.interceptors.response.use(
 
         // Retry automático para erros 500 (problemas do backend) - reduzido para 1 tentativa
         if (error.response?.status === 500 && !originalRequest._retry) {
-            const retryCount = (originalRequest._retryCount || 0) + 1;
-            const maxRetries = 1; // Reduzido de 3 para 1
+            // ✅ VERIFICAR SE APESAR DO ERRO 500, OS DADOS FORAM RETORNADOS
+            const responseData = error.response?.data as any;
+            const hasValidData = responseData && (
+                (typeof responseData === 'object' &&
+                    (Array.isArray(responseData.results) ||
+                        Array.isArray(responseData.activities) ||
+                        Array.isArray(responseData))) ||
+                (typeof responseData === 'string' && responseData.includes('<!DOCTYPE html>'))
+            );
 
-            if (retryCount <= maxRetries) {
-                console.log(`[ApiClient] Erro 500, tentativa ${retryCount}/${maxRetries} para:`, originalRequest.url);
-                originalRequest._retryCount = retryCount;
+            // Se a resposta HTML (erro do Django) mas não tem dados válidos, tentar retry
+            const isHtmlError = typeof responseData === 'string' && responseData.includes('<!DOCTYPE html>');
 
-                // Backoff: apenas 1s
-                const delay = 1000;
-                await new Promise(resolve => setTimeout(resolve, delay));
+            if (isHtmlError && !hasValidData) {
+                const retryCount = (originalRequest._retryCount || 0) + 1;
+                const maxRetries = 1; // Reduzido de 3 para 1
 
-                return apiClient(originalRequest);
-            } else {
-                console.error(`[ApiClient] Máximo de tentativas atingido (${maxRetries}) para:`, originalRequest.url);
+                if (retryCount <= maxRetries) {
+                    console.log(`[ApiClient] Erro 500 (HTML), tentativa ${retryCount}/${maxRetries} para:`, originalRequest.url);
+                    originalRequest._retryCount = retryCount;
+
+                    // Backoff: apenas 1s
+                    const delay = 1000;
+                    await new Promise(resolve => setTimeout(resolve, delay));
+
+                    return apiClient(originalRequest);
+                } else {
+                    console.error(`[ApiClient] Máximo de tentativas atingido (${maxRetries}) para:`, originalRequest.url);
+                }
+            } else if (hasValidData && !isHtmlError) {
+                // ✅ Se tem dados válidos mesmo com erro 500, retornar os dados silenciosamente
+                console.warn(`[ApiClient] ⚠️ Erro 500 mas dados válidos recebidos para:`, originalRequest.url, '- retornando dados');
+                return Promise.resolve(error.response);
             }
         }
 
@@ -429,7 +661,7 @@ const refreshAccessToken = async () => {
                 headers: {
                     "Content-Type": "application/json",
                 },
-                timeout: 10000,
+                timeout: REFRESH_TOKEN_TIMEOUT,
             }
         );
 

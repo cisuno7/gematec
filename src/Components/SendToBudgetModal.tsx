@@ -9,11 +9,14 @@ import {
     TextInput,
     ActivityIndicator,
     Alert,
+    KeyboardAvoidingView,
+    Platform,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import ServicesService from '../Services/ServicesService';
 import { Service } from '../Models/Service';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 interface SendToBudgetModalProps {
     visible: boolean;
@@ -36,6 +39,7 @@ const SendToBudgetModal: React.FC<SendToBudgetModalProps> = ({
     const [search, setSearch] = useState('');
     const [loading, setLoading] = useState(false);
     const [sending, setSending] = useState(false);
+    const insets = useSafeAreaInsets();
 
     // Debounce para busca
     useEffect(() => {
@@ -161,14 +165,15 @@ const SendToBudgetModal: React.FC<SendToBudgetModalProps> = ({
                 onPress={() => toggleService(item.id)}
                 activeOpacity={0.7}
             >
-                <View style={styles.checkbox}>
-                    {isSelected && (
-                        <MaterialIcons name="check" size={18} color="#fff" />
+                <View style={[styles.checkbox, isSelected && styles.checkboxSelected]}>
+                    {isSelected ? (
+                        <MaterialIcons name="check" size={20} color="#fff" />
+                    ) : (
+                        <View style={styles.checkboxEmpty} />
                     )}
                 </View>
                 <View style={styles.serviceInfo}>
-                    <Text style={styles.serviceName}>{item.name}</Text>
-                    <Text style={styles.serviceAmount}>{formatCurrency(item.amount)}</Text>
+                    <Text style={[styles.serviceName, isSelected && styles.serviceNameSelected]}>{item.name}</Text>
                 </View>
             </TouchableOpacity>
         );
@@ -182,97 +187,98 @@ const SendToBudgetModal: React.FC<SendToBudgetModalProps> = ({
             onRequestClose={onClose}
         >
             <View style={styles.overlay}>
-                <View style={styles.modalContainer}>
-                    {/* Header */}
-                    <View style={styles.header}>
-                        <Text style={styles.title}>Selecionar Serviços</Text>
-                        <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-                            <MaterialIcons name="close" size={24} color="#666" />
-                        </TouchableOpacity>
-                    </View>
-
-                    {/* Search */}
-                    <View style={styles.searchContainer}>
-                        <MaterialIcons name="search" size={20} color="#999" style={styles.searchIcon} />
-                        <TextInput
-                            style={styles.searchInput}
-                            placeholder="Buscar serviços..."
-                            placeholderTextColor="#999"
-                            value={search}
-                            onChangeText={setSearch}
-                        />
-                        {search.length > 0 && (
-                            <TouchableOpacity onPress={() => setSearch('')}>
-                                <MaterialIcons name="clear" size={20} color="#999" />
+                <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+                    <View style={[styles.modalContainer, { paddingBottom: Math.max(16, insets.bottom) }]}>
+                        {/* Header */}
+                        <View style={styles.header}>
+                            <Text style={styles.title}>Selecionar Serviços</Text>
+                            <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+                                <MaterialIcons name="close" size={24} color="#666" />
                             </TouchableOpacity>
-                        )}
-                    </View>
+                        </View>
 
-                    {/* Services List */}
-                    <View style={styles.listContainer}>
-                        {loading ? (
-                            <View style={styles.loadingContainer}>
-                                <ActivityIndicator size="large" color="#667eea" />
-                                <Text style={styles.loadingText}>Carregando serviços...</Text>
-                            </View>
-                        ) : filteredServices.length === 0 ? (
-                            <View style={styles.emptyContainer}>
-                                <MaterialIcons name="search-off" size={48} color="#ccc" />
-                                <Text style={styles.emptyText}>
-                                    {search ? 'Nenhum serviço encontrado' : 'Nenhum serviço disponível'}
+                        {/* Search */}
+                        <View style={styles.searchContainer}>
+                            <MaterialIcons name="search" size={20} color="#999" style={styles.searchIcon} />
+                            <TextInput
+                                style={styles.searchInput}
+                                placeholder="Buscar serviços..."
+                                placeholderTextColor="#999"
+                                value={search}
+                                onChangeText={setSearch}
+                            />
+                            {search.length > 0 && (
+                                <TouchableOpacity onPress={() => setSearch('')}>
+                                    <MaterialIcons name="clear" size={20} color="#999" />
+                                </TouchableOpacity>
+                            )}
+                        </View>
+
+                        {/* Services List */}
+                        <View style={styles.listContainer}>
+                            {loading ? (
+                                <View style={styles.loadingContainer}>
+                                    <ActivityIndicator size="large" color="#667eea" />
+                                    <Text style={styles.loadingText}>Carregando serviços...</Text>
+                                </View>
+                            ) : filteredServices.length === 0 ? (
+                                <View style={styles.emptyContainer}>
+                                    <MaterialIcons name="search-off" size={48} color="#ccc" />
+                                    <Text style={styles.emptyText}>
+                                        {search ? 'Nenhum serviço encontrado' : 'Nenhum serviço disponível'}
+                                    </Text>
+                                </View>
+                            ) : (
+                                <FlatList
+                                    data={filteredServices}
+                                    renderItem={renderService}
+                                    keyExtractor={(item) => item.id.toString()}
+                                    maxToRenderPerBatch={10}
+                                    windowSize={5}
+                                    removeClippedSubviews={true}
+                                    keyboardShouldPersistTaps="handled"
+                                    contentContainerStyle={{ paddingBottom: 24 }}
+                                />
+                            )}
+                        </View>
+
+                        {/* Footer */}
+                        <View style={[styles.footer, { paddingBottom: Math.max(16, insets.bottom) }]}>
+                            <View style={styles.summary}>
+                                <Text style={styles.summaryText}>
+                                    {selectedServicesIds.length} selecionado{selectedServicesIds.length !== 1 ? 's' : ''}
                                 </Text>
                             </View>
-                        ) : (
-                            <FlatList
-                                data={filteredServices}
-                                renderItem={renderService}
-                                keyExtractor={(item) => item.id.toString()}
-                                maxToRenderPerBatch={10}
-                                windowSize={5}
-                                removeClippedSubviews={true}
-                            />
-                        )}
-                    </View>
-
-                    {/* Footer */}
-                    <View style={styles.footer}>
-                        <View style={styles.summary}>
-                            <Text style={styles.summaryText}>
-                                {selectedServicesIds.length} selecionado{selectedServicesIds.length !== 1 ? 's' : ''}
-                            </Text>
-                            <Text style={styles.summaryTotal}>
-                                Total: {formatCurrency(calculateTotal())}
-                            </Text>
-                        </View>
-                        <View style={styles.actions}>
-                            <TouchableOpacity
-                                style={[styles.button, styles.cancelButton]}
-                                onPress={onClose}
-                                disabled={sending}
-                            >
-                                <Text style={styles.cancelButtonText}>Cancelar</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                                style={[
-                                    styles.button,
-                                    styles.sendButton,
-                                    (selectedServicesIds.length === 0 || sending) && styles.sendButtonDisabled
-                                ]}
-                                onPress={handleSendToBudget}
-                                disabled={selectedServicesIds.length === 0 || sending}
-                            >
-                                {sending ? (
-                                    <ActivityIndicator size="small" color="#fff" />
-                                ) : (
-                                    <>
-                                        <MaterialIcons name="send" size={18} color="#fff" style={{ marginRight: 8 }} />
-                                        <Text style={styles.sendButtonText}>Enviar Orçamento</Text>
-                                    </>
-                                )}
-                            </TouchableOpacity>
+                            <View style={styles.actions}>
+                                <TouchableOpacity
+                                    style={[styles.button, styles.cancelButton]}
+                                    onPress={onClose}
+                                    disabled={sending}
+                                >
+                                    <Text style={styles.cancelButtonText}>Cancelar</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    style={[
+                                        styles.button,
+                                        styles.sendButton,
+                                        (selectedServicesIds.length === 0 || sending) && styles.sendButtonDisabled
+                                    ]}
+                                    onPress={handleSendToBudget}
+                                    disabled={selectedServicesIds.length === 0 || sending}
+                                >
+                                    {sending ? (
+                                        <ActivityIndicator size="small" color="#fff" />
+                                    ) : (
+                                        <>
+                                            <MaterialIcons name="send" size={18} color="#fff" style={{ marginRight: 8 }} />
+                                            <Text style={styles.sendButtonText}>Enviar Orçamento</Text>
+                                        </>
+                                    )}
+                                </TouchableOpacity>
+                            </View>
                         </View>
                     </View>
-                </View>
+                </KeyboardAvoidingView>
             </View>
         </Modal>
     );
@@ -288,7 +294,8 @@ const styles = StyleSheet.create({
         backgroundColor: '#fff',
         borderTopLeftRadius: 20,
         borderTopRightRadius: 20,
-        maxHeight: '90%',
+        maxHeight: '94%',
+        minHeight: '60%',
         paddingBottom: 20,
     },
     header: {
@@ -365,17 +372,23 @@ const styles = StyleSheet.create({
         height: 24,
         borderRadius: 4,
         borderWidth: 2,
-        borderColor: '#667eea',
+        borderColor: '#ccc',
         backgroundColor: '#fff',
         alignItems: 'center',
         justifyContent: 'center',
         marginRight: 12,
     },
+    checkboxSelected: {
+        borderColor: '#667eea',
+        backgroundColor: '#667eea',
+    },
+    checkboxEmpty: {
+        width: 20,
+        height: 20,
+        backgroundColor: 'transparent',
+    },
     serviceInfo: {
         flex: 1,
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
     },
     serviceName: {
         fontSize: 16,
@@ -383,31 +396,25 @@ const styles = StyleSheet.create({
         flex: 1,
         marginRight: 8,
     },
-    serviceAmount: {
-        fontSize: 16,
-        fontWeight: '600',
+    serviceNameSelected: {
         color: '#667eea',
+        fontWeight: '600',
     },
+    // serviceAmount removido da UI
     footer: {
         borderTopWidth: 1,
         borderTopColor: '#f0f0f0',
         padding: 16,
     },
     summary: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
+        alignItems: 'flex-start',
         marginBottom: 16,
     },
     summaryText: {
         fontSize: 14,
         color: '#666',
     },
-    summaryTotal: {
-        fontSize: 18,
-        fontWeight: 'bold',
-        color: '#333',
-    },
+    // summaryTotal removido da UI
     actions: {
         flexDirection: 'row',
         gap: 12,
@@ -442,4 +449,5 @@ const styles = StyleSheet.create({
 });
 
 export default SendToBudgetModal;
+
 
