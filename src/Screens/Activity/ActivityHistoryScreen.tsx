@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import {
     View,
     Text,
@@ -31,14 +31,17 @@ const STATUS_OPTIONS = [
     { label: "Aberto", value: "open", icon: "play-circle" },
     { label: "Pendente", value: "pending", icon: "schedule" },
     { label: "Fechado", value: "closed", icon: "check-circle" },
-    { label: "Aguardando Aprovação de Orçamento", value: "waiting_budget_approval", icon: "cash" },
+    { label: "Aguardando Aprovação de Orçamento", value: "waiting_budget_approval", icon: "attach-money" },
 ];
 
 const DEFAULT_ACTIVITY_TYPE_CHIP = { label: "Todos", value: "all", icon: "apps", color: "#6c757d" };
 
 const ActivityHistoryScreen: React.FC<ActivityHistoryScreenProps> = ({ route, navigation }) => {
     const { t } = useLanguage();
-    const { equipmentId, activityTypeSlug, status } = route.params || {};
+    
+    // Proteção contra route.params undefined
+    const routeParams = route?.params || {};
+    const { equipmentId, activityTypeSlug, status } = routeParams;
     const [activities, setActivities] = useState<any[]>([]);
     const [loading, setLoading] = useState(false);
     const [refreshing, setRefreshing] = useState(false);
@@ -52,16 +55,54 @@ const ActivityHistoryScreen: React.FC<ActivityHistoryScreenProps> = ({ route, na
     const { hasPermission } = usePermissions();
     const activityService = new ActivityService();
 
+    // Informações de debug da última requisição
+    const [lastRequestInfo, setLastRequestInfo] = useState<{ url?: string; method?: string; headers?: any; status?: number; payload?: any; requestPayload?: any; errorPayload?: any; errorPreview?: string } | null>(null);
+
     // Tipos de atividade dinâmicos vindos do backend
     const [activityTypes, setActivityTypes] = useState<any[]>([]);
 
     // Normalizar strings para comparar slugs/nomes de forma robusta
-    const canonicalize = (s?: string) => (s || '')
-        .toLowerCase()
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .replace(/[^a-z0-9_]+/g, '_')
-        .replace(/^_+|_+$/g, '');
+    // Versão robusta que nunca crasha
+    const canonicalize = useCallback((s?: any): string => {
+        try {
+            if (s == null) return '';
+
+            if (typeof s === 'object') {
+                const candidate = s.name || s.slug || s.type;
+                if (typeof candidate === 'string') s = candidate;
+                else return '';
+            }
+
+            if (typeof s !== 'string') s = String(s);
+
+            return s
+                .toLowerCase()
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .replace(/[^a-z0-9_]+/g, '_')
+                .replace(/^_+|_+$/g, '');
+        } catch (err) {
+            console.warn('[canonicalize] valor inesperado:', s, err);
+            return '';
+        }
+    }, []);
+
+    // Função utilitária para logar requisições de forma padronizada
+    const safeLogRequest = useCallback((url: string, params?: any, response?: any) => {
+        try {
+            console.log('[ActivityHistoryScreen] ════════════════════════════════════════════');
+            console.log('[ActivityHistoryScreen] API URL:', url);
+            if (params) {
+                console.log('[ActivityHistoryScreen] Payload (request params):', JSON.stringify(params, null, 2));
+            }
+            if (response !== undefined) {
+                console.log('[ActivityHistoryScreen] Response payload:', JSON.stringify(response, null, 2));
+            }
+            console.log('[ActivityHistoryScreen] ════════════════════════════════════════════');
+        } catch (err) {
+            console.error('[ActivityHistoryScreen] Erro ao logar requisição:', err);
+        }
+    }, []);
 
     // Permissões
     const canViewPmoc = hasPermission("list_activities");
@@ -95,11 +136,12 @@ const ActivityHistoryScreen: React.FC<ActivityHistoryScreenProps> = ({ route, na
     useEffect(() => {
         const unsubscribe = navigation.addListener('focus', () => {
             // Reaplicar seleção com base nos params vindos da Home
-            if (route.params?.activityTypeSlug) {
-                setSelectedType(route.params.activityTypeSlug);
+            const params = route?.params || {};
+            if (params.activityTypeSlug) {
+                setSelectedType(params.activityTypeSlug);
             }
-            if (route.params?.status && Array.isArray(route.params.status)) {
-                setSelectedStatus(route.params.status);
+            if (params.status && Array.isArray(params.status)) {
+                setSelectedStatus(params.status);
             }
             setCurrentPage(1);
             fetchActivities();
@@ -112,22 +154,57 @@ const ActivityHistoryScreen: React.FC<ActivityHistoryScreenProps> = ({ route, na
         const loadTypes = async () => {
             try {
                 const token = await AsyncStorage.getItem("access_token");
-                if (!token) return;
+                if (!token) {
+                    console.warn('[ActivityHistoryScreen] Token não encontrado em loadTypes');
+                    return;
+                }
+
+                // Montar URL completa
+                const accountName = await AsyncStorage.getItem("account") || "";
+                const tenantSubdomain = await AsyncStorage.getItem("tenant_subdomain") || accountName;
+                const hostRoot = "keosstg001.xyz";
+                const apiUrl = tenantSubdomain ? `https://${tenantSubdomain}.${hostRoot}/api/activity_types` : `https://${hostRoot}/api/activity_types`;
+                
+                const params = { token };
+                safeLogRequest(apiUrl, params);
+
                 const types = await activityService.fetchActivityTypes(token);
+                
+                safeLogRequest(apiUrl, params, types);
+                
                 setActivityTypes(types || []);
+
                 // Se veio slug pré-selecionado, tentar definir o ID correspondente já no carregamento
                 if ((activityTypeSlug || selectedType) && types && types.length) {
-                    const canonWanted = canonicalize(activityTypeSlug || selectedType);
-                    const found = types.find((t: any) => canonicalize(t.slug || t.name) === canonWanted);
-                    setSelectedTypeId(found ? Number(found.id) : null);
+                    try {
+                        const canonWanted = canonicalize(activityTypeSlug || selectedType);
+                        const found = types.find((t: any) => {
+                            if (!t) return false;
+                            try {
+                                const slugOrName = t.slug || t.name || '';
+                                return canonicalize(slugOrName) === canonWanted;
+                            } catch (err) {
+                                console.error('[ActivityHistoryScreen] Erro ao canonizar tipo em loadTypes:', err);
+                                return false;
+                            }
+                        });
+                        setSelectedTypeId(found ? Number(found.id) : null);
+                    } catch (err) {
+                        console.error('[ActivityHistoryScreen] Erro ao processar tipos pré-selecionados:', err);
+                    }
                 }
             } catch (e: any) {
-                console.warn('[ActivityHistoryScreen] Falha ao carregar tipos de atividade:', e?.message || e);
+                console.error('[ActivityHistoryScreen] Erro ao carregar tipos de atividade:', e);
+                console.error('[ActivityHistoryScreen] Detalhes do erro loadTypes:', {
+                    message: e?.message,
+                    stack: e?.stack,
+                    name: e?.name
+                });
                 setActivityTypes([]);
             }
         };
         loadTypes();
-    }, []);
+    }, [safeLogRequest, canonicalize, activityTypeSlug, selectedType]);
 
     // Sincronizar quando os params mudarem (ex.: reentrada via outro atalho da Home)
     useEffect(() => {
@@ -136,7 +213,12 @@ const ActivityHistoryScreen: React.FC<ActivityHistoryScreenProps> = ({ route, na
             // Atualizar ID se já temos a lista de tipos carregada
             if (activityTypes && activityTypes.length) {
                 const canonWanted = canonicalize(activityTypeSlug);
-                const found = activityTypes.find((t: any) => canonicalize(t.slug || t.name) === canonWanted);
+                const found = activityTypes.find((t: any) => {
+                    if (!t) return false;
+                    // Garantir que slug/name seja string antes de canonizar
+                    const slugOrName = t.slug || t.name || '';
+                    return canonicalize(slugOrName) === canonWanted;
+                });
                 setSelectedTypeId(found ? Number(found.id) : null);
             }
         }
@@ -144,21 +226,25 @@ const ActivityHistoryScreen: React.FC<ActivityHistoryScreenProps> = ({ route, na
             setSelectedStatus(status);
         }
         // não chama fetch aqui para evitar dupla chamada; o listener de focus já trata
-    }, [activityTypeSlug, JSON.stringify(status), JSON.stringify(activityTypes)]);
+    }, [activityTypeSlug, status, activityTypes]);
 
-    const fetchActivities = async () => {
+    const fetchActivities = useCallback(async () => {
         try {
             setLoading(true);
             setError(null);
             const token = await AsyncStorage.getItem("access_token");
-            if (!token) throw new Error("Token não encontrado");
+            if (!token) {
+                console.warn('[ActivityHistoryScreen] Token não encontrado');
+                setError("Sessão expirada. Por favor, faça login novamente.");
+                setActivities([]);
+                return;
+            }
 
-            console.log('[ActivityHistoryScreen] Buscando atividades...', {
-                equipmentId,
-                currentPage,
-                selectedType,
-                selectedStatus
-            });
+            // Montar URL base
+            const accountName = await AsyncStorage.getItem("account") || "";
+            const tenantSubdomain = await AsyncStorage.getItem("tenant_subdomain") || accountName;
+            const hostRoot = "keosstg001.xyz";
+            const baseUrl = tenantSubdomain ? `https://${tenantSubdomain}.${hostRoot}/api` : `https://${hostRoot}/api`;
 
             if (equipmentId) {
                 // Histórico de atividades de um equipamento específico
@@ -168,21 +254,77 @@ const ActivityHistoryScreen: React.FC<ActivityHistoryScreenProps> = ({ route, na
                     activity_type: selectedType !== "all" ? selectedType : undefined,
                     token: token,
                 };
-                console.log('[ActivityHistoryScreen] Parâmetros para equipamento:', params);
-                console.log('[ActivityHistoryScreen] Equipment ID:', equipmentId);
+                
+                const fullUrl = `${baseUrl}/equipments/${equipmentId}/activities`;
+                safeLogRequest(fullUrl, params);
 
                 try {
                     const response = await activityService.fetchActivities(equipmentId, params);
-                    console.log('[ActivityHistoryScreen] Resposta recebida:', response);
-                    console.log('[ActivityHistoryScreen] Número de atividades:', response.results?.length || 0);
-                    console.log('[ActivityHistoryScreen] Total de atividades:', response.count || 0);
+                    safeLogRequest(fullUrl, params, response);
 
-                    setActivities(response.results || []);
-                    setTotalPages(Math.ceil(response.count / perPage) || 1);
-                } catch (error) {
+                    // Capturar informações do request para exibição
+                    try {
+                        setLastRequestInfo({
+                            url: fullUrl,
+                            method: 'GET',
+                            status: 200,
+                            requestPayload: params,
+                            payload: response
+                        });
+                    } catch (infoErr) {
+                        console.error('[ActivityHistoryScreen] Erro ao salvar info do request:', infoErr);
+                    }
+
+                    // Validar resposta antes de usar
+                    if (response && typeof response === 'object') {
+                        try {
+                            const results = response.results || [];
+                            const count = response.count || 0;
+                            setActivities(Array.isArray(results) ? results : []);
+                            setTotalPages(Math.ceil(count / perPage) || 1);
+                        } catch (processErr) {
+                            console.error('[ActivityHistoryScreen] Erro ao processar resposta:', processErr);
+                            setActivities([]);
+                            setTotalPages(1);
+                        }
+                    } else {
+                        console.warn('[ActivityHistoryScreen] Resposta inválida recebida');
+                        setActivities([]);
+                        setTotalPages(1);
+                    }
+                } catch (error: any) {
                     console.error('[ActivityHistoryScreen] Erro ao buscar atividades do equipamento:', error);
+                    console.error('[ActivityHistoryScreen] Detalhes:', {
+                        message: error?.message,
+                        status: error?.response?.status,
+                        data: error?.response?.data
+                    });
+                    
+                    try {
+                        safeLogRequest(fullUrl, params, {
+                            error: error?.message,
+                            status: error?.response?.status,
+                            data: error?.response?.data
+                        });
+                        
+                        setLastRequestInfo({
+                            url: fullUrl,
+                            method: 'GET',
+                            headers: {},
+                            status: error?.response?.status,
+                            requestPayload: params,
+                            errorPayload: error?.response?.data,
+                            errorPreview: typeof error?.response?.data === 'string' 
+                                ? error.response.data.slice(0, 500) 
+                                : JSON.stringify(error?.response?.data || {}, null, 2).slice(0, 500)
+                        });
+                    } catch (logErr) {
+                        console.error('[ActivityHistoryScreen] Erro ao logar erro:', logErr);
+                    }
+                    
                     setActivities([]);
                     setTotalPages(1);
+                    setError("Erro ao carregar atividades do equipamento. Tente novamente.");
                 }
             } else {
                 // Listagem geral de atividades
@@ -194,59 +336,135 @@ const ActivityHistoryScreen: React.FC<ActivityHistoryScreenProps> = ({ route, na
                     status: selectedStatus.includes("all") ? undefined : selectedStatus,
                     token: token,
                 };
-                console.log('[ActivityHistoryScreen] Parâmetros gerais:', params);
-                const response = await ActivityService.fetchAllActivities(params);
-                console.log('[ActivityHistoryScreen] Resposta geral recebida:', response);
-                console.log('[ActivityHistoryScreen] Atividades recebidas:', response.results);
-                console.log('[ActivityHistoryScreen] Total de atividades:', response.count);
+                
+                const fullUrl = `${baseUrl}/activities`;
+                safeLogRequest(fullUrl, params);
 
-                if (response.results && response.results.length > 0) {
-                    console.log('[ActivityHistoryScreen] Primeira atividade:', response.results[0]);
-                    console.log('[ActivityHistoryScreen] Tipos de atividades:', response.results.map(a => a.type));
-                    console.log('[ActivityHistoryScreen] Estrutura completa da primeira atividade:', JSON.stringify(response.results[0], null, 2));
-                }
+                try {
+                    const response = await ActivityService.fetchAllActivities(params);
+                    safeLogRequest(fullUrl, params, response);
+                    
+                    // Capturar informações do request para exibição
+                    try {
+                        setLastRequestInfo({
+                            url: fullUrl,
+                            method: 'GET',
+                            status: 200,
+                            requestPayload: params,
+                            payload: response
+                        });
+                    } catch (infoErr) {
+                        console.error('[ActivityHistoryScreen] Erro ao salvar info do request:', infoErr);
+                    }
+                    
+                    // Validar resposta antes de processar
+                    if (!response || typeof response !== 'object') {
+                        console.warn('[ActivityHistoryScreen] Resposta inválida ou vazia');
+                        setActivities([]);
+                        setTotalPages(1);
+                    } else {
+                        try {
+                            const results = response.results || [];
+                            const count = response.count || 0;
+                            
+                            if (Array.isArray(results) && results.length > 0) {
+                                // Verificar se as atividades têm os campos necessários
+                                const validActivities = results.map((activity: any) => {
+                                    try {
+                                        return {
+                                            ...activity,
+                                            id: activity?.id || Math.random(),
+                                            name: activity?.name || activity?.title || 'Atividade sem nome',
+                                            type: activity?.activity_type?.name || activity?.type || 'unknown',
+                                            status: activity?.status || 'pending',
+                                            created_at: activity?.start_date || activity?.created_at || new Date().toISOString(),
+                                            end_date: activity?.end_date || null
+                                        };
+                                    } catch (activityErr) {
+                                        console.error('[ActivityHistoryScreen] Erro ao processar atividade:', activityErr);
+                                        return {
+                                            id: Math.random(),
+                                            name: 'Atividade (erro ao processar)',
+                                            type: 'unknown',
+                                            status: 'pending',
+                                            created_at: new Date().toISOString(),
+                                            end_date: null
+                                        };
+                                    }
+                                });
+                                setActivities(validActivities);
+                            } else {
+                                setActivities([]);
+                            }
 
-                console.log('[ActivityHistoryScreen] Definindo atividades no estado:', response.results?.length || 0);
-
-                // Verificar se as atividades têm os campos necessários
-                if (response.results && response.results.length > 0) {
-                    const validActivities = response.results.map((activity: any) => ({
-                        ...activity,
-                        id: activity.id || Math.random(),
-                        name: activity.name || activity.title || 'Atividade sem nome',
-                        type: activity.activity_type?.name || activity.type || 'unknown',
-                        status: activity.status || 'pending',
-                        created_at: activity.start_date || activity.created_at || new Date().toISOString(),
-                        end_date: activity.end_date || null
-                    }));
-                    console.log('[ActivityHistoryScreen] Atividades validadas:', validActivities.length);
-                    setActivities(validActivities);
-                } else {
+                            setTotalPages(Math.ceil(count / perPage) || 1);
+                        } catch (processErr) {
+                            console.error('[ActivityHistoryScreen] Erro ao processar resultados:', processErr);
+                            setActivities([]);
+                            setTotalPages(1);
+                        }
+                    }
+                } catch (error: any) {
+                    console.error('[ActivityHistoryScreen] Erro ao buscar atividades gerais:', error);
+                    console.error('[ActivityHistoryScreen] Detalhes:', {
+                        message: error?.message,
+                        status: error?.response?.status,
+                        data: error?.response?.data
+                    });
+                    
+                    try {
+                        safeLogRequest(fullUrl, params, {
+                            error: error?.message,
+                            status: error?.response?.status,
+                            data: error?.response?.data
+                        });
+                        
+                        setLastRequestInfo({
+                            url: fullUrl,
+                            method: 'GET',
+                            headers: {},
+                            status: error?.response?.status,
+                            requestPayload: params,
+                            errorPayload: error?.response?.data,
+                            errorPreview: typeof error?.response?.data === 'string' 
+                                ? error.response.data.slice(0, 500) 
+                                : JSON.stringify(error?.response?.data || {}, null, 2).slice(0, 500)
+                        });
+                    } catch (logErr) {
+                        console.error('[ActivityHistoryScreen] Erro ao logar erro:', logErr);
+                    }
+                    
                     setActivities([]);
+                    setTotalPages(1);
+                    setError("Erro ao carregar atividades. Tente novamente.");
                 }
-
-                setTotalPages(Math.ceil(response.count / perPage) || 1);
             }
         } catch (error: any) {
-            console.error('[ActivityHistoryScreen] Erro ao buscar atividades:', error);
+            console.error('[ActivityHistoryScreen] Erro crítico em fetchActivities:', error);
             console.error('[ActivityHistoryScreen] Detalhes do erro:', {
-                status: error.response?.status,
-                data: error.response?.data,
-                message: error.message
+                status: error?.response?.status,
+                data: error?.response?.data,
+                message: error?.message,
+                stack: error?.stack,
+                name: error?.name
             });
 
             let errorMessage = "Falha ao buscar atividades.";
 
-            if (error.response?.status === 404) {
-                errorMessage = "Endpoint de atividades não encontrado. Verifique se o backend está configurado corretamente.";
-            } else if (error.response?.status === 500) {
-                errorMessage = "Erro interno no servidor ao buscar atividades. Tente novamente ou contate o suporte.";
-            } else if (error.response?.status === 401) {
-                errorMessage = "Token de acesso inválido ou expirado.";
-            } else if (error.response?.status === 403) {
-                errorMessage = "Sem permissão para acessar atividades.";
-            } else if (error.message) {
-                errorMessage = error.message;
+            try {
+                if (error?.response?.status === 404) {
+                    errorMessage = "Endpoint de atividades não encontrado. Verifique se o backend está configurado corretamente.";
+                } else if (error?.response?.status === 500) {
+                    errorMessage = "Erro interno no servidor ao buscar atividades. Tente novamente ou contate o suporte.";
+                } else if (error?.response?.status === 401) {
+                    errorMessage = "Token de acesso inválido ou expirado.";
+                } else if (error?.response?.status === 403) {
+                    errorMessage = "Sem permissão para acessar atividades.";
+                } else if (error?.message) {
+                    errorMessage = error.message;
+                }
+            } catch (msgErr) {
+                console.error('[ActivityHistoryScreen] Erro ao construir mensagem:', msgErr);
             }
 
             setError(errorMessage);
@@ -254,7 +472,7 @@ const ActivityHistoryScreen: React.FC<ActivityHistoryScreenProps> = ({ route, na
         } finally {
             setLoading(false);
         }
-    };
+    }, [equipmentId, currentPage, perPage, selectedType, selectedTypeId, selectedStatus, activityService, safeLogRequest]);
 
     const onRefresh = async () => {
         setRefreshing(true);
@@ -283,11 +501,21 @@ const ActivityHistoryScreen: React.FC<ActivityHistoryScreenProps> = ({ route, na
         open: "play-circle",
         closed: "check-circle",
         pending: "schedule",
-        waiting_budget_approval: "cash",
+        waiting_budget_approval: "attach-money",
         budget_not_approved: "close-circle",
     };
 
-    const getActivityTypeInfo = (type: string) => {
+    const getActivityTypeInfo = (type: string | any) => {
+        // Proteção contra valores inválidos
+        if (!type) {
+            return {
+                label: 'Atividade',
+                value: 'unknown',
+                icon: 'assignment',
+                color: '#6c757d',
+            };
+        }
+
         const canon = canonicalize(type);
         const known: Record<string, { icon: string; color: string; label: string }> = {
             pmoc: { icon: 'build', color: '#007bff', label: 'PMOC' },
@@ -297,12 +525,18 @@ const ActivityHistoryScreen: React.FC<ActivityHistoryScreenProps> = ({ route, na
         };
 
         // Tentar casar com o que veio do backend
-        const fromApi = activityTypes.find((t) => canonicalize(t.slug || t.name) === canon);
+        const fromApi = activityTypes.find((t) => {
+            if (!t) return false;
+            const slugOrName = t.slug || t.name || '';
+            return canonicalize(slugOrName) === canon;
+        });
+        
         if (fromApi) {
-            const k = known[canonicalize(fromApi.slug || fromApi.name)];
+            const slugOrName = fromApi.slug || fromApi.name || '';
+            const k = known[canonicalize(slugOrName)];
             return {
-                label: fromApi.name,
-                value: canonicalize(fromApi.slug || fromApi.name),
+                label: fromApi.name || 'Atividade',
+                value: canonicalize(slugOrName),
                 icon: k?.icon || 'assignment',
                 color: k?.color || '#6c757d',
             };
@@ -310,8 +544,12 @@ const ActivityHistoryScreen: React.FC<ActivityHistoryScreenProps> = ({ route, na
 
         // Se não achou, usar mapeamento conhecido ou fallback genérico
         const k = known[canon];
+        
+        // Garantir que type seja string para exibição
+        const typeStr = typeof type === 'string' ? type : 'Atividade';
+        
         return {
-            label: k?.label || (type || 'Atividade'),
+            label: k?.label || typeStr,
             value: canon || 'unknown',
             icon: k?.icon || 'assignment',
             color: k?.color || '#6c757d',
@@ -352,109 +590,180 @@ const ActivityHistoryScreen: React.FC<ActivityHistoryScreenProps> = ({ route, na
     };
 
     const renderActivityCard = ({ item }: { item: any }) => {
-        // Verificar se o usuário tem permissão geral para listar atividades
-        const hasGeneralPermission = canViewPmoc || canViewServiceOrder || canViewTechnicalAssistance;
+        try {
+            // Verificar se o item é válido
+            if (!item || typeof item !== 'object') {
+                console.warn('[ActivityHistoryScreen] Item inválido no renderActivityCard:', item);
+                return (
+                    <View style={[styles.activityCard, { padding: 16, alignItems: 'center' }]}>
+                        <MaterialIcons name="error-outline" size={24} color="#dc3545" />
+                        <Text style={[styles.errorText, { marginTop: 8, textAlign: 'center' }]}>
+                            Item inválido
+                        </Text>
+                    </View>
+                );
+            }
 
-        if (!hasGeneralPermission) {
-            return null;
+            // Verificar se o usuário tem permissão geral para listar atividades
+            const hasGeneralPermission = canViewPmoc || canViewServiceOrder || canViewTechnicalAssistance;
+
+            if (!hasGeneralPermission) {
+                return null;
+            }
+
+            const navigateToDetails = () => {
+                try {
+                    // Navegar para a tela de equipamentos vinculados da atividade
+                    navigation.navigate("ActivityEquipmentListScreen", {
+                        activityId: item?.id,
+                        activityName: item?.name || item?.title || "Atividade",
+                        clientId: item?.client?.id || item?.equipment?.client?.id,
+                        clientName: item?.client?.name || item?.equipment?.client?.name,
+                    });
+                } catch (navError) {
+                    console.error('[ActivityHistoryScreen] Erro ao navegar para detalhes:', navError);
+                    console.error('[ActivityHistoryScreen] Stack trace:', navError instanceof Error ? navError.stack : 'N/A');
+                }
+            };
+
+            // Verificar se o tipo da atividade existe, caso contrário usar um tipo padrão
+            let activityType = 'unknown';
+            try {
+                // Tentar extrair o tipo de diferentes formas
+                if (item?.activity_type) {
+                    // Se activity_type é objeto, pega o name
+                    activityType = typeof item.activity_type === 'object' 
+                        ? (item.activity_type?.name || 'unknown')
+                        : String(item.activity_type || 'unknown');
+                } else if (item?.type) {
+                    // Se type é objeto, pega o name
+                    activityType = typeof item.type === 'object'
+                        ? (item.type?.name || 'unknown')
+                        : String(item.type || 'unknown');
+                }
+            } catch (typeError) {
+                console.error('[ActivityHistoryScreen] Erro ao extrair tipo da atividade:', typeError);
+                activityType = 'unknown';
+            }
+            
+            let activityTypeInfo;
+            try {
+                activityTypeInfo = getActivityTypeInfo(activityType);
+            } catch (infoError) {
+                console.error('[ActivityHistoryScreen] Erro ao obter info do tipo:', infoError);
+                activityTypeInfo = { label: 'Atividade', value: 'unknown', icon: 'assignment', color: '#6c757d' };
+            }
+
+            const statusColor = statusColors[item?.status] || "#6c757d";
+            const statusIcon = statusIcons[item?.status] || "help-circle";
+
+            return (
+                <TouchableOpacity style={styles.activityCard} onPress={navigateToDetails}>
+                    <View style={styles.cardHeader}>
+                        <View style={styles.activityTypeContainer}>
+                            <MaterialIcons
+                                name={activityTypeInfo.icon as any}
+                                size={20}
+                                color={activityTypeInfo.color}
+                            />
+                            <Text style={[styles.activityTypeText, { color: activityTypeInfo.color }]}>
+                                {activityTypeInfo.label}
+                            </Text>
+                        </View>
+                        <View style={[styles.statusBadge, { backgroundColor: statusColor + '20' }]}>
+                            <Ionicons name={statusIcon as any} size={16} color={statusColor} />
+                            <Text style={[styles.statusText, { color: statusColor }]}>
+                                {statusTranslations[item?.status] || item?.status || 'Desconhecido'}
+                            </Text>
+                        </View>
+                    </View>
+
+                    <View style={styles.cardContent}>
+                        {/* Título da Atividade */}
+                        <View style={styles.infoRow}>
+                            <MaterialIcons name="title" size={16} color="#666" />
+                            <Text style={[styles.infoText, styles.activityTitle]}>
+                                {item?.name || item?.title || `${t('activity.title')} ${item?.id || ''}`}
+                            </Text>
+                        </View>
+
+                        <View style={styles.infoRow}>
+                            <MaterialIcons name="business" size={16} color="#666" />
+                            <Text style={styles.infoText}>
+                                {item?.client?.name || item?.equipment?.tag || "N/A"}
+                            </Text>
+                        </View>
+
+                        {/* Data de Início e Fim */}
+                        <View style={styles.infoRow}>
+                            <MaterialIcons name="event" size={16} color="#666" />
+                            <Text style={styles.infoText}>
+                                {t('activityHistory.start')}: {formatDate(item?.start_date || item?.created_at)}
+                                {(item?.end_date || item?.closed_at) && ` | ${t('activityHistory.end')}: ${formatDate(item?.end_date || item?.closed_at)}`}
+                            </Text>
+                        </View>
+
+                        {item?.deadline && formatDate(item.deadline) && (
+                            <View style={styles.infoRow}>
+                                <MaterialIcons name="schedule" size={16} color="#666" />
+                                <Text style={styles.infoText}>
+                                    {t('activityHistory.deadline')}: {formatDate(item.deadline)}
+                                </Text>
+                            </View>
+                        )}
+
+                        {item?.equipment && (
+                            <View style={styles.infoRow}>
+                                <MaterialIcons name="build" size={16} color="#666" />
+                                <Text style={styles.infoText}>
+                                    {item.equipment?.equipment_type?.name || t('equipment.title')}
+                                </Text>
+                            </View>
+                        )}
+                    </View>
+
+                    <View style={styles.cardFooter}>
+                        <TouchableOpacity style={styles.detailsButton} onPress={navigateToDetails}>
+                            <Text style={styles.detailsButtonText}>{t('activityHistory.viewDetails')}</Text>
+                            <MaterialIcons name="arrow-forward" size={16} color="#007bff" />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={styles.detailsButton}
+                            onPress={() => {
+                                try {
+                                    navigation.navigate("WorkListScreen", { 
+                                        activityId: item?.id, 
+                                        activityName: item?.name || item?.title || "Atividade" 
+                                    });
+                                } catch (navError) {
+                                    console.error('[ActivityHistoryScreen] Erro ao navegar para WorkListScreen:', navError);
+                                }
+                            }}
+                        >
+                            <Text style={styles.detailsButtonText}>{t('activityHistory.viewWork')}</Text>
+                            <MaterialIcons name="assignment" size={16} color="#007bff" />
+                        </TouchableOpacity>
+                    </View>
+                </TouchableOpacity>
+            );
+        } catch (renderError) {
+            console.error('[ActivityHistoryScreen] Erro crítico ao renderizar card de atividade:', renderError);
+            console.error('[ActivityHistoryScreen] Stack trace do erro:', renderError instanceof Error ? renderError.stack : 'N/A');
+            console.error('[ActivityHistoryScreen] Item que causou o erro:', JSON.stringify(item || {}, null, 2).substring(0, 500));
+            
+            // Fallback UI robusto
+            return (
+                <View style={[styles.activityCard, { padding: 16, alignItems: 'center', justifyContent: 'center', minHeight: 100 }]}>
+                    <MaterialIcons name="error-outline" size={32} color="#dc3545" />
+                    <Text style={[styles.errorText, { marginTop: 8, textAlign: 'center' }]}>
+                        Erro ao exibir esta atividade
+                    </Text>
+                    <Text style={[styles.errorText, { marginTop: 4, fontSize: 12, opacity: 0.7 }]}>
+                        ID: {item?.id || 'N/A'}
+                    </Text>
+                </View>
+            );
         }
-
-        const navigateToDetails = () => {
-            // Navegar para a tela de equipamentos vinculados da atividade
-            navigation.navigate("ActivityEquipmentListScreen", {
-                activityId: item.id,
-                activityName: item.name || item.title || "Atividade",
-                clientId: item.client?.id || item.equipment?.client?.id,
-                clientName: item.client?.name || item.equipment?.client?.name,
-            });
-        };
-
-        // Verificar se o tipo da atividade existe, caso contrário usar um tipo padrão
-        const activityType = item.type || item.activity_type || 'unknown';
-        const activityTypeInfo = getActivityTypeInfo(activityType);
-        const statusColor = statusColors[item.status] || "#6c757d";
-        const statusIcon = statusIcons[item.status] || "help-circle";
-
-        return (
-            <TouchableOpacity style={styles.activityCard} onPress={navigateToDetails}>
-                <View style={styles.cardHeader}>
-                    <View style={styles.activityTypeContainer}>
-                        <MaterialIcons
-                            name={activityTypeInfo.icon as any}
-                            size={20}
-                            color={activityTypeInfo.color}
-                        />
-                        <Text style={[styles.activityTypeText, { color: activityTypeInfo.color }]}>
-                            {activityTypeInfo.label}
-                        </Text>
-                    </View>
-                    <View style={[styles.statusBadge, { backgroundColor: statusColor + '20' }]}>
-                        <Ionicons name={statusIcon as any} size={16} color={statusColor} />
-                        <Text style={[styles.statusText, { color: statusColor }]}>
-                            {statusTranslations[item.status] || item.status}
-                        </Text>
-                    </View>
-                </View>
-
-                <View style={styles.cardContent}>
-                    {/* Título da Atividade */}
-                    <View style={styles.infoRow}>
-                        <MaterialIcons name="title" size={16} color="#666" />
-                        <Text style={[styles.infoText, styles.activityTitle]}>
-                            {item.name || item.title || `${t('activity.title')} ${item.id}`}
-                        </Text>
-                    </View>
-
-                    <View style={styles.infoRow}>
-                        <MaterialIcons name="business" size={16} color="#666" />
-                        <Text style={styles.infoText}>
-                            {item.client?.name || item.equipment?.tag || "N/A"}
-                        </Text>
-                    </View>
-
-                    {/* Data de Início e Fim */}
-                    <View style={styles.infoRow}>
-                        <MaterialIcons name="event" size={16} color="#666" />
-                        <Text style={styles.infoText}>
-                            {t('activityHistory.start')}: {formatDate(item.start_date || item.created_at)}
-                            {(item.end_date || item.closed_at) && ` | ${t('activityHistory.end')}: ${formatDate(item.end_date || item.closed_at)}`}
-                        </Text>
-                    </View>
-
-                    {item.deadline && formatDate(item.deadline) && (
-                        <View style={styles.infoRow}>
-                            <MaterialIcons name="schedule" size={16} color="#666" />
-                            <Text style={styles.infoText}>
-                                {t('activityHistory.deadline')}: {formatDate(item.deadline)}
-                            </Text>
-                        </View>
-                    )}
-
-                    {item.equipment && (
-                        <View style={styles.infoRow}>
-                            <MaterialIcons name="build" size={16} color="#666" />
-                            <Text style={styles.infoText}>
-                                {item.equipment.equipment_type?.name || t('equipment.title')}
-                            </Text>
-                        </View>
-                    )}
-                </View>
-
-                <View style={styles.cardFooter}>
-                    <TouchableOpacity style={styles.detailsButton} onPress={navigateToDetails}>
-                        <Text style={styles.detailsButtonText}>{t('activityHistory.viewDetails')}</Text>
-                        <MaterialIcons name="arrow-forward" size={16} color="#007bff" />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                        style={styles.detailsButton}
-                        onPress={() => navigation.navigate("WorkListScreen", { activityId: item.id, activityName: item.name || item.title || "Atividade" })}
-                    >
-                        <Text style={styles.detailsButtonText}>{t('activityHistory.viewWork')}</Text>
-                        <MaterialIcons name="assignment" size={16} color="#007bff" />
-                    </TouchableOpacity>
-                </View>
-            </TouchableOpacity>
-        );
     };
 
     // Filtro de status (múltipla seleção)
@@ -496,6 +805,59 @@ const ActivityHistoryScreen: React.FC<ActivityHistoryScreenProps> = ({ route, na
 
     return (
         <View style={styles.container}>
+            {/* Painel de debug - sempre visível no topo */}
+            <View style={{ backgroundColor: '#fff', margin: 16, padding: 12, borderRadius: 8, borderWidth: 1, borderColor: '#ddd' }}>
+                <Text style={{ fontWeight: '600', marginBottom: 8 }}>Última Requisição</Text>
+                {lastRequestInfo ? (
+                    <>
+                        <Text style={{ fontSize: 11 }}>URL: {lastRequestInfo.url || 'N/A'}</Text>
+                        <Text style={{ fontSize: 11, marginTop: 4 }}>Método: {lastRequestInfo.method || 'N/A'} | Status: {String(lastRequestInfo.status || 'N/A')}</Text>
+                        
+                        {/* Payload Enviado */}
+                        {lastRequestInfo.requestPayload && (
+                            <>
+                                <Text style={{ fontSize: 11, marginTop: 8, fontWeight: '600' }}>Payload Enviado:</Text>
+                                <ScrollView style={{ maxHeight: 150, marginTop: 4, backgroundColor: '#e3f2fd', padding: 8, borderRadius: 4 }} nestedScrollEnabled>
+                                    <Text selectable style={{ fontSize: 10 }}>
+                                        {JSON.stringify(lastRequestInfo.requestPayload, null, 2)}
+                                    </Text>
+                                </ScrollView>
+                            </>
+                        )}
+
+                        {/* Payload Retorno (sucesso ou erro) */}
+                        {(lastRequestInfo.payload || lastRequestInfo.errorPayload) && (
+                            <>
+                                <Text style={{ fontSize: 11, marginTop: 8, fontWeight: '600', color: lastRequestInfo.errorPayload ? '#dc3545' : '#28a745' }}>
+                                    Payload Retorno {lastRequestInfo.errorPayload ? '(Erro)' : '(Sucesso)'}:
+                                </Text>
+                                <ScrollView style={{ maxHeight: 200, marginTop: 4, backgroundColor: lastRequestInfo.errorPayload ? '#ffebee' : '#e8f5e9', padding: 8, borderRadius: 4 }} nestedScrollEnabled>
+                                    <Text selectable style={{ fontSize: 10 }}>
+                                        {lastRequestInfo.errorPayload 
+                                            ? JSON.stringify(lastRequestInfo.errorPayload, null, 2)
+                                            : JSON.stringify(lastRequestInfo.payload, null, 2)
+                                        }
+                                    </Text>
+                                </ScrollView>
+                            </>
+                        )}
+
+                        {/* Fallback para errorPreview (quando errorPayload não está disponível) */}
+                        {!lastRequestInfo.payload && !lastRequestInfo.errorPayload && lastRequestInfo.errorPreview && (
+                            <>
+                                <Text style={{ fontSize: 11, marginTop: 8, fontWeight: '600', color: '#dc3545' }}>Erro (Preview):</Text>
+                                <ScrollView style={{ maxHeight: 150, marginTop: 4, backgroundColor: '#ffebee', padding: 8, borderRadius: 4 }} nestedScrollEnabled>
+                                    <Text selectable style={{ fontSize: 10 }}>
+                                        {lastRequestInfo.errorPreview}
+                                    </Text>
+                                </ScrollView>
+                            </>
+                        )}
+                    </>
+                ) : (
+                    <Text style={{ fontSize: 12 }}>Sem logs ainda</Text>
+                )}
+            </View>
             {/* Header */}
             <View style={styles.header}>
                 <TouchableOpacity
@@ -541,13 +903,19 @@ const ActivityHistoryScreen: React.FC<ActivityHistoryScreenProps> = ({ route, na
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
                         {[
                             DEFAULT_ACTIVITY_TYPE_CHIP,
-                            ...activityTypes.map((t) => ({
-                                label: t.name,
-                                value: canonicalize(t.slug || t.name),
-                                id: t.id,
-                                icon: 'assignment',
-                                color: '#007bff',
-                            })),
+                            ...activityTypes
+                                .filter((t) => t && (t.name || t.slug)) // Filtrar tipos inválidos
+                                .map((t) => {
+                                    // Garantir que slug/name seja string antes de canonizar
+                                    const slugOrName = t.slug || t.name || '';
+                                    return {
+                                        label: t.name || 'Atividade',
+                                        value: canonicalize(slugOrName),
+                                        id: t.id,
+                                        icon: 'assignment',
+                                        color: '#007bff',
+                                    };
+                                }),
                         ].map((type) => (
                             renderFilterChip(
                                 type,
