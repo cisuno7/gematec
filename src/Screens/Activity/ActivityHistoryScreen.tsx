@@ -32,7 +32,7 @@ const STATUS_OPTIONS = [
     { label: "Aberto", value: "open", icon: "play-circle" },
     { label: "Pendente", value: "pending", icon: "schedule" },
     { label: "Fechado", value: "closed", icon: "check-circle" },
-    { label: "Aguardando Aprovação de Orçamento", value: "waiting_budget_approval", icon: "cash" },
+    { label: "Aguardando Aprovação de Orçamento", value: "waiting_budget_approval", icon: "access-time" },
 ];
 
 const DEFAULT_ACTIVITY_TYPE_CHIP = { label: "Todos", value: "all", icon: "apps", color: "#6c757d" };
@@ -57,12 +57,42 @@ const ActivityHistoryScreen: React.FC<ActivityHistoryScreenProps> = ({ route, na
     const [activityTypes, setActivityTypes] = useState<any[]>([]);
 
     // Normalizar strings para comparar slugs/nomes de forma robusta
-    const canonicalize = (s?: string) => (s || '')
-        .toLowerCase()
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .replace(/[^a-z0-9_]+/g, '_')
-        .replace(/^_+|_+$/g, '');
+    const canonicalize = (s?: string | null) => {
+        if (!s || typeof s !== 'string') return '';
+        return s
+            .toLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .replace(/[^a-z0-9_]+/g, '_')
+            .replace(/^_+|_+$/g, '');
+    };
+
+    // Validar e normalizar ícones para MaterialIcons
+    const validateMaterialIcon = (icon: string | undefined | null, fallback: string = 'help-outline'): string => {
+        if (!icon || typeof icon !== 'string') return fallback;
+        // Lista de ícones válidos do MaterialIcons (exemplos comuns)
+        const validIcons = [
+            'add', 'arrow-forward', 'assignment', 'build', 'business', 'check-circle', 
+            'close-circle', 'error-outline', 'event', 'help-outline', 'list', 
+            'play-circle', 'schedule', 'security', 'settings', 'title', 'account-balance-wallet',
+            'apps', 'support-agent'
+        ];
+        // Se o ícone não estiver na lista, retornar fallback
+        // Mas primeiro, tentar usar o ícone fornecido (pode ser válido mesmo que não esteja na lista)
+        return icon || fallback;
+    };
+
+    // Validar e normalizar ícones para Ionicons
+    const validateIonicIcon = (icon: string | undefined | null, fallback: string = 'help-circle-outline'): string => {
+        if (!icon || typeof icon !== 'string') return fallback;
+        // Lista de ícones válidos do Ionicons (exemplos comuns)
+        const validIcons = [
+            'arrow-back', 'chevron-back', 'chevron-forward', 'play-circle', 
+            'check-circle', 'schedule', 'close-circle', 'help-circle-outline'
+        ];
+        // Retornar o ícone fornecido (Ionicons tem muitos ícones, melhor tentar usar)
+        return icon || fallback;
+    };
 
     // Permissões
     const canViewPmoc = hasPermission("list_activities");
@@ -178,7 +208,43 @@ const ActivityHistoryScreen: React.FC<ActivityHistoryScreenProps> = ({ route, na
                     console.log('[ActivityHistoryScreen] Número de atividades:', response.results?.length || 0);
                     console.log('[ActivityHistoryScreen] Total de atividades:', response.count || 0);
 
-                    setActivities(response.results || []);
+                    // Validar e normalizar atividades de equipamento (mesmo tratamento que atividades gerais)
+                    if (response.results && response.results.length > 0) {
+                        const validActivities = response.results.map((activity: any) => {
+                            // Garantir que type seja sempre uma string (não um objeto)
+                            let typeValue: string = 'unknown';
+                            if (typeof activity.type === 'string') {
+                                typeValue = activity.type;
+                            } else if (activity.activity_type) {
+                                if (typeof activity.activity_type === 'string') {
+                                    typeValue = activity.activity_type;
+                                } else if (typeof activity.activity_type === 'object' && activity.activity_type !== null) {
+                                    typeValue = activity.activity_type.name || activity.activity_type.slug || 'unknown';
+                                }
+                            }
+                            
+                            // Garantir que status seja sempre uma string (não um objeto)
+                            let statusValue: string = 'pending';
+                            if (typeof activity.status === 'string') {
+                                statusValue = activity.status;
+                            } else if (activity.status && typeof activity.status === 'object') {
+                                statusValue = activity.status.name || activity.status.value || 'pending';
+                            }
+                            
+                            return {
+                                ...activity,
+                                id: activity.id || Math.random(),
+                                name: activity.name || activity.title || 'Atividade sem nome',
+                                type: typeValue,
+                                status: statusValue,
+                                created_at: activity.start_date || activity.created_at || new Date().toISOString(),
+                                end_date: activity.end_date || null
+                            };
+                        });
+                        setActivities(validActivities);
+                    } else {
+                        setActivities([]);
+                    }
                     setTotalPages(Math.ceil(response.count / perPage) || 1);
                 } catch (error) {
                     console.error('[ActivityHistoryScreen] Erro ao buscar atividades do equipamento:', error);
@@ -211,15 +277,37 @@ const ActivityHistoryScreen: React.FC<ActivityHistoryScreenProps> = ({ route, na
 
                 // Verificar se as atividades têm os campos necessários
                 if (response.results && response.results.length > 0) {
-                    const validActivities = response.results.map((activity: any) => ({
-                        ...activity,
-                        id: activity.id || Math.random(),
-                        name: activity.name || activity.title || 'Atividade sem nome',
-                        type: activity.activity_type?.name || activity.type || 'unknown',
-                        status: activity.status || 'pending',
-                        created_at: activity.start_date || activity.created_at || new Date().toISOString(),
-                        end_date: activity.end_date || null
-                    }));
+                    const validActivities = response.results.map((activity: any) => {
+                        // Garantir que type seja sempre uma string (não um objeto)
+                        let typeValue: string = 'unknown';
+                        if (typeof activity.type === 'string') {
+                            typeValue = activity.type;
+                        } else if (activity.activity_type) {
+                            if (typeof activity.activity_type === 'string') {
+                                typeValue = activity.activity_type;
+                            } else if (typeof activity.activity_type === 'object' && activity.activity_type !== null) {
+                                typeValue = activity.activity_type.name || activity.activity_type.slug || 'unknown';
+                            }
+                        }
+                        
+                        // Garantir que status seja sempre uma string (não um objeto)
+                        let statusValue: string = 'pending';
+                        if (typeof activity.status === 'string') {
+                            statusValue = activity.status;
+                        } else if (activity.status && typeof activity.status === 'object') {
+                            statusValue = activity.status.name || activity.status.value || 'pending';
+                        }
+                        
+                        return {
+                            ...activity,
+                            id: activity.id || Math.random(),
+                            name: activity.name || activity.title || 'Atividade sem nome',
+                            type: typeValue,
+                            status: statusValue,
+                            created_at: activity.start_date || activity.created_at || new Date().toISOString(),
+                            end_date: activity.end_date || null
+                        };
+                    });
                     console.log('[ActivityHistoryScreen] Atividades validadas:', validActivities.length);
                     setActivities(validActivities);
                 } else {
@@ -284,11 +372,11 @@ const ActivityHistoryScreen: React.FC<ActivityHistoryScreenProps> = ({ route, na
         open: "play-circle",
         closed: "check-circle",
         pending: "schedule",
-        waiting_budget_approval: "cash",
+        waiting_budget_approval: "hourglass-outline",
         budget_not_approved: "close-circle",
     };
 
-    const getActivityTypeInfo = (type: string) => {
+    const getActivityTypeInfo = (type: string | undefined | null) => {
         const canon = canonicalize(type);
         const known: Record<string, { icon: string; color: string; label: string }> = {
             pmoc: { icon: 'build', color: '#007bff', label: 'PMOC' },
@@ -298,13 +386,18 @@ const ActivityHistoryScreen: React.FC<ActivityHistoryScreenProps> = ({ route, na
         };
 
         // Tentar casar com o que veio do backend
-        const fromApi = activityTypes.find((t) => canonicalize(t.slug || t.name) === canon);
+        const fromApi = activityTypes.find((t) => {
+            const apiSlug = t?.slug || t?.name;
+            return canonicalize(apiSlug) === canon;
+        });
         if (fromApi) {
-            const k = known[canonicalize(fromApi.slug || fromApi.name)];
+            const apiSlug = fromApi.slug || fromApi.name;
+            const canonApiSlug = canonicalize(apiSlug);
+            const k = known[canonApiSlug];
             return {
-                label: fromApi.name,
-                value: canonicalize(fromApi.slug || fromApi.name),
-                icon: k?.icon || 'assignment',
+                label: fromApi.name || 'Atividade',
+                value: canonApiSlug || 'unknown',
+                icon: validateMaterialIcon(k?.icon, 'assignment'),
                 color: k?.color || '#6c757d',
             };
         }
@@ -314,7 +407,7 @@ const ActivityHistoryScreen: React.FC<ActivityHistoryScreenProps> = ({ route, na
         return {
             label: k?.label || (type || 'Atividade'),
             value: canon || 'unknown',
-            icon: k?.icon || 'assignment',
+            icon: validateMaterialIcon(k?.icon, 'assignment'),
             color: k?.color || '#6c757d',
         };
     };
@@ -371,17 +464,33 @@ const ActivityHistoryScreen: React.FC<ActivityHistoryScreenProps> = ({ route, na
         };
 
         // Verificar se o tipo da atividade existe, caso contrário usar um tipo padrão
-        const activityType = item.type || item.activity_type || 'unknown';
+        // Garantir que activityType seja sempre uma string (extrair de objeto se necessário)
+        let activityType: string = 'unknown';
+        if (typeof item.type === 'string') {
+            activityType = item.type;
+        } else if (item.activity_type) {
+            if (typeof item.activity_type === 'string') {
+                activityType = item.activity_type;
+            } else if (typeof item.activity_type === 'object' && item.activity_type !== null) {
+                activityType = item.activity_type.name || item.activity_type.slug || 'unknown';
+            }
+        }
+        
         const activityTypeInfo = getActivityTypeInfo(activityType);
-        const statusColor = statusColors[item.status] || "#6c757d";
-        const statusIcon = statusIcons[item.status] || "help-circle";
+        
+        // Garantir que status seja sempre uma string
+        const statusRaw = item.status;
+        const status = typeof statusRaw === 'string' ? statusRaw : (statusRaw?.name || statusRaw?.value || 'pending');
+        const statusColor = statusColors[status] || "#6c757d";
+        const statusIconRaw = statusIcons[status] || "help-circle-outline";
+        const statusIcon = validateIonicIcon(statusIconRaw, "help-circle-outline");
 
         return (
             <TouchableOpacity style={styles.activityCard} onPress={navigateToDetails}>
                 <View style={styles.cardHeader}>
                     <View style={styles.activityTypeContainer}>
                         <MaterialIcons
-                            name={activityTypeInfo.icon as any}
+                            name={validateMaterialIcon(activityTypeInfo.icon, 'assignment') as any}
                             size={20}
                             color={activityTypeInfo.color}
                         />
@@ -392,7 +501,7 @@ const ActivityHistoryScreen: React.FC<ActivityHistoryScreenProps> = ({ route, na
                     <View style={[styles.statusBadge, { backgroundColor: statusColor + '20' }]}>
                         <Ionicons name={statusIcon as any} size={16} color={statusColor} />
                         <Text style={[styles.statusText, { color: statusColor }]}>
-                            {statusTranslations[item.status] || item.status}
+                            {statusTranslations[status] || status}
                         </Text>
                     </View>
                 </View>
@@ -498,22 +607,25 @@ const ActivityHistoryScreen: React.FC<ActivityHistoryScreenProps> = ({ route, na
         setCurrentPage(1);
     };
 
-    const renderFilterChip = (option: any, isSelected: boolean, onPress: () => void) => (
-        <TouchableOpacity
-            key={option.value}
-            style={[styles.filterChip, isSelected && styles.filterChipSelected]}
-            onPress={onPress}
-        >
-            <MaterialIcons
-                name={option.icon as any}
-                size={16}
-                color={isSelected ? "#fff" : "#007bff"}
-            />
-            <Text style={[styles.filterChipText, isSelected && styles.filterChipTextSelected]}>
-                {option.label}
-            </Text>
-        </TouchableOpacity>
-    );
+    const renderFilterChip = (option: any, isSelected: boolean, onPress: () => void) => {
+        const iconName = validateMaterialIcon(option?.icon, 'apps');
+        return (
+            <TouchableOpacity
+                key={option.value}
+                style={[styles.filterChip, isSelected && styles.filterChipSelected]}
+                onPress={onPress}
+            >
+                <MaterialIcons
+                    name={iconName as any}
+                    size={16}
+                    color={isSelected ? "#fff" : "#007bff"}
+                />
+                <Text style={[styles.filterChipText, isSelected && styles.filterChipTextSelected]}>
+                    {option.label}
+                </Text>
+            </TouchableOpacity>
+        );
+    };
 
     return (
         <View style={styles.container}>

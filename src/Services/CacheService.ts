@@ -118,7 +118,6 @@ export default class CacheService {
         // Importar serviços necessários
         const { default: apiClient } = require("../Context/ApiClient");
         const { default: ClientService } = require("./ClientService");
-        const { default: EquipmentService } = require("./EquipamentService");
 
         // Carregar em paralelo
         await Promise.allSettled([
@@ -146,16 +145,9 @@ export default class CacheService {
                 }
             })(),
 
-            // Equipment Template
-            (async () => {
-                try {
-                    const template = await EquipmentService.getEquipmentTemplate(token);
-                    await this.set(this.KEYS.EQUIPMENT_TEMPLATE, template, 60 * 60 * 1000); // 1 hora
-                    console.log("[CacheService] Equipment template carregado");
-                } catch (error) {
-                    console.error("[CacheService] Erro ao carregar equipment template:", error);
-                }
-            })(),
+            // Equipment Template - REMOVIDO: templates agora são específicos por tipo de equipamento
+            // Templates devem ser carregados apenas quando um tipo específico é selecionado
+            // usando EquipmentService.getEquipmentTemplateByEquipmentType(equipmentTypeId, token)
 
             // Clientes com contrato
             (async () => {

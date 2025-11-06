@@ -390,34 +390,14 @@ export default class EquipmentService {
     }
   }
 
+  /**
+   * @deprecated Este endpoint não existe mais. Use getEquipmentTemplateByEquipmentType() em vez disso.
+   * Templates agora são específicos por tipo de equipamento.
+   * Este método está mantido apenas para referência e sempre lançará erro.
+   */
   static async getEquipmentTemplate(token: string): Promise<EquipmentTemplateModel> {
-    console.log("[EquipmentService] Buscando template de equipamentos (tentando plural -> singular)...");
-    // 1) Tenta endpoint plural (comportamento observado no servidor)
-    try {
-      const respPlural = await apiClient.get(`/equipment_templates/current`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      console.log("[EquipmentService] Template (plural) recebido:", respPlural.data);
-      return new EquipmentTemplateModel(respPlural.data);
-    } catch (errPlural: any) {
-      if (errPlural?.response?.status !== 404) {
-        console.error("[EquipmentService] Falha no endpoint plural:", errPlural?.response?.status, errPlural?.message);
-      } else {
-        console.log("[EquipmentService] Endpoint plural 404. Tentando endpoint singular...");
-      }
-      // 2) Fallback: tenta endpoint singular (documentação)
-      try {
-        const respSingular = await apiClient.get(`/equipment_template/current`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        console.log("[EquipmentService] Template (singular) recebido:", respSingular.data);
-        return new EquipmentTemplateModel(respSingular.data);
-      } catch (errSingular: any) {
-        console.error("[EquipmentService] Falha no endpoint singular:", errSingular?.response?.status, errSingular?.message);
-        const serverMessage = errSingular?.response?.data?.message || errPlural?.response?.data?.message;
-        throw new Error(serverMessage || "Falha ao buscar template de equipamentos.");
-      }
-    }
+    console.warn("[EquipmentService] ⚠️ DEPRECATED: getEquipmentTemplate() foi chamado. Use getEquipmentTemplateByEquipmentType(equipmentTypeId, token) em vez disso.");
+    throw new Error("Endpoint /equipment_template/current não existe mais. Use getEquipmentTemplateByEquipmentType(equipmentTypeId, token) para buscar templates por tipo de equipamento.");
   }
 
   /**

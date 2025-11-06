@@ -117,7 +117,7 @@ const RoadmapEquipmentScreen: React.FC<RoadmapEquipmentScreenProps> = ({
             activityId: activity.id,
             activityEquipmentId: equipment.id,
             equipmentId: equipment.id,
-            equipmentTag: equipment.name,
+            equipmentTag: equipment.name || equipment.tag || undefined, // Tag opcional
             activityName: activity.title
         });
     };

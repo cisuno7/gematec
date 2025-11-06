@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, Platform } from 'react-native';
+import { View, Text, StyleSheet, Platform, useWindowDimensions } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 
 interface CustomPickerProps {
@@ -19,14 +19,43 @@ const CustomPicker: React.FC<CustomPickerProps> = ({
 }) => {
     // Filtrar o placeholder dos items para evitar duplicação
     const validItems = items.filter(item => item.value !== "");
+    
+    // Calcular valores responsivos baseados no tamanho da tela (dinâmico)
+    const { width: SCREEN_WIDTH } = useWindowDimensions();
+    const isTablet = SCREEN_WIDTH >= 768; // Considera tablet a partir de 768px
+    const isLargeScreen = SCREEN_WIDTH >= 1024; // Telas grandes (tablets grandes)
+    
+    // Padding direito adaptativo: maior em tablets, adequado em celulares
+    const pickerPaddingRight = Platform.OS === 'android' 
+        ? (isLargeScreen ? 60 : isTablet ? 50 : 45)
+        : (isLargeScreen ? 50 : isTablet ? 40 : 35);
+    
+    // Padding dos itens no dropdown (Android)
+    const itemPaddingRight = isLargeScreen ? 60 : isTablet ? 55 : 50;
+
+    // Criar estilos dinâmicos com valores responsivos
+    const dynamicPickerStyle = {
+        ...styles.picker,
+        paddingRight: pickerPaddingRight
+    };
+    
+    const dynamicAndroidItemStyle = {
+        ...styles.pickerItemAndroid,
+        paddingRight: itemPaddingRight
+    };
+    
+    const dynamicPlaceholderAndroidStyle = {
+        ...styles.placeholderItemAndroid,
+        paddingRight: itemPaddingRight
+    };
 
     return (
         <View style={[styles.container, style]}>
             <Picker
                 selectedValue={selectedValue || ""}
                 onValueChange={onValueChange}
-                style={styles.picker}
-                itemStyle={Platform.OS === 'ios' ? styles.pickerItemIOS : styles.pickerItemAndroid}
+                style={dynamicPickerStyle}
+                itemStyle={Platform.OS === 'ios' ? styles.pickerItemIOS : undefined}
                 mode="dialog"
                 dropdownIconColor="#000"
                 dropdownIconRippleColor="#f0f0f0"
@@ -34,7 +63,7 @@ const CustomPicker: React.FC<CustomPickerProps> = ({
                 <Picker.Item
                     label={placeholder}
                     value=""
-                    style={Platform.OS === 'ios' ? styles.placeholderItemIOS : styles.placeholderItemAndroid}
+                    style={Platform.OS === 'ios' ? styles.placeholderItemIOS : dynamicPlaceholderAndroidStyle}
                     color="#666"
                     fontFamily={Platform.OS === 'android' ? 'Roboto' : 'System'}
                 />
@@ -43,7 +72,7 @@ const CustomPicker: React.FC<CustomPickerProps> = ({
                         key={index}
                         label={item.label}
                         value={item.value}
-                        style={Platform.OS === 'ios' ? styles.pickerItemIOS : styles.pickerItemAndroid}
+                        style={Platform.OS === 'ios' ? styles.pickerItemIOS : dynamicAndroidItemStyle}
                         color="#000"
                         fontFamily={Platform.OS === 'android' ? 'Roboto' : 'System'}
                     />
@@ -66,6 +95,7 @@ const styles = StyleSheet.create({
         backgroundColor: '#fff',
         color: '#000',
         fontSize: 14,
+        // paddingRight será aplicado dinamicamente com base no tamanho da tela
     },
     // Estilos específicos iOS
     pickerItemIOS: {
@@ -90,7 +120,7 @@ const styles = StyleSheet.create({
         textAlign: 'left',
         fontWeight: '400',
         paddingLeft: 20,
-        paddingRight: 20,
+        // paddingRight será aplicado dinamicamente com base no tamanho da tela
         paddingTop: 15,
         paddingBottom: 15,
         borderRadius: 0,
@@ -103,7 +133,7 @@ const styles = StyleSheet.create({
         textAlign: 'left',
         fontStyle: 'italic',
         paddingLeft: 20,
-        paddingRight: 20,
+        // paddingRight será aplicado dinamicamente com base no tamanho da tela
         paddingTop: 15,
         paddingBottom: 15,
         borderRadius: 0,

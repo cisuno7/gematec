@@ -93,7 +93,7 @@ export type RootStackParamList = {
   ServiceOrderScreen: undefined;
   ActivityHistoryScreen: { equipmentId?: number, activityTypeSlug?: string, status?: string[] };
   ActivityEquipmentListScreen: { activityId: number; activityName: string; clientId?: number; clientName?: string };
-  ActivityQuestionnaireScreen: { activityId: number; activityEquipmentId: number; equipmentId: number; equipmentTag: string; activityName: string; budgetPolicy?: string; fromNewActivityFlow?: boolean };
+  ActivityQuestionnaireScreen: { activityId: number; activityEquipmentId: number; equipmentId: number; equipmentTag?: string; activityName: string; budgetPolicy?: string; fromNewActivityFlow?: boolean };
   NewActivityModal: { preselectedActivityTypeSlug?: string } | undefined;
   WorkListScreen: { activityId: number; activityName?: string };
   WorkDetailScreen: { activityId: number; workId: number };

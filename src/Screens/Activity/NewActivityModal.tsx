@@ -27,6 +27,8 @@ import apiClient from "../../Context/ApiClient";
 import DynamicEquipmentFields from "../../Components/DynamicEquipmentFields";
 import CustomPicker from "../../Components/CustomPicker";
 // Modal antigo substituído por tela dedicada AddMultipleEquipmentsScreen
+import ScreenContainer from '../../Components/ScreenContainer';
+import FormRow from '../../Components/FormRow';
 
 interface NewActivityModalProps {
     navigation: DrawerNavigationProp<RootStackParamList, any>;
@@ -1072,6 +1074,7 @@ const NewActivityModal: React.FC<NewActivityModalProps> = ({ navigation, route }
     );
 
     return (
+        <ScreenContainer scroll={false}>
         <View style={styles.container}>
             <View style={styles.header}>
                 <TouchableOpacity
@@ -1099,7 +1102,7 @@ const NewActivityModal: React.FC<NewActivityModalProps> = ({ navigation, route }
                 ) : (
                     <ScrollView 
                         style={styles.content}
-                        contentContainerStyle={styles.contentContainer}
+                        contentContainerStyle={[styles.contentContainer, { paddingBottom: 24 }]}
                         keyboardShouldPersistTaps="handled"
                         showsVerticalScrollIndicator={true}
                         bounces={false}
@@ -1132,6 +1135,7 @@ const NewActivityModal: React.FC<NewActivityModalProps> = ({ navigation, route }
                 </View>
             </KeyboardAvoidingView>
         </View>
+        </ScreenContainer>
     );
 };
 

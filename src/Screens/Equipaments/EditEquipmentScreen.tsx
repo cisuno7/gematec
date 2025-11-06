@@ -510,13 +510,14 @@ const EditEquipmentScreen: React.FC<EditEquipmentScreenProps> = ({
     });
 
     // Validar campos obrigatórios fixos
-    if (!clientId || !sectorId || !brandId || !equipmentTypeId || !tag) {
+    // Tag é opcional - não deve ser validada como obrigatória
+    if (!clientId || !sectorId || !brandId || !equipmentTypeId) {
       console.log("[EditEquipmentScreen] Campos obrigatórios faltando:", {
         clientId: !!clientId,
         sectorId: !!sectorId,
         brandId: !!brandId,
         equipmentTypeId: !!equipmentTypeId,
-        tag: !!tag
+        tag: !!tag // Tag é opcional, apenas para log
       });
       Alert.alert("Erro", "Preencha todos os campos obrigatórios.");
       return;
@@ -552,12 +553,13 @@ const EditEquipmentScreen: React.FC<EditEquipmentScreenProps> = ({
       console.log("[EditEquipmentScreen] Token obtido:", !!accessToken);
       if (!accessToken) throw new Error("Token de acesso não encontrado.");
 
+      // Tag é opcional - só incluir se tiver valor
       const payload: any = {
         client_id: parseInt(clientId),
         sector_id: parseInt(sectorId),
         brand_id: parseInt(brandId),
         equipment_type_id: parseInt(equipmentTypeId),
-        tag,
+        ...(tag && tag.trim() ? { tag: tag.trim() } : {}), // Tag opcional - só inclui se tiver valor
       };
 
       console.log("[EditEquipmentScreen] Payload base construído:", payload);

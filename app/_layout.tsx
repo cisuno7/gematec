@@ -6,6 +6,8 @@ import AppRouter from "../src/Routers/AppRouter";
 import { PermissionProvider } from "../src/Context/PermissionsContext";
 import { UserProvider } from "../src/Context/UserContext";
 import { NavigationProvider } from "../src/Context/NavigationContext";
+import { ThemeProvider } from "../src/Context/ThemeContext";
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 // Required hook for Expo Router framework initialization
 function useFrameworkReady() {
@@ -20,15 +22,17 @@ export default function RootLayout() {
   useFrameworkReady();
 
   return (
-    <>
-      <NavigationContainer>
-        <PermissionProvider>
-          <UserProvider>
-            <AppRouter />
-          </UserProvider>
-        </PermissionProvider>
-      </NavigationContainer>
-      <StatusBar style="auto" />
-    </>
+    <SafeAreaProvider>
+      <ThemeProvider>
+        <NavigationContainer>
+          <PermissionProvider>
+            <UserProvider>
+              <AppRouter />
+            </UserProvider>
+          </PermissionProvider>
+        </NavigationContainer>
+        <StatusBar style="auto" />
+      </ThemeProvider>
+    </SafeAreaProvider>
   );
 }

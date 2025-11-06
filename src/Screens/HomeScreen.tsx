@@ -10,6 +10,7 @@ import {
   Animated,
   ActivityIndicator,
 } from "react-native";
+import ScreenContainer from "../Components/ScreenContainer";
 import { Ionicons } from "@expo/vector-icons";
 import { FontAwesome } from "@expo/vector-icons";
 import { useFocusEffect } from '@react-navigation/native';
@@ -97,47 +98,42 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
         return;
       }
 
-      console.log("[HomeScreen] Carregando estatísticas reais...");
+      console.log("[HomeScreen] Carregando estatísticas do dashboard resumido...");
 
-      console.log("[HomeScreen] ===== BUSCANDO CONTADORES DO DASHBOARD =====");
-      console.log("[HomeScreen] Token presente?", !!token);
-
-      // Calcular estatísticas agregando todas as páginas
+      // Preparado para usar o novo endpoint resumido quando disponível
+      // Por enquanto, usa valores padrão para evitar chamadas desnecessárias
       let createdCount = 0;
       let openCount = 0;
       let totalCount = 0;
 
       try {
-        console.log("[HomeScreen] Chamando ActivityService.getDashboardCounts...");
-        const counts = await ActivityService.getDashboardCounts({ token });
-        console.log("[HomeScreen] Contadores recebidos do ActivityService:", counts);
+        // TODO: Quando o endpoint resumido estiver disponível no backend, descomentar:
+        // const counts = await ActivityService.getDashboardSummary({ token });
+        // createdCount = counts.created || 0;
+        // openCount = counts.open || 0;
+        // totalCount = counts.total || 0;
 
-        if (!counts || (counts.created === 0 && counts.open === 0 && counts.total === 0)) {
-          console.warn("[HomeScreen] ⚠️ Todos os contadores vieram como zero! Pode haver problema na API.");
-        }
-
-        createdCount = counts.created;
-        openCount = counts.open;
-        totalCount = counts.total;
+        // Por enquanto, usar o método placeholder que retorna valores zerados
+        // para evitar chamadas GET /activities desnecessárias
+        const counts = await ActivityService.getDashboardSummary({ token });
+        createdCount = counts.created || 0;
+        openCount = counts.open || 0;
+        totalCount = counts.total || 0;
 
         console.log("[HomeScreen] Estatísticas carregadas:", {
           createdActivities: createdCount,
           openActivities: openCount,
           totalActivities: totalCount,
         });
-      } catch (dashboardError: any) {
-        console.error("[HomeScreen] ===== ERRO ESPECÍFICO DO DASHBOARD =====");
-        console.error("[HomeScreen] Erro ao buscar contadores:", dashboardError);
-        console.error("[HomeScreen] Tipo do erro:", typeof dashboardError);
-        console.error("[HomeScreen] Stack trace:", dashboardError?.stack);
-
+      } catch (error: any) {
+        console.error("[HomeScreen] Erro ao carregar estatísticas:", error);
         console.warn("[HomeScreen] Usando valores zero como fallback");
       }
 
       setStats({
-        pendingActivities: createdCount, // Atividades criadas como "pendentes"
-        todayActivities: openCount, // Atividades abertas como "hoje"
-        totalEquipment: totalCount, // Total de atividades como "equipamentos" por enquanto
+        pendingActivities: createdCount,
+        todayActivities: openCount,
+        totalEquipment: totalCount,
       });
 
       setLoading(false);
@@ -267,7 +263,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
   }
 
   return (
-    <View style={styles.container}>
+    <ScreenContainer style={styles.container} withPadding={false}>
       <StatusBar backgroundColor="#2C3E50" barStyle="light-content" />
 
       {/* Header */}
@@ -349,7 +345,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
         </Animated.View>
       </ScrollView>
       <SignatureRequiredModal visible={showSignatureModal} onSignatureSaved={() => setShowSignatureModal(false)} />
-    </View>
+    </ScreenContainer>
   );
 };
 

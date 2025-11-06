@@ -23,6 +23,7 @@ import SendToBudgetModal from "../../Components/SendToBudgetModal";
 import OfflineService from '../../Services/OfflineService';
 import apiClient from "../../Context/ApiClient";
 import ClientService from "../../Services/ClientService";
+import ScreenContainer from '../../Components/ScreenContainer';
 
 interface ActivityQuestionnaireScreenProps {
     navigation: DrawerNavigationProp<RootStackParamList, "ActivityQuestionnaireScreen">;
@@ -76,11 +77,12 @@ const ActivityQuestionnaireWrapper: React.FC<ActivityQuestionnaireScreenProps> =
     console.log('[ActivityQuestionnaireScreen] Validando parâmetros obrigatórios...');
 
     // Verificar parâmetros obrigatórios
+    // equipmentTag é OPCIONAL - alguns equipamentos podem não ter tag
     const missingParams: string[] = [];
     if (!activityId || activityId <= 0) missingParams.push('activityId');
     if (!activityEquipmentId || activityEquipmentId <= 0) missingParams.push('activityEquipmentId');
     if (!equipmentId || equipmentId <= 0) missingParams.push('equipmentId');
-    if (!equipmentTag || typeof equipmentTag !== 'string') missingParams.push('equipmentTag');
+    // equipmentTag removido da validação - é opcional
     if (!activityName || typeof activityName !== 'string') missingParams.push('activityName');
 
     if (missingParams.length > 0) {
@@ -966,6 +968,7 @@ const ActivityQuestionnaireScreen: React.FC<ActivityQuestionnaireScreenProps> = 
     });
 
     return (
+        <ScreenContainer scroll={false}>
         <View style={styles.container}>
             {/* Header */}
             <View style={styles.header}>
@@ -977,20 +980,24 @@ const ActivityQuestionnaireScreen: React.FC<ActivityQuestionnaireScreenProps> = 
                 </TouchableOpacity>
                 <View style={styles.headerContent}>
                     <Text style={styles.headerTitle}>{activityName}</Text>
-                    <Text style={styles.headerSubtitle}>{t('activityQuestionnaire.equipmentTag')}: {equipmentTag}</Text>
+                    {equipmentTag && (
+                        <Text style={styles.headerSubtitle}>{t('activityQuestionnaire.equipmentTag')}: {equipmentTag}</Text>
+                    )}
                 </View>
             </View>
 
-            <ScrollView style={styles.content}>
+            <ScrollView style={styles.content} contentContainerStyle={{ paddingBottom: 24 }}>
                 {/* Informações do Equipamento */}
                 <View style={styles.equipmentInfoSection}>
                     <Text style={styles.sectionTitle}>{t('activityQuestionnaire.equipmentInfo')}</Text>
                     {equipmentData && (
                         <View style={styles.equipmentCard}>
-                            <View style={styles.infoRow}>
-                                <MaterialIcons name="build" size={16} color="#666" />
-                                <Text style={styles.infoText}>{t('activityQuestionnaire.equipmentTag')}: {equipmentData.tag}</Text>
-                            </View>
+                            {equipmentData.tag && (
+                                <View style={styles.infoRow}>
+                                    <MaterialIcons name="build" size={16} color="#666" />
+                                    <Text style={styles.infoText}>{t('activityQuestionnaire.equipmentTag')}: {equipmentData.tag}</Text>
+                                </View>
+                            )}
                             <View style={styles.infoRow}>
                                 <MaterialIcons name="business" size={16} color="#666" />
                                 <Text style={styles.infoText}>
@@ -1442,6 +1449,7 @@ const ActivityQuestionnaireScreen: React.FC<ActivityQuestionnaireScreenProps> = 
                 activityEquipmentId={activityEquipmentId}
             />
         </View>
+        </ScreenContainer>
     );
 };
 

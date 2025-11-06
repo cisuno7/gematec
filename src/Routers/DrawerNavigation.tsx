@@ -12,7 +12,7 @@ import {
   TouchableOpacity,
   Alert,
   ActivityIndicator,
-  Dimensions,
+  useWindowDimensions,
   Animated,
   StatusBar
 } from "react-native";
@@ -41,7 +41,6 @@ import { MenuItem } from "../Models/MenuItem";
 import PreferencesScreen from "../Screens/PreferencesScreen";
 
 const Drawer = createDrawerNavigator<RootStackParamList>();
-const { width } = Dimensions.get('window');
 
 // Mapeamento de slugs para dados do aplicativo
 const SLUG_TO_APP_DATA: { [key: string]: { titleKey: string; route?: keyof RootStackParamList; icon?: string; action?: 'logout' } } = {
@@ -404,6 +403,8 @@ const CustomDrawerContent = (props: any & { extraData: {} }) => {
 };
 
 const DrawerNavigator: React.FC = () => {
+  const { width } = useWindowDimensions();
+  const drawerWidth = Math.min(width * 0.8, 400);
   const { t } = useLanguage();
   return (
     <Drawer.Navigator
@@ -421,7 +422,7 @@ const DrawerNavigator: React.FC = () => {
         },
         drawerStyle: {
           backgroundColor: '#F8F9FA',
-          width: width * 0.8,
+          width: drawerWidth,
         },
         drawerActiveTintColor: "#007BFF",
         drawerInactiveTintColor: "#2C3E50",

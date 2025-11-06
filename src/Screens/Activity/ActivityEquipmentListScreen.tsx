@@ -12,6 +12,8 @@ import {
     TextInput,
     Modal,
     Alert,
+    KeyboardAvoidingView,
+    Platform,
 } from "react-native";
 import { RouteProp } from "@react-navigation/native";
 import { RootStackParamList } from "../../Routers/AppRouter";
@@ -267,11 +269,12 @@ const ActivityEquipmentListScreen: React.FC<ActivityEquipmentListScreenProps> = 
 
         const navigateToDetails = () => {
             // Navegar para a tela de questionário da atividade
+            // Tag é opcional - pode ser undefined/null
             const params = {
                 activityId: activityId,
                 activityEquipmentId: item.id,
                 equipmentId: equipment.id,
-                equipmentTag: equipment.tag,
+                equipmentTag: equipment.tag || undefined, // Tag opcional
                 activityName: activityName,
             };
 
@@ -607,66 +610,95 @@ const ActivityEquipmentListScreen: React.FC<ActivityEquipmentListScreenProps> = 
 
             {/* Modal de Criação de Trabalho */}
             <Modal visible={showCreateWorkModal && hasPermission('add_activitywork')} transparent animationType="slide" onRequestClose={() => setShowCreateWorkModal(false)}>
-                <View style={styles.modalOverlay}>
-                    <View style={styles.modalContent}>
-                        <Text style={styles.modalTitle}>Criar Registro de Trabalho</Text>
-                        <Text style={styles.modalSubtitle}>Atividade: {activityName}</Text>
-                        <Text style={styles.inputLabel}>Nome do registro</Text>
-                        <TextInput
-                            style={styles.textInput}
-                            placeholder="Ex.: Trabalho diário"
-                            placeholderTextColor="#999"
-                            value={workName}
-                            onChangeText={setWorkName}
-                        />
-                        <Text style={[styles.inputLabel, { marginTop: 12 }]}>Equipamentos selecionados</Text>
-                        <View style={{ maxHeight: 160 }}>
-                            <ScrollView>
-                                {equipments
-                                    .filter((ev: any) => selectedEquipmentVersionIds.includes(ev.id))
-                                    .map((ev: any) => (
-                                        <View key={ev.id} style={styles.summaryRow}>
-                                            <MaterialIcons name="build" size={16} color="#666" />
-                                            <Text style={styles.summaryText}>#{ev.id} • {ev.equipment?.tag} • {ev.equipment?.equipment_type?.name}</Text>
-                                        </View>
-                                    ))}
-                            </ScrollView>
-                        </View>
-                        <View style={styles.modalActions}>
-                            <TouchableOpacity style={[styles.modalButton, styles.cancelButton]} onPress={() => setShowCreateWorkModal(false)} disabled={creatingWork}>
-                                <Text style={styles.cancelButtonText}>Cancelar</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                                style={[styles.modalButton, styles.confirmButton]}
-                                onPress={async () => {
-                                    try {
-                                        if (!workName.trim()) {
-                                            Alert.alert("Nome obrigatório", "Informe um nome para o registro.");
-                                            return;
-                                        }
-                                        setCreatingWork(true);
-                                        const token = await AsyncStorage.getItem("access_token");
-                                        if (!token) throw new Error("Token não encontrado");
-                                        const created = await WorkService.create(activityId, {
-                                            name: workName.trim(),
-                                            activity_equipment_versions_ids: selectedEquipmentVersionIds,
-                                        }, token);
-                                        setShowCreateWorkModal(false);
-                                        setWorkName("");
-                                        navigation.navigate("WorkDetailScreen", { activityId, workId: created.id });
-                                    } catch (e: any) {
-                                        Alert.alert("Erro", e.message || "Falha ao criar registro de trabalho");
-                                    } finally {
-                                        setCreatingWork(false);
-                                    }
-                                }}
-                                disabled={creatingWork}
+                <KeyboardAvoidingView
+                    style={styles.modalOverlay}
+                    behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                    keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+                >
+                    <TouchableOpacity
+                        style={styles.modalOverlayTouchable}
+                        activeOpacity={1}
+                        onPress={() => setShowCreateWorkModal(false)}
+                    >
+                        <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
+                            <View style={styles.modalHeader}>
+                                <View style={styles.modalHeaderContent}>
+                                    <Text style={styles.modalTitle}>Criar Registro de Trabalho</Text>
+                                    <Text style={styles.modalSubtitle}>Atividade: {activityName}</Text>
+                                </View>
+                                <TouchableOpacity
+                                    style={styles.modalCloseButton}
+                                    onPress={() => setShowCreateWorkModal(false)}
+                                >
+                                    <Ionicons name="close" size={24} color="#666" />
+                                </TouchableOpacity>
+                            </View>
+
+                            <ScrollView
+                                style={styles.modalBodyScroll}
+                                contentContainerStyle={styles.modalBodyContent}
+                                keyboardShouldPersistTaps="handled"
+                                showsVerticalScrollIndicator={true}
                             >
-                                <Text style={styles.confirmButtonText}>{creatingWork ? "Salvando..." : "Salvar"}</Text>
-                            </TouchableOpacity>
+                                <Text style={styles.inputLabel}>Nome do registro</Text>
+                                <TextInput
+                                    style={styles.textInput}
+                                    placeholder="Ex.: Trabalho diário"
+                                    placeholderTextColor="#999"
+                                    value={workName}
+                                    onChangeText={setWorkName}
+                                />
+                                <Text style={[styles.inputLabel, { marginTop: 12 }]}>Equipamentos selecionados</Text>
+                                <View style={styles.equipmentsListContainer}>
+                                    <ScrollView nestedScrollEnabled={true}>
+                                        {equipments
+                                            .filter((ev: any) => selectedEquipmentVersionIds.includes(ev.id))
+                                            .map((ev: any) => (
+                                                <View key={ev.id} style={styles.summaryRow}>
+                                                    <MaterialIcons name="build" size={16} color="#666" />
+                                                    <Text style={styles.summaryText}>#{ev.id} • {ev.equipment?.tag} • {ev.equipment?.equipment_type?.name}</Text>
+                                                </View>
+                                            ))}
+                                    </ScrollView>
+                                </View>
+                            </ScrollView>
+
+                            <View style={styles.modalActions}>
+                                <TouchableOpacity style={[styles.modalButton, styles.cancelButton]} onPress={() => setShowCreateWorkModal(false)} disabled={creatingWork}>
+                                    <Text style={styles.cancelButtonText}>Cancelar</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    style={[styles.modalButton, styles.confirmButton]}
+                                    onPress={async () => {
+                                        try {
+                                            if (!workName.trim()) {
+                                                Alert.alert("Nome obrigatório", "Informe um nome para o registro.");
+                                                return;
+                                            }
+                                            setCreatingWork(true);
+                                            const token = await AsyncStorage.getItem("access_token");
+                                            if (!token) throw new Error("Token não encontrado");
+                                            const created = await WorkService.create(activityId, {
+                                                name: workName.trim(),
+                                                activity_equipment_versions_ids: selectedEquipmentVersionIds,
+                                            }, token);
+                                            setShowCreateWorkModal(false);
+                                            setWorkName("");
+                                            navigation.navigate("WorkDetailScreen", { activityId, workId: created.id });
+                                        } catch (e: any) {
+                                            Alert.alert("Erro", e.message || "Falha ao criar registro de trabalho");
+                                        } finally {
+                                            setCreatingWork(false);
+                                        }
+                                    }}
+                                    disabled={creatingWork}
+                                >
+                                    <Text style={styles.confirmButtonText}>{creatingWork ? "Salvando..." : "Salvar"}</Text>
+                                </TouchableOpacity>
+                            </View>
                         </View>
-                    </View>
-                </View>
+                    </TouchableOpacity>
+                </KeyboardAvoidingView>
             </Modal>
         </View>
     );
@@ -965,16 +997,40 @@ const styles = StyleSheet.create({
     },
     modalOverlay: {
         flex: 1,
-        backgroundColor: "rgba(0,0,0,0.4)",
+        backgroundColor: "rgba(0,0,0,0.5)",
         justifyContent: "center",
         alignItems: "center",
         padding: 16,
     },
+    modalOverlayTouchable: {
+        flex: 1,
+        width: '100%',
+        justifyContent: "center",
+        alignItems: "center",
+    },
     modalContent: {
         width: "100%",
+        maxWidth: width * 0.9,
+        maxHeight: Dimensions.get('window').height * 0.85,
         backgroundColor: "#fff",
         borderRadius: 12,
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 12,
+        elevation: 8,
+        overflow: 'hidden',
+    },
+    modalHeader: {
+        flexDirection: "row",
+        justifyContent: "space-between",
+        alignItems: "flex-start",
         padding: 16,
+        borderBottomWidth: 1,
+        borderBottomColor: "#f0f0f0",
+    },
+    modalHeaderContent: {
+        flex: 1,
     },
     modalTitle: {
         fontSize: 18,
@@ -985,7 +1041,26 @@ const styles = StyleSheet.create({
     modalSubtitle: {
         fontSize: 12,
         color: "#666",
-        marginBottom: 12,
+        marginBottom: 0,
+    },
+    modalCloseButton: {
+        padding: 4,
+        marginLeft: 12,
+    },
+    modalBodyScroll: {
+        maxHeight: Dimensions.get('window').height * 0.45,
+    },
+    modalBodyContent: {
+        padding: 16,
+        paddingBottom: 10,
+    },
+    equipmentsListContainer: {
+        maxHeight: 160,
+        borderWidth: 1,
+        borderColor: "#e0e0e0",
+        borderRadius: 8,
+        padding: 8,
+        backgroundColor: "#f8f9fa",
     },
     inputLabel: {
         fontSize: 14,

@@ -4,21 +4,23 @@
     "slug": "gemptec",
     "version": "1.0.0",
     "orientation": "default",
-    "icon": "./assets/logo.jpeg",
+    "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "splash": {
-      "image": "./assets/logo.jpeg",
+      "image": "./assets/icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "icon": "./assets/icon.png"
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/logo.jpeg",
+        "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
+      "icon": "./assets/icon.png",
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO"

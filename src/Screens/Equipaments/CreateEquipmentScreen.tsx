@@ -294,7 +294,7 @@ const CreateEquipmentScreen: React.FC<CreateEquipmentScreenProps> = ({
     if (!sectorId) requiredFixedFields.push("Setor");
     if (!brandId) requiredFixedFields.push("Fabricante");
     if (!equipmentTypeId) requiredFixedFields.push("Tipo de Equipamento");
-    if (!tag || tag.trim() === "") requiredFixedFields.push("Tag");
+    // Tag removida da validação - é opcional (não deve ser validada como obrigatória)
 
     if (requiredFixedFields.length > 0) {
       Alert.alert("Erro", `Campos obrigatórios não preenchidos: ${requiredFixedFields.join(", ")}`);
@@ -335,12 +335,13 @@ const CreateEquipmentScreen: React.FC<CreateEquipmentScreenProps> = ({
       if (!accessToken) throw new Error("Token de acesso não encontrado.");
 
       // Preparar payload com validação de tipos
+      // Tag é opcional - só incluir se tiver valor
       const payload: any = {
         client_id: parseInt(clientId),
         sector_id: parseInt(sectorId),
         brand_id: parseInt(brandId),
         equipment_type_id: parseInt(equipmentTypeId),
-        tag: tag.trim(),
+        ...(tag && tag.trim() ? { tag: tag.trim() } : {}), // Tag opcional - só inclui se tiver valor
         is_active: isActive,
       };
 

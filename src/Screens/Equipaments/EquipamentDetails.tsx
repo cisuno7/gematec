@@ -10,6 +10,8 @@ import {
   Modal,
   TextInput,
   Dimensions,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 // import { Picker } from "@react-native-picker/picker";
 import { RouteProp } from "@react-navigation/native";
@@ -197,7 +199,7 @@ const EquipmentDetailsScreen: React.FC<EquipmentDetailsScreenProps> = ({ route, 
           activityId: activity.id,
           activityEquipmentId,
           equipmentId: parsedEquipmentId,
-          equipmentTag: equipment?.tag || 'SEM_TAG',
+          equipmentTag: equipment?.tag || undefined, // Tag é opcional
           activityName: autoName,
           budgetPolicy: budgetPolicy, // ✅ ADICIONADO conforme plano
           fromNewActivityFlow: true,
@@ -544,68 +546,83 @@ const EquipmentDetailsScreen: React.FC<EquipmentDetailsScreenProps> = ({ route, 
         transparent={true}
         onRequestClose={() => setShowCreateActivity(false)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Criar Nova Atividade</Text>
-              <TouchableOpacity
-                style={styles.closeButton}
-                onPress={() => setShowCreateActivity(false)}
-              >
-                <Ionicons name="close" size={24} color="#666" />
-              </TouchableOpacity>
-            </View>
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+        >
+          <TouchableOpacity
+            style={styles.modalOverlayTouchable}
+            activeOpacity={1}
+            onPress={() => setShowCreateActivity(false)}
+          >
+            <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>Criar Nova Atividade</Text>
+                  <TouchableOpacity
+                    style={styles.closeButton}
+                    onPress={() => setShowCreateActivity(false)}
+                  >
+                    <Ionicons name="close" size={24} color="#666" />
+                  </TouchableOpacity>
+                </View>
 
-            <View style={styles.modalBody}>
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Tipo de Atividade</Text>
-                <CustomPicker
-                  selectedValue={activityForm.activity_type_id !== undefined ? String(activityForm.activity_type_id) : ''}
-                  onValueChange={(v: string) => {
-                    const parsed = parseInt(v, 10);
-                    setActivityForm(f => ({ ...f, activity_type_id: Number.isNaN(parsed) ? undefined : parsed }));
-                  }}
-                  items={activityTypes.map((t: any) => ({ label: t.name, value: String(t.id) }))}
-                  placeholder="Selecione um tipo..."
-                  style={styles.picker}
-                />
+                <ScrollView
+                  style={styles.modalBodyScroll}
+                  contentContainerStyle={styles.modalBodyContent}
+                  keyboardShouldPersistTaps="handled"
+                  showsVerticalScrollIndicator={true}
+                >
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>Tipo de Atividade</Text>
+                    <CustomPicker
+                      selectedValue={activityForm.activity_type_id !== undefined ? String(activityForm.activity_type_id) : ''}
+                      onValueChange={(v: string) => {
+                        const parsed = parseInt(v, 10);
+                        setActivityForm(f => ({ ...f, activity_type_id: Number.isNaN(parsed) ? undefined : parsed }));
+                      }}
+                      items={activityTypes.map((t: any) => ({ label: t.name, value: String(t.id) }))}
+                      placeholder="Selecione um tipo..."
+                      style={styles.picker}
+                    />
+                  </View>
+
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>Observação (opcional)</Text>
+                    <TextInput
+                      style={[styles.textInput, { minHeight: 80, textAlignVertical: 'top' }]}
+                      placeholder="Digite uma observação (opcional)"
+                      placeholderTextColor="#999"
+                      value={observation}
+                      onChangeText={setObservation}
+                      multiline
+                    />
+                  </View>
+                </ScrollView>
+
+                <View style={styles.modalFooter}>
+                  <TouchableOpacity
+                    style={[styles.modalButton, styles.cancelButton]}
+                    onPress={() => setShowCreateActivity(false)}
+                    disabled={creatingActivity}
+                  >
+                    <Text style={styles.cancelButtonText}>Cancelar</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.modalButton, styles.confirmButton]}
+                    onPress={handleCreateActivity}
+                    disabled={creatingActivity}
+                  >
+                    {creatingActivity ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <Text style={styles.confirmButtonText}>Criar Atividade</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
               </View>
-
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Observação (opcional)</Text>
-                <TextInput
-                  style={[styles.textInput, { minHeight: 80, textAlignVertical: 'top' }]}
-                  placeholder="Digite uma observação (opcional)"
-                  placeholderTextColor="#999"
-                  value={observation}
-                  onChangeText={setObservation}
-                  multiline
-                />
-              </View>
-            </View>
-
-            <View style={styles.modalFooter}>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.cancelButton]}
-                onPress={() => setShowCreateActivity(false)}
-                disabled={creatingActivity}
-              >
-                <Text style={styles.cancelButtonText}>Cancelar</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.confirmButton]}
-                onPress={handleCreateActivity}
-                disabled={creatingActivity}
-              >
-                {creatingActivity ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <Text style={styles.confirmButtonText}>Criar Atividade</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
+          </TouchableOpacity>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -783,17 +800,26 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.5)",
     justifyContent: "center",
     alignItems: "center",
+    padding: 16,
+  },
+  modalOverlayTouchable: {
+    flex: 1,
+    width: '100%',
+    justifyContent: "center",
+    alignItems: "center",
   },
   modalContent: {
     backgroundColor: "#fff",
     borderRadius: 16,
-    width: width * 0.9,
-    maxHeight: "80%",
+    width: "100%",
+    maxWidth: width * 0.9,
+    maxHeight: Dimensions.get('window').height * 0.85,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 12,
     elevation: 8,
+    overflow: 'hidden',
   },
   modalHeader: {
     flexDirection: "row",
@@ -807,9 +833,18 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: "bold",
     color: "#333",
+    flex: 1,
   },
   closeButton: {
     padding: 4,
+    marginLeft: 12,
+  },
+  modalBodyScroll: {
+    maxHeight: Dimensions.get('window').height * 0.5,
+  },
+  modalBodyContent: {
+    padding: 20,
+    paddingBottom: 10,
   },
   modalBody: {
     padding: 20,

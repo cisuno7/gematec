@@ -251,8 +251,11 @@ export default class ActivityService {
     }
 
     // 1.2. Obter contadores para o dashboard considerando paginação
+    // DEPRECATED: Este método faz múltiplas chamadas GET /activities e não deve ser usado pela HomeScreen
+    // Mantido apenas para compatibilidade com outros componentes que possam ainda utilizá-lo
     static async getDashboardCounts(params: { token: string }): Promise<{ created: number; open: number; total: number }> {
         console.log('[ActivityService] ===== INICIANDO DASHBOARD COUNTS =====');
+        console.warn('[ActivityService] ⚠️ Este método está deprecated. Use getDashboardSummary quando disponível.');
         try {
             console.log('[ActivityService] Buscando todas as atividades...');
             const all = await ActivityService.fetchAllActivitiesAllPages({ token: params.token });
@@ -282,6 +285,37 @@ export default class ActivityService {
         } catch (error) {
             console.error('[ActivityService] ===== ERRO AO CALCULAR CONTADORES =====');
             console.error('[ActivityService] Erro ao calcular contadores do dashboard:', error);
+            console.error('[ActivityService] Stack trace:', (error as any)?.stack);
+            return { created: 0, open: 0, total: 0 };
+        }
+    }
+
+    // 1.3. Obter resumo do dashboard via endpoint resumido (novo endpoint do backend)
+    // TODO: Atualizar o endpoint quando o backend disponibilizar o novo endpoint resumido
+    // Exemplo esperado: GET /me/dashboard/summary ou GET /dashboard/summary
+    static async getDashboardSummary(params: { token: string }): Promise<{ created: number; open: number; total: number }> {
+        console.log('[ActivityService] ===== BUSCANDO RESUMO DO DASHBOARD (ENDPOINT RESUMIDO) =====');
+        try {
+            // TODO: Substituir pelo endpoint real quando disponível
+            // Exemplo de implementação esperada:
+            // const response = await apiClient.get('/me/dashboard/summary', {
+            //     headers: { Authorization: `Bearer ${params.token}` },
+            // });
+            // 
+            // return {
+            //     created: response.data.created || response.data.pending || 0,
+            //     open: response.data.open || response.data.today || 0,
+            //     total: response.data.total || 0,
+            // };
+
+            console.warn('[ActivityService] ⚠️ Endpoint resumido ainda não disponível. Retornando valores zerados.');
+            console.log('[ActivityService] Aguardando implementação do endpoint resumido no backend.');
+            
+            // Retornar valores zerados até o endpoint estar disponível
+            return { created: 0, open: 0, total: 0 };
+        } catch (error) {
+            console.error('[ActivityService] ===== ERRO AO BUSCAR RESUMO DO DASHBOARD =====');
+            console.error('[ActivityService] Erro ao buscar resumo:', error);
             console.error('[ActivityService] Stack trace:', (error as any)?.stack);
             return { created: 0, open: 0, total: 0 };
         }

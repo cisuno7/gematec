@@ -11,6 +11,8 @@ import { PermissionProvider } from './src/Context/PermissionsContext';
 import { UserProvider } from './src/Context/UserContext';
 import { LanguageProvider } from './src/Context/LanguageContext';
 import { NavigationProvider } from './src/Context/NavigationContext';
+import { ThemeProvider } from './src/Context/ThemeContext';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { RootStackParamList } from './src/Routers/AppRouter';
 import { useSyncManager } from './src/hooks/useSyncManager';
 
@@ -59,17 +61,21 @@ const App = () => {
     }
 
     return (
-        <LanguageProvider>
-            <PermissionProvider>
-                <UserProvider>
-                    <NavigationContainer ref={navigationRef}>
-                        <NavigationProvider navigation={navigationRef}>
-                            <AppRouter />
-                        </NavigationProvider>
-                    </NavigationContainer>
-                </UserProvider>
-            </PermissionProvider>
-        </LanguageProvider>
+        <SafeAreaProvider>
+            <ThemeProvider>
+                <LanguageProvider>
+                    <PermissionProvider>
+                        <UserProvider>
+                            <NavigationContainer ref={navigationRef}>
+                                <NavigationProvider navigation={navigationRef}>
+                                    <AppRouter />
+                                </NavigationProvider>
+                            </NavigationContainer>
+                        </UserProvider>
+                    </PermissionProvider>
+                </LanguageProvider>
+            </ThemeProvider>
+        </SafeAreaProvider>
     );
 };
 
