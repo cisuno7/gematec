@@ -31,15 +31,15 @@ const CustomPicker: React.FC<CustomPickerProps> = ({
     const scaledFontSize = baseFontSize * effectiveFontScale;
 
     // CHAVE: Altura precisa ser MAIOR para acomodar line-height
-    const baseHeight = 50;
-    // Multiplicar por 3.5 ao invés de 3 para dar mais espaço vertical
-    const minHeight = Math.max(baseHeight, Math.ceil(scaledFontSize * 3.5));
+    const baseHeight = 45;
+    // Reduzido de 3.5 para 3 para diminuir padding vertical
+    const minHeight = Math.max(baseHeight, Math.ceil(scaledFontSize * 3));
 
     const pickerPaddingRight = Platform.OS === 'android'
         ? (isLargeScreen ? 70 : isTablet ? 60 : 50)
         : (isLargeScreen ? 60 : isTablet ? 50 : 40);
 
-    const pickerPaddingLeft = 16;
+    const pickerPaddingLeft = 12; // Reduzido de 16 para 12
 
     const itemPaddingRight = isLargeScreen ? 70 : isTablet ? 65 : 60;
 
@@ -56,7 +56,7 @@ const CustomPicker: React.FC<CustomPickerProps> = ({
         height: minHeight,
         paddingRight: pickerPaddingRight,
         paddingLeft: pickerPaddingLeft,
-        paddingVertical: Math.max(8, Math.ceil(scaledFontSize * 0.5)), // Padding vertical proporcional
+        paddingVertical: Math.max(4, Math.ceil(scaledFontSize * 0.3)), // Reduzido de 0.5 para 0.3
         fontSize: scaledFontSize,
         lineHeight: lineHeight, // CRÍTICO para não cortar letras
     };
@@ -69,10 +69,10 @@ const CustomPicker: React.FC<CustomPickerProps> = ({
         paddingRight: itemPaddingRight,
         fontSize: itemFontSize,
         lineHeight: itemLineHeight,
-        // Padding vertical proporcional
-        paddingTop: Math.max(12, Math.ceil(itemFontSize * 0.75)),
-        paddingBottom: Math.max(12, Math.ceil(itemFontSize * 0.75)),
-        minHeight: Math.ceil(itemFontSize * 3), // Altura mínima proporcional
+        // Padding vertical reduzido de 0.75 para 0.5
+        paddingTop: Math.max(8, Math.ceil(itemFontSize * 0.5)),
+        paddingBottom: Math.max(8, Math.ceil(itemFontSize * 0.5)),
+        minHeight: Math.ceil(itemFontSize * 2.5), // Reduzido de 3 para 2.5
     };
 
     const dynamicPlaceholderAndroidStyle = {
@@ -80,9 +80,9 @@ const CustomPicker: React.FC<CustomPickerProps> = ({
         paddingRight: itemPaddingRight,
         fontSize: itemFontSize,
         lineHeight: itemLineHeight,
-        paddingTop: Math.max(12, Math.ceil(itemFontSize * 0.75)),
-        paddingBottom: Math.max(12, Math.ceil(itemFontSize * 0.75)),
-        minHeight: Math.ceil(itemFontSize * 3),
+        paddingTop: Math.max(8, Math.ceil(itemFontSize * 0.5)),
+        paddingBottom: Math.max(8, Math.ceil(itemFontSize * 0.5)),
+        minHeight: Math.ceil(itemFontSize * 2.5),
     };
 
     const dynamicIOSItemStyle = {
@@ -139,7 +139,7 @@ const styles = StyleSheet.create({
         borderRadius: 8,
         backgroundColor: '#fff',
         overflow: 'hidden',
-        minHeight: 50,
+        minHeight: 45, // Reduzido de 50 para 45
         justifyContent: 'center', // IMPORTANTE: centraliza verticalmente
     },
     picker: {
@@ -165,7 +165,7 @@ const styles = StyleSheet.create({
         color: '#000',
         textAlign: 'left',
         fontWeight: '400',
-        paddingLeft: 20,
+        paddingLeft: 16, // Reduzido de 20 para 16
         // paddingTop e paddingBottom serão dinâmicos
         borderRadius: 0,
         marginVertical: 0,
@@ -176,7 +176,7 @@ const styles = StyleSheet.create({
         color: '#666',
         textAlign: 'left',
         fontStyle: 'italic',
-        paddingLeft: 20,
+        paddingLeft: 16, // Reduzido de 20 para 16
         borderRadius: 0,
         marginVertical: 0,
     },
