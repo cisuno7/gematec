@@ -130,6 +130,7 @@ const RestrictedEquipmentFilters: React.FC<Props> = ({ clientId, sectorId, reset
         items={[{ label: "Ativo", value: "active" }, { label: "Inativo", value: "inactive" }]}
         placeholder="Selecione um status"
         style={styles.picker}
+        searchable={false}
       />
 
       {loadingSubsectors ? (
@@ -147,6 +148,7 @@ const RestrictedEquipmentFilters: React.FC<Props> = ({ clientId, sectorId, reset
             items={subsectors.map(s => ({ label: (s.complete_name || s.name), value: s.id.toString() }))}
             placeholder="Selecione um subsetor"
             style={styles.picker}
+            searchable={true}
           />
         </>
       ) : null}
@@ -182,6 +184,7 @@ const RestrictedEquipmentFilters: React.FC<Props> = ({ clientId, sectorId, reset
           items={brands.map(b => ({ label: b.name, value: String(b.id) }))}
           placeholder="Selecione um fabricante"
           style={styles.picker}
+          searchable={true}
         />
       )}
 
@@ -199,6 +202,7 @@ const RestrictedEquipmentFilters: React.FC<Props> = ({ clientId, sectorId, reset
           items={equipmentTypes.map(t => ({ label: t.name, value: String(t.id) }))}
           placeholder="Selecione um tipo"
           style={styles.picker}
+          searchable={true}
         />
       )}
 

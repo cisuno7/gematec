@@ -584,6 +584,7 @@ const EquipmentDetailsScreen: React.FC<EquipmentDetailsScreenProps> = ({ route, 
                       items={activityTypes.map((t: any) => ({ label: t.name, value: String(t.id) }))}
                       placeholder="Selecione um tipo..."
                       style={styles.picker}
+                      searchable={true}
                     />
                   </View>
 

@@ -592,6 +592,7 @@ const CreateEquipmentScreen: React.FC<CreateEquipmentScreenProps> = ({
         items={options.map((option) => ({ label: option.complete_name || option.name, value: option.id.toString() }))}
         placeholder={placeholder}
         style={styles.picker}
+        searchable={true}
       />
     </View>
   );

@@ -498,6 +498,7 @@ const AddMultipleEquipmentsScreen: React.FC = () => {
                                     items={brandItems}
                                     placeholder="Selecione o fabricante"
                                     style={styles.picker}
+                                    searchable={true}
                                 />
                                 <CustomPicker
                                     selectedValue={newEquipmentTypeId}
@@ -505,6 +506,7 @@ const AddMultipleEquipmentsScreen: React.FC = () => {
                                     items={equipmentTypeItems}
                                     placeholder="Selecione o tipo de equipamento"
                                     style={styles.picker}
+                                    searchable={true}
                                 />
 
                                 <View style={{ maxHeight: maxDynamicFieldsHeight }}>

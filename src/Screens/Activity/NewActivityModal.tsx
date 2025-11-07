@@ -847,6 +847,7 @@ const NewActivityModal: React.FC<NewActivityModalProps> = ({ navigation, route }
                 items={activityTypes.map(type => ({ label: type.name, value: type.id.toString() }))}
                 placeholder="Selecione um tipo de atividade"
                 style={styles.pickerContainer}
+                searchable={true}
             />
 
             <Text style={styles.sectionTitle}>{t('activity.clientOption')}</Text>
@@ -907,6 +908,7 @@ const NewActivityModal: React.FC<NewActivityModalProps> = ({ navigation, route }
                 items={clients.map(client => ({ label: client.name, value: client.id.toString() }))}
                 placeholder="Selecione um cliente"
                 style={styles.pickerContainer}
+                searchable={true}
             />
 
             {/* Filtro Setor (Obrigatório) */}
@@ -920,6 +922,7 @@ const NewActivityModal: React.FC<NewActivityModalProps> = ({ navigation, route }
                 items={sectors.map(sector => ({ label: sector.name, value: sector.id.toString() }))}
                 placeholder="Selecione um setor"
                 style={styles.pickerContainer}
+                searchable={true}
             />
 
             {/* Filtro Subsetor (Opcional) - Mostrar quando houver setor selecionado */}
@@ -935,6 +938,7 @@ const NewActivityModal: React.FC<NewActivityModalProps> = ({ navigation, route }
                         items={subsectors.map(subsector => ({ label: subsector.name, value: subsector.id.toString() }))}
                         placeholder="Selecione um subsetor (opcional)"
                         style={styles.pickerContainer}
+                        searchable={true}
                     />
                 </>
             )}

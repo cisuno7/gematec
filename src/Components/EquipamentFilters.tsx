@@ -340,6 +340,7 @@ const EquipmentFilters: React.FC<EquipmentFiltersProps> = ({ onFilter, sectorId,
           items={clients.map((c: any) => ({ label: c.name, value: c.id.toString() }))}
           placeholder="Selecione um cliente"
           style={styles.picker}
+          searchable={true}
         />
       )}
 
@@ -354,6 +355,7 @@ const EquipmentFilters: React.FC<EquipmentFiltersProps> = ({ onFilter, sectorId,
           items={sectors.map((s: any) => ({ label: s.complete_name || s.name, value: s.id.toString() }))}
           placeholder="Selecione um setor"
           style={styles.picker}
+          searchable={true}
         />
       ) : (
         <TextInput
@@ -394,6 +396,7 @@ const EquipmentFilters: React.FC<EquipmentFiltersProps> = ({ onFilter, sectorId,
             })}
             placeholder="Selecione um fabricante"
             style={styles.picker}
+            searchable={true}
           />
         </>
       ) : (
@@ -428,6 +431,7 @@ const EquipmentFilters: React.FC<EquipmentFiltersProps> = ({ onFilter, sectorId,
             })}
             placeholder="Selecione um tipo"
             style={styles.picker}
+            searchable={true}
           />
         </>
       ) : (
@@ -453,6 +457,7 @@ const EquipmentFilters: React.FC<EquipmentFiltersProps> = ({ onFilter, sectorId,
         ]}
         placeholder="Selecione um status"
         style={styles.picker}
+        searchable={false}
       />
 
       {/* Subsetor */}
@@ -469,6 +474,7 @@ const EquipmentFilters: React.FC<EquipmentFiltersProps> = ({ onFilter, sectorId,
             items={(subsectorsState.length > 0 ? subsectorsState : subsectors).map((s: Sector) => ({ label: (s.complete_name || s.name), value: s.id.toString() }))}
             placeholder="Selecione um Subsetor"
             style={styles.picker}
+            searchable={true}
           />
         </>
       ) : null}

@@ -214,6 +214,7 @@ const ManualsScreen: React.FC<ManualsScreenProps> = ({ navigation }) => {
           items={categories.map(category => ({ label: category.name, value: category.id.toString() }))}
           placeholder={t('manuals.allCategories')}
           style={[styles.picker, { backgroundColor: '#fff' }]}
+          searchable={true}
         />
       )}
       {loading ? (

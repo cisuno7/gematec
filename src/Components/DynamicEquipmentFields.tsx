@@ -140,6 +140,7 @@ const DynamicEquipmentFields: React.FC<DynamicEquipmentFieldsProps> = React.memo
                         items={field.options?.map((option) => ({ label: option, value: option })) || []}
                         placeholder={`Selecione ${fieldLabel}`}
                         style={[styles.picker, field.required && styles.requiredInput]}
+                        searchable={true}
                     />
                 );
 

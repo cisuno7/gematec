@@ -474,6 +474,7 @@ const DynamicActivityQuestionnaire: React.FC<DynamicActivityQuestionnaireProps> 
                   }}
                   items={field.options?.map((option) => ({ label: option, value: option })) || []}
                   placeholder={`Selecione ${field.label}`}
+                  searchable={true}
                 />
               );
             case 'radio':

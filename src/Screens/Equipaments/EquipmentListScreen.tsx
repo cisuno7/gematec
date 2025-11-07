@@ -295,6 +295,7 @@ const EquipmentListScreen: React.FC<EquipmentListScreenProps> = ({
               ]}
               placeholder="Selecione um status"
               style={styles.picker}
+              searchable={false}
             />
           </View>
 
@@ -308,6 +309,7 @@ const EquipmentListScreen: React.FC<EquipmentListScreenProps> = ({
                 items={subsectors.map((s: any) => ({ label: s.complete_name || s.name, value: s.id.toString() }))}
                 placeholder="Selecione um subsetor"
                 style={styles.picker}
+                searchable={true}
               />
             </View>
           )}
@@ -337,6 +339,7 @@ const EquipmentListScreen: React.FC<EquipmentListScreenProps> = ({
                 items={brands.map((b: any) => ({ label: b.name, value: b.id.toString() }))}
                 placeholder="Selecione um fabricante"
                 style={styles.picker}
+                searchable={true}
               />
             )}
           </View>
@@ -356,6 +359,7 @@ const EquipmentListScreen: React.FC<EquipmentListScreenProps> = ({
                 items={equipmentTypes.map((t: any) => ({ label: t.name, value: t.id.toString() }))}
                 placeholder="Selecione um tipo"
                 style={styles.picker}
+                searchable={true}
               />
             )}
           </View>
