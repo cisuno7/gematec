@@ -839,7 +839,7 @@ const NewActivityModal: React.FC<NewActivityModalProps> = ({ navigation, route }
         <View style={styles.stepContent}>
             <Text style={styles.sectionTitle}>{t('activity.selectActivityType')}</Text>
             <CustomPicker
-                selectedValue={selectedActivityType?.id || ""}
+                selectedValue={selectedActivityType?.id ? selectedActivityType.id.toString() : ""}
                 onValueChange={(itemValue) => {
                     const type = activityTypes.find(t => t.id === Number(itemValue)) || null;
                     setSelectedActivityType(type);
@@ -900,7 +900,7 @@ const NewActivityModal: React.FC<NewActivityModalProps> = ({ navigation, route }
             {/* Filtro Cliente */}
             <Text style={styles.filterLabel}>Cliente</Text>
             <CustomPicker
-                selectedValue={selectedClient?.id || ""}
+                selectedValue={selectedClient?.id ? selectedClient.id.toString() : ""}
                 onValueChange={(itemValue) => {
                     const client = clients.find(c => c.id === Number(itemValue)) || null;
                     setSelectedClient(client);
@@ -914,7 +914,7 @@ const NewActivityModal: React.FC<NewActivityModalProps> = ({ navigation, route }
             {/* Filtro Setor (Obrigatório) */}
             <Text style={styles.filterLabel}>Setor *</Text>
             <CustomPicker
-                selectedValue={selectedSector?.id || ""}
+                selectedValue={selectedSector?.id ? selectedSector.id.toString() : ""}
                 onValueChange={(itemValue) => {
                     const sector = sectors.find(s => s.id === Number(itemValue)) || null;
                     setSelectedSector(sector);
@@ -930,7 +930,7 @@ const NewActivityModal: React.FC<NewActivityModalProps> = ({ navigation, route }
                 <>
                     <Text style={styles.filterLabel}>Subsetor (opcional)</Text>
                     <CustomPicker
-                        selectedValue={selectedSubsector?.id || ""}
+                        selectedValue={selectedSubsector?.id ? selectedSubsector.id.toString() : ""}
                         onValueChange={(itemValue) => {
                             const subsector = subsectors.find(s => s.id === Number(itemValue)) || null;
                             setSelectedSubsector(subsector);
