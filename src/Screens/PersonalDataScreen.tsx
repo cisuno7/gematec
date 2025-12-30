@@ -2,7 +2,6 @@ import React, { useContext, useEffect, useState } from 'react';
 import {
   View,
   Text,
-  TextInput,
   StyleSheet,
   Alert,
   ScrollView,
@@ -11,10 +10,8 @@ import {
   Modal,
   KeyboardAvoidingView,
   Platform,
-  Dimensions,
   Animated
 } from 'react-native';
-import { Picker } from '@react-native-picker/picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import AuthService from '../Services/AuthService';
 import { NavigationProp, RouteProp } from '@react-navigation/native';
@@ -25,15 +22,19 @@ import { useUser } from '../Context/UserContext';
 import PersonalDataModel from '../Models/PersonalData';
 import DatePickerInput from '../Components/DatePickerInput';
 import { FontAwesome } from '@expo/vector-icons';
+import ResponsiveContainer from '../Components/ResponsiveContainer';
+import ResponsiveText from '../Components/ResponsiveText';
+import AppTextInput from '../Components/AppTextInput';
+import CustomPicker from '../Components/CustomPicker';
+import { useResponsive } from '../hooks/useResponsive';
 
 interface PersonalDataScreenProps {
   route: RouteProp<RootStackParamList, 'PersonalDataScreen'>;
   navigation: DrawerNavigationProp<RootStackParamList, 'PersonalDataScreen'>;
 }
 
-const { width, height } = Dimensions.get('window');
-
 const PersonalDataScreen: React.FC<PersonalDataScreenProps> = ({ route, navigation }) => {
+  const r = useResponsive();
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const { hasPermission, permissions } = usePermissions();
   const { account, logout, updateUserData } = useUser(); // Added updateUserData
@@ -292,19 +293,22 @@ const PersonalDataScreen: React.FC<PersonalDataScreenProps> = ({ route, navigati
 
   const renderField = (label: string, value: string, isEditable: boolean = false, onChangeText?: (text: string) => void, placeholder?: string) => (
     <View style={styles.fieldContainer}>
-      <Text style={styles.fieldLabel}>{label}</Text>
+      <ResponsiveText variant="body" weight="600" style={{ color: '#34495e', marginBottom: 8 }}>
+        {label}
+      </ResponsiveText>
       {isEditable ? (
-        <TextInput
-          style={[styles.fieldInput, !isEditing && styles.disabledInput]}
+        <AppTextInput
+          style={[!isEditing && styles.disabledInput]}
           value={value}
           onChangeText={onChangeText}
           placeholder={placeholder}
-          placeholderTextColor="#999"
           editable={isEditing && canEdit}
         />
       ) : (
         <View style={styles.fieldValue}>
-          <Text style={styles.fieldValueText}>{value}</Text>
+          <ResponsiveText variant="body" style={{ color: '#495057' }}>
+            {value}
+          </ResponsiveText>
         </View>
       )}
     </View>
@@ -322,27 +326,32 @@ const PersonalDataScreen: React.FC<PersonalDataScreenProps> = ({ route, navigati
   // Todos podem visualizar; edição depende de permissão (canEdit)
 
   return (
-    <KeyboardAvoidingView
-      style={styles.keyboardContainer}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-        <Animated.View
-          style={[
-            styles.container,
-            {
-              opacity: fadeAnim,
-              transform: [{ translateY: slideAnim }]
-            }
-          ]}
-        >
+    <ResponsiveContainer withPadding={false} style={styles.keyboardContainer}>
+      <KeyboardAvoidingView
+        style={styles.keyboardContainer}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+          <Animated.View
+            style={[
+              styles.container,
+              {
+                opacity: fadeAnim,
+                transform: [{ translateY: slideAnim }]
+              }
+            ]}
+          >
           {/* Header */}
           <View style={styles.header}>
             <View style={styles.avatarContainer}>
               <FontAwesome name="user-circle" size={60} color="#007BFF" />
             </View>
-            <Text style={styles.title}>Meus Dados</Text>
-            <Text style={styles.subtitle}>Gerencie suas informações pessoais</Text>
+            <ResponsiveText variant="title" weight="bold" style={{ color: '#2c3e50', marginBottom: 5 }}>
+              Meus Dados
+            </ResponsiveText>
+            <ResponsiveText variant="subtitle" style={{ color: '#7f8c8d', textAlign: 'center' }}>
+              Gerencie suas informações pessoais
+            </ResponsiveText>
           </View>
 
           {/* Edit Button */}
@@ -351,7 +360,9 @@ const PersonalDataScreen: React.FC<PersonalDataScreenProps> = ({ route, navigati
               {!isEditing ? (
                 <TouchableOpacity style={styles.editButton} onPress={handleEditToggle}>
                   <FontAwesome name="edit" size={16} color="#fff" />
-                  <Text style={styles.editButtonText}>Editar Dados</Text>
+                  <ResponsiveText variant="body" weight="600" style={{ color: '#fff', marginLeft: r.spacing(0.8) }}>
+                    Editar Dados
+                  </ResponsiveText>
                 </TouchableOpacity>
               ) : (
                 <View style={styles.editActions}>
@@ -365,16 +376,18 @@ const PersonalDataScreen: React.FC<PersonalDataScreenProps> = ({ route, navigati
                     ) : (
                       <FontAwesome name="check" size={16} color="#fff" />
                     )}
-                    <Text style={styles.actionButtonText}>
+                    <ResponsiveText variant="body" weight="600" style={{ color: '#fff', marginLeft: r.spacing(0.8) }}>
                       {saving ? 'Salvando...' : 'Salvar'}
-                    </Text>
+                    </ResponsiveText>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[styles.actionButton, styles.cancelButton]}
                     onPress={handleEditToggle}
                   >
                     <FontAwesome name="times" size={16} color="#fff" />
-                    <Text style={styles.actionButtonText}>Cancelar</Text>
+                    <ResponsiveText variant="body" weight="600" style={{ color: '#fff', marginLeft: r.spacing(0.8) }}>
+                      Cancelar
+                    </ResponsiveText>
                   </TouchableOpacity>
                 </View>
               )}
@@ -384,8 +397,10 @@ const PersonalDataScreen: React.FC<PersonalDataScreenProps> = ({ route, navigati
           {/* Personal Information Card */}
           <View style={styles.card}>
             <View style={styles.cardHeader}>
-              <FontAwesome name="user" size={20} color="#007BFF" />
-              <Text style={styles.cardTitle}>Informações Pessoais</Text>
+              <FontAwesome name="user" size={r.scale(20)} color="#007BFF" />
+              <ResponsiveText variant="subtitle" weight="bold" style={{ color: '#2c3e50', marginLeft: r.spacing(1) }}>
+                Informações Pessoais
+              </ResponsiveText>
             </View>
 
             {renderField('Nome', name, true, setName, 'Digite seu nome')}
@@ -393,41 +408,43 @@ const PersonalDataScreen: React.FC<PersonalDataScreenProps> = ({ route, navigati
 
             {/* Data de Nascimento com DatePickerInput */}
             <View style={styles.fieldContainer}>
-              <Text style={styles.fieldLabel}>Data de Nascimento</Text>
+              <ResponsiveText variant="body" weight="600" style={{ color: '#34495e', marginBottom: 8 }}>
+                Data de Nascimento
+              </ResponsiveText>
               <DatePickerInput
                 value={birthdate}
                 onChangeText={setBirthdate}
                 placeholder="Selecione a data de nascimento"
-                style={[styles.fieldInput, !isEditing && styles.disabledInput]}
+                style={[!isEditing && styles.disabledInput]}
                 editable={isEditing && canEdit}
               />
             </View>
 
-            {/* Fator RH com Picker */}
+            {/* Fator RH com CustomPicker */}
             <View style={styles.fieldContainer}>
-              <Text style={styles.fieldLabel}>Fator RH</Text>
-              <Picker
+              <ResponsiveText variant="body" weight="600" style={{ color: '#34495e', marginBottom: 8 }}>
+                Fator RH
+              </ResponsiveText>
+              <CustomPicker
                 selectedValue={rhFactor}
                 onValueChange={(value) => setRhFactor(value)}
                 enabled={isEditing && canEdit}
-                style={[styles.fieldInput, !isEditing && styles.disabledInput]}
-              >
-                {rhFactorOptions.map((option) => (
-                  <Picker.Item
-                    key={option.value}
-                    label={option.label}
-                    value={option.value}
-                  />
-                ))}
-              </Picker>
+                items={rhFactorOptions.map((option) => ({
+                  label: option.label,
+                  value: option.value,
+                }))}
+                placeholder="Selecione o Fator RH"
+              />
             </View>
           </View>
 
           {/* Documents Card */}
           <View style={styles.card}>
             <View style={styles.cardHeader}>
-              <FontAwesome name="id-card" size={20} color="#007BFF" />
-              <Text style={styles.cardTitle}>Documentos</Text>
+              <FontAwesome name="id-card" size={r.scale(20)} color="#007BFF" />
+              <ResponsiveText variant="subtitle" weight="bold" style={{ color: '#2c3e50', marginLeft: r.spacing(1) }}>
+                Documentos
+              </ResponsiveText>
             </View>
 
             {renderField('Documento', document, true, setDocument, 'Digite seu documento')}
@@ -438,8 +455,10 @@ const PersonalDataScreen: React.FC<PersonalDataScreenProps> = ({ route, navigati
           {/* Contact Card */}
           <View style={styles.card}>
             <View style={styles.cardHeader}>
-              <FontAwesome name="phone" size={20} color="#007BFF" />
-              <Text style={styles.cardTitle}>Contato</Text>
+              <FontAwesome name="phone" size={r.scale(20)} color="#007BFF" />
+              <ResponsiveText variant="subtitle" weight="bold" style={{ color: '#2c3e50', marginLeft: r.spacing(1) }}>
+                Contato
+              </ResponsiveText>
             </View>
 
             {renderField('Telefone', phone, true, setPhone, 'Digite seu telefone')}
@@ -448,8 +467,10 @@ const PersonalDataScreen: React.FC<PersonalDataScreenProps> = ({ route, navigati
           {/* Work Information Card */}
           <View style={styles.card}>
             <View style={styles.cardHeader}>
-              <FontAwesome name="briefcase" size={20} color="#007BFF" />
-              <Text style={styles.cardTitle}>Informações Profissionais</Text>
+              <FontAwesome name="briefcase" size={r.scale(20)} color="#007BFF" />
+              <ResponsiveText variant="subtitle" weight="bold" style={{ color: '#2c3e50', marginLeft: r.spacing(1) }}>
+                Informações Profissionais
+              </ResponsiveText>
             </View>
 
             {renderField('Data de Admissão', admissionDate)}
@@ -460,8 +481,10 @@ const PersonalDataScreen: React.FC<PersonalDataScreenProps> = ({ route, navigati
           {/* Password Change Card */}
           <View style={styles.card}>
             <View style={styles.cardHeader}>
-              <FontAwesome name="lock" size={20} color="#007BFF" />
-              <Text style={styles.cardTitle}>Segurança</Text>
+              <FontAwesome name="lock" size={r.scale(20)} color="#007BFF" />
+              <ResponsiveText variant="subtitle" weight="bold" style={{ color: '#2c3e50', marginLeft: r.spacing(1) }}>
+                Segurança
+              </ResponsiveText>
             </View>
 
             <TouchableOpacity
@@ -469,12 +492,14 @@ const PersonalDataScreen: React.FC<PersonalDataScreenProps> = ({ route, navigati
               onPress={() => setShowPasswordModal(true)}
             >
               <FontAwesome name="key" size={16} color="#007BFF" />
-              <Text style={styles.passwordButtonText}>Alterar Senha</Text>
+              <ResponsiveText variant="body" weight="600" style={{ color: '#007BFF', flex: 1, marginLeft: r.spacing(1) }}>
+                Alterar Senha
+              </ResponsiveText>
               <FontAwesome name="chevron-right" size={16} color="#007BFF" />
             </TouchableOpacity>
           </View>
-        </Animated.View>
-      </ScrollView>
+          </Animated.View>
+        </ScrollView>
 
       {/* Password Change Modal */}
       <Modal
@@ -487,11 +512,13 @@ const PersonalDataScreen: React.FC<PersonalDataScreenProps> = ({ route, navigati
           style={styles.modalOverlay}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
-          <View style={styles.modalContainer}>
+          <View style={[styles.modalContainer, { width: r.width * 0.9 }]}>
             <View style={styles.modalContent}>
               <View style={styles.modalHeader}>
-                <FontAwesome name="lock" size={24} color="#007BFF" />
-                <Text style={styles.modalTitle}>Alterar Senha</Text>
+                <FontAwesome name="lock" size={r.scale(24)} color="#007BFF" />
+                <ResponsiveText variant="subtitle" weight="bold" style={{ color: '#2c3e50', flex: 1, marginLeft: r.spacing(1) }}>
+                  Alterar Senha
+                </ResponsiveText>
                 <TouchableOpacity
                   style={styles.closeButton}
                   onPress={() => {
@@ -501,39 +528,41 @@ const PersonalDataScreen: React.FC<PersonalDataScreenProps> = ({ route, navigati
                     setPasswordError('');
                   }}
                 >
-                  <FontAwesome name="times" size={20} color="#666" />
+                  <FontAwesome name="times" size={r.scale(20)} color="#666" />
                 </TouchableOpacity>
               </View>
 
               <View style={styles.modalBody}>
                 <View style={styles.fieldContainer}>
-                  <Text style={styles.fieldLabel}>Nova Senha</Text>
-                  <TextInput
-                    style={styles.fieldInput}
+                  <ResponsiveText variant="body" weight="600" style={{ color: '#2c3e50', marginBottom: 8 }}>
+                    Nova Senha
+                  </ResponsiveText>
+                  <AppTextInput
                     value={newPassword}
                     onChangeText={setNewPassword}
                     secureTextEntry
                     placeholder="Digite a nova senha"
-                    placeholderTextColor="#999"
                   />
                 </View>
 
                 <View style={styles.fieldContainer}>
-                  <Text style={styles.fieldLabel}>Confirmar Nova Senha</Text>
-                  <TextInput
-                    style={styles.fieldInput}
+                  <ResponsiveText variant="body" weight="600" style={{ color: '#2c3e50', marginBottom: 8 }}>
+                    Confirmar Nova Senha
+                  </ResponsiveText>
+                  <AppTextInput
                     value={confirmNewPassword}
                     onChangeText={setConfirmNewPassword}
                     secureTextEntry
                     placeholder="Confirme a nova senha"
-                    placeholderTextColor="#999"
                   />
                 </View>
 
                 {passwordError ? (
                   <View style={styles.modalErrorContainer}>
                     <FontAwesome name="exclamation-circle" size={16} color="#FF6B6B" />
-                    <Text style={styles.modalErrorText}>{passwordError}</Text>
+                    <ResponsiveText variant="caption" style={{ color: '#c53030', flex: 1 }}>
+                      {passwordError}
+                    </ResponsiveText>
                   </View>
                 ) : null}
 
@@ -547,16 +576,17 @@ const PersonalDataScreen: React.FC<PersonalDataScreenProps> = ({ route, navigati
                   ) : (
                     <FontAwesome name="check" size={16} color="#fff" />
                   )}
-                  <Text style={styles.modalButtonText}>
+                  <ResponsiveText variant="body" weight="600" style={{ color: '#fff', marginLeft: r.spacing(0.8) }}>
                     {changingPassword ? 'Alterando...' : 'Alterar Senha'}
-                  </Text>
+                  </ResponsiveText>
                 </TouchableOpacity>
               </View>
             </View>
           </View>
         </KeyboardAvoidingView>
       </Modal>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </ResponsiveContainer>
   );
 };
 
@@ -749,7 +779,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   modalContainer: {
-    width: width * 0.9,
     maxWidth: 400,
   },
   modalContent: {

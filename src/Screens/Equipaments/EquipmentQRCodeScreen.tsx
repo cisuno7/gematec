@@ -5,7 +5,6 @@ import {
   StyleSheet,
   Alert,
   TouchableOpacity,
-  Dimensions,
   ActivityIndicator,
   ScrollView,
 } from "react-native";
@@ -18,8 +17,8 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { usePermissions } from "../../Context/PermissionsContext";
 import { MaterialIcons, Ionicons, FontAwesome } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-
-const { width, height } = Dimensions.get('window');
+import ResponsiveContainer from "../../Components/ResponsiveContainer";
+import { useResponsive } from "../../hooks/useResponsive";
 
 interface EquipmentQRCodeScreenProps {
   route: RouteProp<RootStackParamList, "EquipmentQRCodeScreen">;
@@ -30,6 +29,7 @@ const EquipmentQRCodeScreen: React.FC<EquipmentQRCodeScreenProps> = ({
   navigation,
   route,
 }) => {
+  const r = useResponsive();
   const { hasPermission } = usePermissions();
   const [loading, setLoading] = useState(false);
   const [scanning, setScanning] = useState(true);
@@ -155,28 +155,11 @@ const EquipmentQRCodeScreen: React.FC<EquipmentQRCodeScreenProps> = ({
 
       console.log("Detalhes do equipamento encontrado:", equipmentDetails);
 
-      // Mostrar alerta de sucesso
-      Alert.alert(
-        "✅ Equipamento Encontrado!",
-        `Equipamento: ${equipmentDetails.name || 'Nome não disponível'}\nStatus: ${equipmentDetails.status || 'Status não disponível'}`,
-        [
-          {
-            text: "Ver Detalhes",
-            onPress: () => {
-              // Redirecionar para a tela de detalhes do equipamento
-              console.log('[QRCode] Navegando para EquipmentDetailsScreen com ID:', equipmentDetails.id);
-              navigation.navigate("EquipmentDetailsScreen", {
-                equipmentId: equipmentDetails.id || data, // Usar ID do equipamento ou QR code como fallback
-              });
-            }
-          },
-          {
-            text: "Escanear Outro",
-            onPress: () => setScanning(true),
-            style: "cancel"
-          }
-        ]
-      );
+      // Redirecionar diretamente para a tela de detalhes do equipamento
+      console.log('[QRCode] Navegando para EquipmentDetailsScreen com ID:', equipmentDetails.id);
+      navigation.navigate("EquipmentDetailsScreen", {
+        equipmentId: equipmentDetails.id || data, // Usar ID do equipamento ou QR code como fallback
+      });
     } catch (error: any) {
       console.error("Erro ao processar QR Code:", error);
 
@@ -255,10 +238,10 @@ const EquipmentQRCodeScreen: React.FC<EquipmentQRCodeScreenProps> = ({
 
       <View style={styles.scannerContent}>
         {scanning ? (
-          <View style={styles.scannerWrapper}>
+          <View style={[styles.scannerWrapper, { width: Math.min(r.width * 0.75, 300), height: Math.min(r.width * 0.75, 300) }]}>
             <QRScanner onScanned={handleScannedData} />
             <View style={styles.scannerOverlay}>
-              <View style={styles.scannerFrame}>
+              <View style={[styles.scannerFrame, { width: Math.min(r.width * 0.55, 220), height: Math.min(r.width * 0.55, 220) }]}>
                 <View style={styles.cornerTopLeft} />
                 <View style={styles.cornerTopRight} />
                 <View style={styles.cornerBottomLeft} />
@@ -267,7 +250,7 @@ const EquipmentQRCodeScreen: React.FC<EquipmentQRCodeScreenProps> = ({
             </View>
           </View>
         ) : (
-          <View style={styles.processingContainer}>
+          <View style={[styles.processingContainer, { width: Math.min(r.width * 0.75, 300), height: Math.min(r.width * 0.75, 300) }]}>
             <ActivityIndicator size="large" color="#667eea" />
             <Text style={styles.processingText}>Processando QR Code...</Text>
           </View>
@@ -330,7 +313,7 @@ const EquipmentQRCodeScreen: React.FC<EquipmentQRCodeScreenProps> = ({
 
 
   return (
-    <View style={styles.container}>
+    <ResponsiveContainer withPadding={false} style={styles.container}>
       {renderHeader()}
 
       <ScrollView
@@ -343,7 +326,7 @@ const EquipmentQRCodeScreen: React.FC<EquipmentQRCodeScreenProps> = ({
       </ScrollView>
 
       {renderActionButtons()}
-    </View>
+    </ResponsiveContainer>
   );
 };
 
@@ -415,8 +398,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   scannerWrapper: {
-    width: Math.min(width * 0.75, 300),
-    height: Math.min(width * 0.75, 300),
     borderRadius: 16,
     overflow: 'hidden',
     position: 'relative',
@@ -431,8 +412,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   scannerFrame: {
-    width: Math.min(width * 0.55, 220),
-    height: Math.min(width * 0.55, 220),
     position: 'relative',
   },
   cornerTopLeft: {
@@ -480,8 +459,6 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: 8,
   },
   processingContainer: {
-    width: Math.min(width * 0.75, 300),
-    height: Math.min(width * 0.75, 300),
     borderRadius: 16,
     backgroundColor: '#f8f9fa',
     justifyContent: 'center',

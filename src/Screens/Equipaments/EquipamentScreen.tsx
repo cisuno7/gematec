@@ -22,6 +22,7 @@ import { API_BASE_URL } from "../../config/apiConfig";
 import axios from "axios";
 import { usePermissions } from "../../Context/PermissionsContext";
 import { Sector } from "../../Models/Clientes"; // Importe a interface Sector
+import ResponsiveContainer from "../../Components/ResponsiveContainer";
 
 interface EquipamentScreenProps {
   route: RouteProp<RootStackParamList, "EquipamentScreen">;
@@ -148,7 +149,7 @@ const EquipamentScreen: React.FC<EquipamentScreenProps> = ({ route, navigation }
   );
 
   return (
-    <View style={styles.container}>
+    <ResponsiveContainer withPadding={false} style={styles.container}>
       <Text style={styles.header}>Cliente: {clientName} | Setor: {sectorName}</Text>
       <View style={styles.opContainer}>
         <EquipmentFilters
@@ -203,7 +204,7 @@ const EquipamentScreen: React.FC<EquipamentScreenProps> = ({ route, navigation }
           </View>
         </>
       )}
-    </View>
+    </ResponsiveContainer>
   );
 };
 

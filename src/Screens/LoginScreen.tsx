@@ -1,8 +1,19 @@
-import React, { useContext, useEffect, useState } from "react";
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from "react-native";
+import React, { useEffect, useState } from "react";
+import {
+  View,
+  TouchableOpacity,
+  StyleSheet,
+  Alert,
+  ScrollView,
+  KeyboardAvoidingView,
+  Platform,
+} from "react-native";
 import Checkbox from "expo-checkbox";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
+import ResponsiveText from "../Components/ResponsiveText";
+import AppTextInput from "../Components/AppTextInput";
+import { useResponsive } from "../hooks/useResponsive";
 import { NavigationProp, RouteProp } from "@react-navigation/native";
 import AuthService from '../Services/AuthService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -10,7 +21,6 @@ import LoginRequest from '../Models/LoginRequest';
 import { jwtDecode } from "jwt-decode";
 import { useUser } from "../Context/UserContext";
 import { RootStackParamList } from "../Routers/AppRouter";
-import { useAppNavigation } from "../Context/NavigationContext";
 import CacheService from "../Services/CacheService";
 import SignatureService from "../Services/SignatureService";
 import SignatureRequiredModal from "../Components/SignatureRequiredModal";
@@ -21,6 +31,7 @@ interface LoginScreenProps {
 }
 
 const LoginScreen: React.FC<LoginScreenProps> = ({ route, navigation }) => {
+  const r = useResponsive();
   const [account, setAccount] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -32,7 +43,6 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ route, navigation }) => {
   const [pendingRefresh, setPendingRefresh] = useState<string | null>(null);
   const [pendingAccount, setPendingAccount] = useState<string | null>(null);
   const { setUsername, login } = useUser();
-  const appNavigation = useAppNavigation();
   useEffect(() => {
     const loadKeepLoggedIn = async () => {
       try {
@@ -214,67 +224,134 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ route, navigation }) => {
       colors={["#E0ECFF", "#A7C7E7", "#6A9CE6"]}
       style={styles.container}
     >
-      <View style={styles.formContainer}>
-        <Text style={styles.title}>Bem-vindo</Text>
-        <Text style={styles.subtitle}>Por favor, insira suas credenciais</Text>
-
-        <TextInput
-          style={[styles.input, accountError ? styles.inputError : null]}
-          placeholder="Conta"
-          placeholderTextColor="#999"
-          value={account}
-          onChangeText={handleAccountChange}
-          autoCapitalize="none"
-          autoCorrect={false}
-        />
-        {accountError ? <Text style={styles.errorText}>{accountError}</Text> : null}
-
-        <TextInput
-          style={styles.input}
-          placeholder="Email"
-          keyboardType="email-address"
-          placeholderTextColor="#999"
-          value={email}
-          onChangeText={setEmail}
-          autoCapitalize="none"
-          autoCorrect={false}
-        />
-
-        <View style={styles.passwordContainer}>
-          <TextInput
-            style={styles.passwordInput}
-            placeholder="Senha"
-            secureTextEntry={!isPasswordVisible}
-            placeholderTextColor="#999"
-            value={password}
-            onChangeText={setPassword}
-          />
-          <TouchableOpacity
-            onPress={() => setPasswordVisible(!isPasswordVisible)}
-            style={styles.eyeIcon}
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+      >
+        <ScrollView
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={[
+            styles.scrollContent,
+            {
+              paddingHorizontal: r.spacing(2, 16, 28),
+              paddingVertical: r.spacing(2, 16, 28),
+            },
+          ]}
+        >
+          <View
+            style={[
+              styles.formContainer,
+              r.isTablet && { maxWidth: 520, alignSelf: "center", width: "100%" },
+            ]}
           >
-            <Ionicons
-              name={isPasswordVisible ? "eye" : "eye-off"}
-              size={20}
-              color="#333"
+            <ResponsiveText
+              variant="title"
+              weight="bold"
+              style={{ marginBottom: r.spacing(0.5), textAlign: "center" }}
+            >
+              Bem-vindo
+            </ResponsiveText>
+            <ResponsiveText
+              variant="body"
+              style={{ marginBottom: r.spacing(1.5), textAlign: "center" }}
+            >
+              Por favor, insira suas credenciais
+            </ResponsiveText>
+
+            <AppTextInput
+              style={[styles.fullWidth, accountError ? styles.inputError : null]}
+              placeholder="Conta"
+              value={account}
+              onChangeText={handleAccountChange}
+              autoCapitalize="none"
+              autoCorrect={false}
+              returnKeyType="next"
             />
-          </TouchableOpacity>
-        </View>
+            {accountError ? (
+              <ResponsiveText
+                variant="caption"
+                style={{
+                  color: "#ff4444",
+                  alignSelf: "flex-start",
+                  marginTop: r.spacing(0.5),
+                  marginBottom: r.spacing(1),
+                }}
+              >
+                {accountError}
+              </ResponsiveText>
+            ) : (
+              <View style={{ height: r.spacing(1) }} />
+            )}
 
-        <View style={styles.checkboxContainer}>
-          <Checkbox
-            value={isChecked}
-            onValueChange={setChecked}
-            color={isChecked ? "#4630EB" : undefined}
-            style={styles.checkbox}
-          />
-          <Text style={styles.label}>Manter-me logado</Text>
-        </View>
+            <AppTextInput
+              style={[styles.fullWidth, { marginBottom: r.spacing(1) }]}
+              placeholder="Email"
+              keyboardType="email-address"
+              value={email}
+              onChangeText={setEmail}
+              autoCapitalize="none"
+              autoCorrect={false}
+              returnKeyType="next"
+            />
 
-        <TouchableOpacity style={styles.loginButton} onPress={handleLogin}>
-          <Text style={styles.loginButtonText}>Entrar</Text>
-        </TouchableOpacity>
-      </View>
+            <View style={[styles.passwordWrapper, { marginBottom: r.spacing(1) }]}>
+              <AppTextInput
+                style={[styles.fullWidth, { paddingRight: 56 }]}
+                placeholder="Senha"
+                secureTextEntry={!isPasswordVisible}
+                value={password}
+                onChangeText={setPassword}
+                returnKeyType="done"
+              />
+              <TouchableOpacity
+                onPress={() => setPasswordVisible(!isPasswordVisible)}
+                style={styles.eyeIcon}
+                accessibilityRole="button"
+                accessibilityLabel={isPasswordVisible ? "Ocultar senha" : "Mostrar senha"}
+              >
+                <Ionicons
+                  name={isPasswordVisible ? "eye" : "eye-off"}
+                  size={20}
+                  color="#333"
+                />
+              </TouchableOpacity>
+            </View>
+
+            <View style={[styles.checkboxContainer, { marginBottom: r.spacing(1.5) }]}>
+              <Checkbox
+                value={isChecked}
+                onValueChange={setChecked}
+                color={isChecked ? "#4630EB" : undefined}
+                style={styles.checkbox}
+              />
+              <ResponsiveText
+                variant="body"
+                style={{ flexShrink: 1, flexWrap: "wrap" }}
+              >
+                Manter-me logado
+              </ResponsiveText>
+            </View>
+
+            <TouchableOpacity
+              style={[
+                styles.loginButton,
+                { minHeight: r.verticalScale(48), paddingVertical: r.spacing(1) },
+              ]}
+              onPress={handleLogin}
+              activeOpacity={0.8}
+            >
+              <ResponsiveText
+                variant="button"
+                weight="bold"
+                style={{ color: "#fff", textAlign: "center" }}
+              >
+                Entrar
+              </ResponsiveText>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
       <SignatureRequiredModal visible={showSignatureModal} onSignatureSaved={handleSignatureSaved} />
     </LinearGradient>
   );
@@ -283,88 +360,48 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ route, navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
     justifyContent: "center",
   },
   formContainer: {
     backgroundColor: "rgba(255, 255, 255, 0.85)",
-    padding: 20,
-    margin: 20,
     borderRadius: 10,
-    alignItems: "center",
+    padding: 20,
+    alignItems: "stretch",
   },
-  title: {
-    fontSize: 24,
-    fontWeight: "bold",
-    marginBottom: 10,
-    color: "#333",
-  },
-  subtitle: {
-    fontSize: 16,
-    color: "#666",
-    marginBottom: 20,
-  },
-  input: {
+  fullWidth: {
     width: "100%",
-    padding: 15,
-    marginBottom: 15,
-    borderWidth: 1,
-    borderColor: "#ccc",
-    borderRadius: 5,
-    backgroundColor: "#fff",
   },
   inputError: {
     borderColor: "#ff4444",
   },
-  errorText: {
-    color: "#ff4444",
-    fontSize: 12,
-    alignSelf: "flex-start",
-    marginTop: -10,
-    marginBottom: 10,
-  },
-  passwordContainer: {
-    flexDirection: "row",
-    alignItems: "center",
+  passwordWrapper: {
+    position: "relative",
     width: "100%",
-    borderWidth: 1,
-    borderColor: "#ccc",
-    borderRadius: 5,
-    backgroundColor: "#fff",
-    marginBottom: 15,
-  },
-  passwordInput: {
-    flex: 1,
-    padding: 15,
-    color: '#000'
   },
   eyeIcon: {
-    padding: 10,
+    position: "absolute",
+    right: 8,
+    top: 0,
+    bottom: 0,
+    width: 44,
+    alignItems: "center",
+    justifyContent: "center",
   },
   checkboxContainer: {
     flexDirection: "row",
     alignItems: "center",
-    alignSelf: "flex-start",
-    marginBottom: 20,
+    gap: 10,
   },
   checkbox: {
-    marginRight: 8,
-  },
-  label: {
-    fontSize: 16,
-    color: "#333",
   },
   loginButton: {
     backgroundColor: "#007BFF",
-    padding: 15,
     borderRadius: 5,
     width: "100%",
     alignItems: "center",
-    marginBottom: 20,
-  },
-  loginButtonText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "bold",
   },
 });
 

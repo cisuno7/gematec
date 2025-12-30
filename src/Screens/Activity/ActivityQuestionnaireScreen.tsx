@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import {
     View,
     Text,
@@ -23,7 +23,10 @@ import SendToBudgetModal from "../../Components/SendToBudgetModal";
 import OfflineService from '../../Services/OfflineService';
 import apiClient from "../../Context/ApiClient";
 import ClientService from "../../Services/ClientService";
-import ScreenContainer from '../../Components/ScreenContainer';
+import ResponsiveContainer from '../../Components/ResponsiveContainer';
+import { EquipmentStatus, getNextStatusForAction, canTransitionEquipmentStatus } from "../../constants/activityStatus";
+import { usePermissions } from "../../Context/PermissionsContext";
+import { useUser } from "../../Context/UserContext";
 
 interface ActivityQuestionnaireScreenProps {
     navigation: DrawerNavigationProp<RootStackParamList, "ActivityQuestionnaireScreen">;
@@ -140,6 +143,10 @@ const ActivityQuestionnaireScreen: React.FC<ActivityQuestionnaireScreenProps> = 
         t = (key: string) => key; // Fallback simples
     }
 
+    // Hooks para permissões e usuário
+    const { hasPermission } = usePermissions();
+    const { username } = useUser();
+
     const activityService = new ActivityService();
 
     const [loading, setLoading] = useState(false);
@@ -156,6 +163,13 @@ const ActivityQuestionnaireScreen: React.FC<ActivityQuestionnaireScreenProps> = 
     const [questionsLoading, setQuestionsLoading] = useState<boolean>(false);
     const [noQuestions, setNoQuestions] = useState<boolean>(false);
     const [showBudgetModal, setShowBudgetModal] = useState(false);
+    const firstQuestionAnsweredRef = useRef<boolean>(false); // Rastrear se primeira questão foi respondida
+
+    // Bloquear edição quando o orçamento foi aprovado OU quando está fechado/completado sem permissão
+    const isQuestionnaireReadOnly = 
+        equipmentStatus === EquipmentStatus.BUDGET_APPROVAL ||
+        ((equipmentStatus === EquipmentStatus.CLOSED || equipmentStatus === EquipmentStatus.COMPLETED) && 
+         !hasPermission("add_answer_in_completed_question"));
 
     // ETAPA 2: useEffects com tratamento robusto de erros
     useEffect(() => {
@@ -291,13 +305,24 @@ const ActivityQuestionnaireScreen: React.FC<ActivityQuestionnaireScreenProps> = 
                         setEquipmentStatus(equipmentInActivity.status);
 
                         console.log('[ActivityQuestionnaireScreen] Processando status para flags de atividade...');
-                        if (equipmentInActivity.status === 'open' || equipmentInActivity.status === 'pending') {
-                            console.log('[ActivityQuestionnaireScreen] ✅ Atividade iniciada (status open/pending)');
+                        const status = equipmentInActivity.status?.toLowerCase();
+                        if (status === EquipmentStatus.OPEN || status === EquipmentStatus.PENDING || 
+                            status === EquipmentStatus.WAITING_BUDGET_APPROVAL || 
+                            status === EquipmentStatus.BUDGET_APPROVAL || 
+                            status === EquipmentStatus.BUDGET_DISAPPROVAL ||
+                            status === EquipmentStatus.COMPLETED ||
+                            status === EquipmentStatus.WAITING_WORK_APPROVAL) {
+                            console.log('[ActivityQuestionnaireScreen] ✅ Atividade iniciada (status:', status, ')');
                             setActivityStarted(true);
-                        } else if (equipmentInActivity.status === 'closed') {
+                        }
+                        if (status === EquipmentStatus.CLOSED) {
                             console.log('[ActivityQuestionnaireScreen] ✅ Atividade completa (status closed)');
-                            setActivityStarted(true);
                             setActivityCompleted(true);
+                        }
+                        
+                        // Resetar flag de primeira questão se status não for OPEN
+                        if (status !== EquipmentStatus.OPEN) {
+                            firstQuestionAnsweredRef.current = true; // Já passou da primeira questão
                         }
                     } else {
                         console.warn('[ActivityQuestionnaireScreen] ⚠️ Equipamento não encontrado na lista da atividade');
@@ -481,7 +506,7 @@ const ActivityQuestionnaireScreen: React.FC<ActivityQuestionnaireScreenProps> = 
             });
 
             // Se o status já é "pending" ou "open", não precisa alterar
-            if (equipmentStatus === 'pending' || equipmentStatus === 'open') {
+            if (equipmentStatus === EquipmentStatus.PENDING || equipmentStatus === EquipmentStatus.OPEN) {
                 console.log('[ActivityQuestionnaireScreen] Equipamento já está com status', equipmentStatus, ', não precisa alterar');
                 setActivityStarted(true);
                 Alert.alert("Sucesso", "Atividade já está disponível para questionário!");
@@ -491,7 +516,7 @@ const ActivityQuestionnaireScreen: React.FC<ActivityQuestionnaireScreenProps> = 
             const response = await ActivityService.patchActivityEquipment(
                 activityId,
                 activityEquipmentId,
-                { status: "open" },
+                { status: EquipmentStatus.OPEN },
                 token
             );
 
@@ -509,7 +534,7 @@ const ActivityQuestionnaireScreen: React.FC<ActivityQuestionnaireScreenProps> = 
             }
 
             // Atualizar o status local
-            setEquipmentStatus('open');
+            setEquipmentStatus(EquipmentStatus.OPEN);
             setActivityStarted(true);
 
             // Recarregar dados do equipamento para refletir o novo status
@@ -537,6 +562,12 @@ const ActivityQuestionnaireScreen: React.FC<ActivityQuestionnaireScreenProps> = 
     };
 
     const saveIndividualAnswer = async (questionId: string, answer: any) => {
+        // Bloquear salvamento se o questionário estiver em modo somente leitura
+        if (isQuestionnaireReadOnly) {
+            console.log('[ActivityQuestionnaireScreen] ⚠️ Tentativa de edição bloqueada - status BUDGET_APPROVAL');
+            return;
+        }
+
         try {
             const token = await AsyncStorage.getItem("access_token");
             if (!token) {
@@ -577,11 +608,26 @@ const ActivityQuestionnaireScreen: React.FC<ActivityQuestionnaireScreenProps> = 
                 uploads: Array.isArray(answer.uploads) ? answer.uploads : []
             };
 
+            // Se estiver editando após fechamento/completamento (CLOSED ou COMPLETED), adicionar campos de auditoria
+            if ((equipmentStatus === EquipmentStatus.CLOSED || equipmentStatus === EquipmentStatus.COMPLETED) && 
+                hasPermission("add_answer_in_completed_question")) {
+                const now = new Date().toISOString();
+                (answerData as any).completed_at = now;
+                (answerData as any).completed_by = username || "Usuário";
+                console.log('[ActivityQuestionnaireScreen] 📝 Edição após fechamento/completamento - registrando:', {
+                    status: equipmentStatus,
+                    completed_at: now,
+                    completed_by: username
+                });
+            }
+
             console.log('[ActivityQuestionnaireScreen] ✅ Dados validados para envio:', {
                 question_id: answerData.question_id,
                 hasValue: !!answerData.value,
                 hasJustification: !!answerData.justification,
                 uploadsCount: answerData.uploads?.length || 0,
+                completed_at: (answerData as any).completed_at,
+                completed_by: (answerData as any).completed_by,
                 activityId,
                 activityEquipmentId
             });
@@ -620,6 +666,38 @@ const ActivityQuestionnaireScreen: React.FC<ActivityQuestionnaireScreenProps> = 
             // Marcar como salvo
             setSavedAnswers(prev => ({ ...prev, [questionId]: true }));
             console.log('[ActivityQuestionnaireScreen] ✅ Resposta marcada como salva:', questionId);
+
+            // Detectar primeira questão preenchida e atualizar status para PENDING
+            if (!firstQuestionAnsweredRef.current && equipmentStatus === EquipmentStatus.OPEN) {
+                console.log('[ActivityQuestionnaireScreen] 🎯 Primeira questão respondida! Atualizando status para PENDING...');
+                firstQuestionAnsweredRef.current = true;
+                
+                try {
+                    // Atualizar status do equipamento para PENDING
+                    const statusResponse = await ActivityService.patchActivityEquipment(
+                        activityId,
+                        activityEquipmentId,
+                        { status: EquipmentStatus.PENDING },
+                        token
+                    );
+                    
+                    console.log('[ActivityQuestionnaireScreen] ✅ Status atualizado para PENDING:', statusResponse);
+                    setEquipmentStatus(EquipmentStatus.PENDING);
+                    
+                    // Sincronizar status da atividade
+                    try {
+                        await ActivityService.syncActivityStatusFromEquipments(activityId, token);
+                    } catch (syncError: any) {
+                        console.warn('[ActivityQuestionnaireScreen] Erro ao sincronizar status da atividade:', syncError);
+                    }
+                    
+                    // Recarregar dados do equipamento para refletir o novo status
+                    await fetchEquipmentData();
+                } catch (statusError: any) {
+                    console.error('[ActivityQuestionnaireScreen] ⚠️ Erro ao atualizar status para PENDING:', statusError);
+                    // Não bloquear o fluxo se falhar a atualização de status
+                }
+            }
         } catch (error: any) {
             console.error('[ActivityQuestionnaireScreen] ❌❌❌ ERRO ao salvar resposta individual ❌❌❌');
             console.error('[ActivityQuestionnaireScreen] 🔴 Tipo:', error?.constructor?.name);
@@ -714,21 +792,45 @@ const ActivityQuestionnaireScreen: React.FC<ActivityQuestionnaireScreenProps> = 
                             text: t('activityQuestionnaire.continueExecution'),
                             onPress: async () => {
                                 try {
-                                    // Alterar status do vínculo equipamento-atividade para pending
-                                    await ActivityService.patchActivityEquipment(
+                                    // Fluxo 2: Continuar para Execução - atualizar para COMPLETED
+                                    const nextStatus = getNextStatusForAction(
+                                        equipmentStatus,
+                                        'continue_execution',
+                                        budgetPolicy
+                                    );
+                                    
+                                    if (!nextStatus) {
+                                        throw new Error('Não é possível continuar execução no estado atual');
+                                    }
+                                    
+                                    if (!canTransitionEquipmentStatus(equipmentStatus, nextStatus, budgetPolicy)) {
+                                        throw new Error('Transição de status não permitida');
+                                    }
+                                    
+                                    const response = await ActivityService.patchActivityEquipment(
                                         activityId,
                                         activityEquipmentId,
-                                        { status: "pending" },
+                                        { status: nextStatus },
                                         token
                                     );
+                                    
                                     await clearLocalData();
-                                    Alert.alert(
-                                        "Sucesso",
-                                        "Atividade marcada como pendente para execução",
-                                        [{ text: "OK", onPress: () => navigation.navigate("ActivityHistoryScreen" as any) }]
-                                    );
+                                    
+                                    if (response.offline) {
+                                        Alert.alert(
+                                            "📱 Modo Offline",
+                                            "A atividade foi marcada para execução e será processada quando houver conexão.",
+                                            [{ text: "OK", onPress: () => navigation.navigate("ActivityHistoryScreen" as any) }]
+                                        );
+                                    } else {
+                                        Alert.alert(
+                                            "Sucesso",
+                                            "Atividade marcada para execução",
+                                            [{ text: "OK", onPress: () => navigation.navigate("ActivityHistoryScreen" as any) }]
+                                        );
+                                    }
                                 } catch (error: any) {
-                                    Alert.alert("Erro", error.message);
+                                    Alert.alert("Erro", error.message || "Falha ao continuar execução");
                                 } finally {
                                     setSaving(false);
                                 }
@@ -742,40 +844,55 @@ const ActivityQuestionnaireScreen: React.FC<ActivityQuestionnaireScreenProps> = 
                     ]
                 );
             } else {
-                // Fluxo normal - fechar atividade
-                console.log('[ActivityQuestionnaireScreen] Concluindo atividade');
-
-                const response = await ActivityService.patchActivityEquipment(
-                    activityId,
-                    activityEquipmentId,
-                    { status: "pending" },
-                    token
-                );
-
-                console.log('[ActivityQuestionnaireScreen] Resposta da conclusão:', response);
-
-                // Limpar dados locais após conclusão bem-sucedida
-                await clearLocalData();
-
-                // Verificar se foi salvo offline
-                if (response.offline) {
-                    Alert.alert(
-                        "📱 Modo Offline",
-                        "A atividade foi marcada para conclusão e será processada quando houver conexão com a internet.",
-                        [{ text: "OK", onPress: () => navigation.navigate("ActivityHistoryScreen" as any) }]
-                    );
-                } else {
-                    Alert.alert(t('common.success'), t('activityQuestionnaire.completeSuccess'), [
-                        { text: "OK", onPress: () => navigation.navigate("ActivityHistoryScreen" as any) }
-                    ]);
-                }
-
-                setActivityCompleted(true);
+                // Fluxo normal - para budget_policy diferente de "spot", sempre enviar para orçamento
+                console.log('[ActivityQuestionnaireScreen] Budget policy:', budgetPolicy, '- redirecionando para orçamento');
+                setShowBudgetModal(true);
                 setSaving(false);
+                return;
             }
         } catch (error: any) {
             console.error('[ActivityQuestionnaireScreen] Erro ao concluir atividade:', error);
             Alert.alert(t('common.error'), t('activityQuestionnaire.completeError'));
+            setSaving(false);
+        }
+    };
+
+    // Função auxiliar para concluir atividade (usada quando não há budget policy spot)
+    const finalizeActivity = async () => {
+        try {
+            setSaving(true);
+            const token = await AsyncStorage.getItem("access_token");
+            if (!token) throw new Error("Token não encontrado");
+
+            // Para fluxos sem orçamento, marcar como COMPLETED
+            const response = await ActivityService.patchActivityEquipment(
+                activityId,
+                activityEquipmentId,
+                { status: EquipmentStatus.COMPLETED },
+                token
+            );
+            
+            console.log('[ActivityQuestionnaireScreen] Resposta da conclusão:', response);
+            
+            await clearLocalData();
+            
+            if (response.offline) {
+                Alert.alert(
+                    "📱 Modo Offline",
+                    "A atividade foi marcada para conclusão e será processada quando houver conexão com a internet.",
+                    [{ text: "OK", onPress: () => navigation.navigate("ActivityHistoryScreen" as any) }]
+                );
+            } else {
+                Alert.alert(t('common.success'), t('activityQuestionnaire.completeSuccess'), [
+                    { text: "OK", onPress: () => navigation.navigate("ActivityHistoryScreen" as any) }
+                ]);
+            }
+            
+            setActivityCompleted(true);
+            setSaving(false);
+        } catch (error: any) {
+            console.error('[ActivityQuestionnaireScreen] Erro ao finalizar atividade:', error);
+            Alert.alert(t('common.error'), error.message || t('activityQuestionnaire.completeError'));
             setSaving(false);
         }
     };
@@ -790,20 +907,45 @@ const ActivityQuestionnaireScreen: React.FC<ActivityQuestionnaireScreenProps> = 
             const token = await AsyncStorage.getItem("access_token");
             if (!token) throw new Error("Token não encontrado");
 
-            await ActivityService.patchActivityEquipment(
+            // Fluxo 2: Continuar para Execução - atualizar para COMPLETED
+            const nextStatus = getNextStatusForAction(
+                equipmentStatus,
+                'continue_execution',
+                budgetPolicy
+            );
+            
+            if (!nextStatus) {
+                throw new Error('Não é possível continuar execução no estado atual');
+            }
+            
+            if (!canTransitionEquipmentStatus(equipmentStatus, nextStatus, budgetPolicy)) {
+                throw new Error('Transição de status não permitida');
+            }
+
+            const response = await ActivityService.patchActivityEquipment(
                 activityId,
                 activityEquipmentId,
-                { status: "pending" },
+                { status: nextStatus },
                 token
             );
+            
             await clearLocalData();
-            Alert.alert(
-                t('common.success'),
-                "Questionário concluído com sucesso",
-                [{ text: "OK", onPress: () => navigation.navigate("ActivityHistoryScreen" as any) }]
-            );
+            
+            if (response.offline) {
+                Alert.alert(
+                    "📱 Modo Offline",
+                    "A atividade foi marcada para execução e será processada quando houver conexão.",
+                    [{ text: "OK", onPress: () => navigation.navigate("ActivityHistoryScreen" as any) }]
+                );
+            } else {
+                Alert.alert(
+                    t('common.success'),
+                    "Atividade marcada para execução",
+                    [{ text: "OK", onPress: () => navigation.navigate("ActivityHistoryScreen" as any) }]
+                );
+            }
         } catch (error: any) {
-            Alert.alert(t('common.error'), error.message || "Falha ao concluir questionário");
+            Alert.alert(t('common.error'), error.message || "Falha ao continuar execução");
         } finally {
             setSaving(false);
         }
@@ -968,7 +1110,7 @@ const ActivityQuestionnaireScreen: React.FC<ActivityQuestionnaireScreenProps> = 
     });
 
     return (
-        <ScreenContainer scroll={false}>
+        <ResponsiveContainer scroll={false}>
         <View style={styles.container}>
             {/* Header */}
             <View style={styles.header}>
@@ -1047,7 +1189,21 @@ const ActivityQuestionnaireScreen: React.FC<ActivityQuestionnaireScreenProps> = 
                 <View style={styles.questionnaireSection}>
                     <Text style={styles.sectionTitle}>{t('activityQuestionnaire.questionnaire')}</Text>
 
-                    {equipmentStatus === 'created' ? (
+                    {/* Mensagem informativa quando o questionário estiver bloqueado */}
+                    {isQuestionnaireReadOnly && (
+                        <View style={styles.infoBanner}>
+                            <MaterialIcons name="info" size={20} color="#17a2b8" />
+                            <Text style={styles.infoBannerText}>
+                                {equipmentStatus === EquipmentStatus.BUDGET_APPROVAL 
+                                    ? "O questionário está bloqueado para edição porque o orçamento foi aprovado. A gestão precisa liberar a edição alterando o status do equipamento para 'Pendente'."
+                                    : (equipmentStatus === EquipmentStatus.CLOSED || equipmentStatus === EquipmentStatus.COMPLETED)
+                                    ? "O questionário está finalizado. Você não tem permissão para editar questionários finalizados."
+                                    : "O questionário está bloqueado para edição."}
+                            </Text>
+                        </View>
+                    )}
+
+                    {equipmentStatus === EquipmentStatus.CREATED ? (
                         <View style={styles.startActivitySection}>
                             <Text style={styles.startActivityText}>
                                 Para responder o questionário, você precisa iniciar a atividade no equipamento.
@@ -1067,7 +1223,10 @@ const ActivityQuestionnaireScreen: React.FC<ActivityQuestionnaireScreenProps> = 
                                 )}
                             </TouchableOpacity>
                         </View>
-                    ) : equipmentStatus === 'pending' || equipmentStatus === 'open' ? (
+                    ) : equipmentStatus === EquipmentStatus.PENDING || equipmentStatus === EquipmentStatus.OPEN || 
+                          equipmentStatus === EquipmentStatus.WAITING_BUDGET_APPROVAL || 
+                          equipmentStatus === EquipmentStatus.BUDGET_APPROVAL || 
+                          equipmentStatus === EquipmentStatus.BUDGET_DISAPPROVAL ? (
                         <>
                             {console.log('[ActivityQuestionnaireScreen] Renderizando questionário com status:', equipmentStatus)}
                             {console.log('[ActivityQuestionnaireScreen] Número de questões:', questions.length)}
@@ -1204,6 +1363,7 @@ const ActivityQuestionnaireScreen: React.FC<ActivityQuestionnaireScreenProps> = 
                                             questionIdField="key"
                                             activityId={activityId}
                                             activityEquipmentId={activityEquipmentId}
+                                            readOnly={isQuestionnaireReadOnly}
                                         />
                                     );
                                 })()
@@ -1214,7 +1374,8 @@ const ActivityQuestionnaireScreen: React.FC<ActivityQuestionnaireScreenProps> = 
                             )}
 
                             {/* Botões de Ação - Mostrar "Enviar para Orçamento" sempre que aplicável */}
-
+                            {/* Ocultar botões quando o questionário estiver bloqueado */}
+                            {!isQuestionnaireReadOnly && (
                             <View style={styles.actionButtons}>
                                 {/* Mostrar botão "Enviar para Orçamento" se: 
                                     1. budgetPolicy for 'always', 'on_request' ou 'spot'
@@ -1302,10 +1463,20 @@ const ActivityQuestionnaireScreen: React.FC<ActivityQuestionnaireScreenProps> = 
                                     )}
                                 </TouchableOpacity>
                             </View>
+                            )}
                         </>
                     ) : (
-                        // Exibir questionário em modo leitura para atividades finalizadas/fechadas
+                        // Exibir questionário em modo leitura para atividades finalizadas/fechadas (ou editável se tiver permissão)
                         <>
+                            {/* Mensagem informativa quando o questionário estiver bloqueado (para status CLOSED ou COMPLETED) */}
+                            {isQuestionnaireReadOnly && (equipmentStatus === EquipmentStatus.CLOSED || equipmentStatus === EquipmentStatus.COMPLETED) && (
+                                <View style={styles.infoBanner}>
+                                    <MaterialIcons name="info" size={20} color="#17a2b8" />
+                                    <Text style={styles.infoBannerText}>
+                                        O questionário está finalizado. Você não tem permissão para editar questionários finalizados.
+                                    </Text>
+                                </View>
+                            )}
                             {questionsLoading ? (
                                 <View style={styles.startActivitySection}>
                                     <ActivityIndicator size="small" color="#007bff" />
@@ -1422,7 +1593,8 @@ const ActivityQuestionnaireScreen: React.FC<ActivityQuestionnaireScreenProps> = 
                                             questionIdField="key"
                                             activityId={activityId}
                                             activityEquipmentId={activityEquipmentId}
-                                            readOnly={true}
+                                            readOnly={isQuestionnaireReadOnly}
+                                            onSaveAnswer={isQuestionnaireReadOnly ? undefined : saveIndividualAnswer}
                                         />
                                     );
                                 })()
@@ -1440,16 +1612,52 @@ const ActivityQuestionnaireScreen: React.FC<ActivityQuestionnaireScreenProps> = 
             <SendToBudgetModal
                 visible={showBudgetModal}
                 onClose={() => setShowBudgetModal(false)}
-                onSuccess={() => {
-                    Alert.alert('Sucesso', 'Equipamento enviado para orçamento com sucesso!');
-                    setShowBudgetModal(false);
-                    fetchEquipmentData();
+                onSuccess={async () => {
+                    try {
+                        const token = await AsyncStorage.getItem("access_token");
+                        if (!token) throw new Error("Token não encontrado");
+
+                        // Atualizar status do equipamento para WAITING_BUDGET_APPROVAL
+                        const nextStatus = getNextStatusForAction(
+                            equipmentStatus,
+                            'send_to_budget',
+                            budgetPolicy
+                        );
+                        
+                        if (nextStatus && canTransitionEquipmentStatus(equipmentStatus, nextStatus, budgetPolicy)) {
+                            const response = await ActivityService.patchActivityEquipment(
+                                activityId,
+                                activityEquipmentId,
+                                { status: nextStatus },
+                                token
+                            );
+                            
+                            console.log('[ActivityQuestionnaireScreen] ✅ Status atualizado para WAITING_BUDGET_APPROVAL:', response);
+                            setEquipmentStatus(nextStatus);
+                            
+                            // Sincronizar status da atividade
+                            try {
+                                await ActivityService.syncActivityStatusFromEquipments(activityId, token);
+                            } catch (syncError: any) {
+                                console.warn('[ActivityQuestionnaireScreen] Erro ao sincronizar status da atividade:', syncError);
+                            }
+                        }
+                        
+                        Alert.alert('Sucesso', 'Equipamento enviado para orçamento com sucesso!');
+                        setShowBudgetModal(false);
+                        await fetchEquipmentData();
+                    } catch (error: any) {
+                        console.error('[ActivityQuestionnaireScreen] Erro ao atualizar status após enviar orçamento:', error);
+                        Alert.alert('Aviso', 'Equipamento enviado para orçamento, mas houve um problema ao atualizar o status.');
+                        setShowBudgetModal(false);
+                        await fetchEquipmentData();
+                    }
                 }}
                 activityId={activityId}
                 activityEquipmentId={activityEquipmentId}
             />
         </View>
-        </ScreenContainer>
+        </ResponsiveContainer>
     );
 };
 
@@ -1645,6 +1853,23 @@ const styles = StyleSheet.create({
         fontSize: 16,
         fontWeight: "600",
         marginLeft: 8,
+    },
+    infoBanner: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        backgroundColor: '#e7f3ff',
+        borderLeftWidth: 4,
+        borderLeftColor: '#17a2b8',
+        padding: 12,
+        marginBottom: 16,
+        borderRadius: 8,
+    },
+    infoBannerText: {
+        flex: 1,
+        marginLeft: 8,
+        color: '#17a2b8',
+        fontSize: 14,
+        lineHeight: 20,
     },
     badgeContainer: {
         position: 'absolute',

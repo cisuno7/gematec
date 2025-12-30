@@ -17,6 +17,7 @@ export default class CacheService {
         EQUIPMENT_TYPES: "equipment_types",
         CLIENTS_WITH_CONTRACT: "clients_with_contract",
         CLIENTS_WITHOUT_CONTRACT: "clients_without_contract",
+        CLIENTS_ALL: "clients_all",
         EQUIPMENT_TEMPLATE: "equipment_template",
         MENU: "menu",
     };

@@ -1,14 +1,14 @@
 import React, { useState, useEffect } from "react";
 import {
     View,
-    Text,
     StyleSheet,
     FlatList,
     ActivityIndicator,
     Alert,
     TouchableOpacity,
-    TextInput,
     Modal,
+    KeyboardAvoidingView,
+    Platform,
 } from "react-native";
 import { RouteProp } from "@react-navigation/native";
 import { DrawerNavigationProp } from "@react-navigation/drawer";
@@ -18,6 +18,10 @@ import { usePermissions } from "../../Context/PermissionsContext";
 import { useLanguage } from "../../Context/LanguageContext";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Sector } from "../../Models/Clientes";
+import ResponsiveContainer from "../../Components/ResponsiveContainer";
+import AppTextInput from "../../Components/AppTextInput";
+import ResponsiveText from "../../Components/ResponsiveText";
+import { useResponsive } from "../../hooks/useResponsive";
 
 interface ClientSectorsScreenProps {
     route: RouteProp<RootStackParamList, "ClientSectorsScreen">;
@@ -27,6 +31,7 @@ interface ClientSectorsScreenProps {
 const ClientSectorsScreen: React.FC<ClientSectorsScreenProps> = ({ route, navigation }) => {
     const { hasPermission } = usePermissions();
     const { t } = useLanguage();
+    const r = useResponsive();
     const { clientId } = route.params;
 
     const [sectors, setSectors] = useState<Sector[]>([]);
@@ -79,54 +84,68 @@ const ClientSectorsScreen: React.FC<ClientSectorsScreenProps> = ({ route, naviga
 
     if (!hasPermission("list_sectors")) {
         return (
-            <View style={styles.container}>
-                <Text style={styles.errorText}>{t('sectors.noPermission')}</Text>
-            </View>
+            <ResponsiveContainer withPadding={false} style={styles.container} scroll={false}>
+                <ResponsiveText variant="body" style={styles.errorText}>
+                    {t('sectors.noPermission')}
+                </ResponsiveText>
+            </ResponsiveContainer>
         );
     }
 
     if (loading) {
         return (
-            <View style={styles.container}>
+            <ResponsiveContainer withPadding={false} style={styles.container} scroll={false}>
                 <ActivityIndicator size="large" color="#007BFF" />
-                <Text style={styles.loadingText}>{t('sectors.loading')}</Text>
-            </View>
+                <ResponsiveText variant="body" style={styles.loadingText}>
+                    {t('sectors.loading')}
+                </ResponsiveText>
+            </ResponsiveContainer>
         );
     }
 
     const renderSectorItem = ({ item }: { item: Sector }) => (
         <View style={styles.sectorItem}>
             <View style={styles.sectorHeader}>
-                <Text style={styles.sectorName}>{item.name}</Text>
+                <ResponsiveText variant="subtitle" style={styles.sectorName} numberOfLines={2}>
+                    {item.name}
+                </ResponsiveText>
             </View>
 
             <View style={styles.actionButtons}>
                 <TouchableOpacity
-                    style={styles.actionButton}
+                    style={[styles.actionButton, { minHeight: r.verticalScale(40) }]}
                     onPress={() => navigation.navigate("EquipmentListScreen", { clientId, sectorId: item.id })}
                 >
-                    <Text style={styles.actionButtonText}>{t('sectors.listEquipments')}</Text>
+                    <ResponsiveText variant="button" maxFontSizeMultiplier={1.3} style={styles.actionButtonText}>
+                        {t('sectors.listEquipments')}
+                    </ResponsiveText>
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                    style={styles.actionButton}
+                    style={[styles.actionButton, { minHeight: r.verticalScale(40) }]}
                     onPress={() => navigation.navigate("SectorDetailScreen", { clientId, sectorId: item.id })}
                 >
-                    <Text style={styles.actionButtonText}>{t('sectors.viewSector')}</Text>
+                    <ResponsiveText variant="button" maxFontSizeMultiplier={1.3} style={styles.actionButtonText}>
+                        {t('sectors.viewSector')}
+                    </ResponsiveText>
                 </TouchableOpacity>
             </View>
         </View>
     );
 
     return (
-        <View style={styles.container}>
+        <ResponsiveContainer withPadding={false} style={styles.container} scroll={true}>
             <View style={styles.header}>
-                <Text style={styles.title}>{t('sectors.rootTitle')}</Text>
+                <ResponsiveText variant="title" style={styles.title} numberOfLines={2}>
+                    {t('sectors.rootTitle')}
+                </ResponsiveText>
             </View>
 
             <View style={styles.actionsRow}>
-                <TouchableOpacity style={styles.createButton} onPress={() => setShowCreateModal(true)}>
-                    <Text style={styles.createButtonText}>Adicionar Setor</Text>
+                <TouchableOpacity style={[styles.createButton, { minHeight: r.verticalScale(40) }]} onPress={() => setShowCreateModal(true)}>
+                    <ResponsiveText variant="button" maxFontSizeMultiplier={1.3} style={styles.createButtonText}>
+                        Adicionar Setor
+                    </ResponsiveText>
                 </TouchableOpacity>
             </View>
 
@@ -135,36 +154,48 @@ const ClientSectorsScreen: React.FC<ClientSectorsScreenProps> = ({ route, naviga
                     data={sectors}
                     keyExtractor={(item) => item.id.toString()}
                     renderItem={renderSectorItem}
-                    contentContainerStyle={styles.listContainer}
+                    contentContainerStyle={[styles.listContainer, { paddingBottom: r.height * 0.1 }]}
                 />
             ) : (
                 <View style={styles.emptyContainer}>
-                    <Text style={styles.emptyText}>{t('sectors.noRootFound')}</Text>
+                    <ResponsiveText variant="body" style={styles.emptyText}>
+                        {t('sectors.noRootFound')}
+                    </ResponsiveText>
                 </View>
             )}
 
             <Modal visible={showCreateModal} transparent animationType="fade">
-                <View style={styles.modalBackdrop}>
-                    <View style={styles.modalCard}>
-                        <Text style={styles.modalTitle}>{t('sectors.name')}</Text>
-                        <TextInput
+                <KeyboardAvoidingView
+                    behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                    style={styles.modalBackdrop}
+                >
+                    <View style={[styles.modalCard, { maxWidth: r.width * 0.9 }]}>
+                        <ResponsiveText variant="subtitle" style={styles.modalTitle}>
+                            {t('sectors.name')}
+                        </ResponsiveText>
+                        <AppTextInput
                             style={styles.input}
                             placeholder={t('sectors.name')}
                             value={newSectorName}
                             onChangeText={setNewSectorName}
+                            maxFontSizeMultiplier={1.8}
                         />
                         <View style={styles.modalActions}>
-                            <TouchableOpacity style={[styles.modalButton, styles.cancelButton]} onPress={() => setShowCreateModal(false)}>
-                                <Text style={styles.modalButtonText}>Cancelar</Text>
+                            <TouchableOpacity style={[styles.modalButton, styles.cancelButton, { minHeight: r.verticalScale(44) }]} onPress={() => setShowCreateModal(false)}>
+                                <ResponsiveText variant="button" maxFontSizeMultiplier={1.3} style={styles.modalButtonText}>
+                                    Cancelar
+                                </ResponsiveText>
                             </TouchableOpacity>
-                            <TouchableOpacity disabled={creating} style={[styles.modalButton, styles.confirmButton]} onPress={handleCreateRootSector}>
-                                <Text style={styles.modalButtonText}>{creating ? '...' : 'Criar'}</Text>
+                            <TouchableOpacity disabled={creating} style={[styles.modalButton, styles.confirmButton, { minHeight: r.verticalScale(44) }]} onPress={handleCreateRootSector}>
+                                <ResponsiveText variant="button" maxFontSizeMultiplier={1.3} style={styles.modalButtonText}>
+                                    {creating ? '...' : 'Criar'}
+                                </ResponsiveText>
                             </TouchableOpacity>
                         </View>
                     </View>
-                </View>
+                </KeyboardAvoidingView>
             </Modal>
-        </View>
+        </ResponsiveContainer>
     );
 };
 
@@ -179,7 +210,6 @@ const styles = StyleSheet.create({
         alignItems: "center",
     },
     title: {
-        fontSize: 20,
         fontWeight: "bold",
         color: "#fff",
     },
@@ -194,6 +224,8 @@ const styles = StyleSheet.create({
         paddingVertical: 8,
         paddingHorizontal: 12,
         borderRadius: 6,
+        justifyContent: 'center',
+        alignItems: 'center',
     },
     createButtonText: {
         color: '#fff',
@@ -220,7 +252,6 @@ const styles = StyleSheet.create({
         marginBottom: 10,
     },
     sectorName: {
-        fontSize: 18,
         fontWeight: "bold",
         color: "#333",
         flex: 1,
@@ -229,6 +260,8 @@ const styles = StyleSheet.create({
         flexDirection: "row",
         justifyContent: "space-around",
         marginTop: 10,
+        flexWrap: 'wrap',
+        gap: 8,
     },
     actionButton: {
         backgroundColor: "#007BFF",
@@ -236,10 +269,10 @@ const styles = StyleSheet.create({
         borderRadius: 5,
         minWidth: 120,
         alignItems: "center",
+        justifyContent: 'center',
     },
     actionButtonText: {
         color: "#fff",
-        fontSize: 12,
         fontWeight: "bold",
     },
     emptyContainer: {
@@ -249,7 +282,6 @@ const styles = StyleSheet.create({
         padding: 20,
     },
     emptyText: {
-        fontSize: 16,
         color: "#666",
         textAlign: "center",
     },
@@ -267,7 +299,6 @@ const styles = StyleSheet.create({
         padding: 16,
     },
     modalTitle: {
-        fontSize: 16,
         fontWeight: 'bold',
         marginBottom: 10,
     },
@@ -282,11 +313,15 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         justifyContent: 'flex-end',
         gap: 8,
+        flexWrap: 'wrap',
     },
     modalButton: {
         paddingVertical: 10,
         paddingHorizontal: 14,
         borderRadius: 6,
+        justifyContent: 'center',
+        alignItems: 'center',
+        minWidth: 80,
     },
     cancelButton: {
         backgroundColor: '#6c757d',
@@ -304,7 +339,6 @@ const styles = StyleSheet.create({
         color: "#666",
     },
     errorText: {
-        fontSize: 16,
         color: "#FF0000",
         textAlign: "center",
         marginTop: 20,

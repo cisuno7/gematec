@@ -7,7 +7,6 @@ import {
     ActivityIndicator,
     TouchableOpacity,
     ScrollView,
-    Dimensions,
     RefreshControl,
     TextInput,
     Modal,
@@ -15,6 +14,8 @@ import {
     KeyboardAvoidingView,
     Platform,
 } from "react-native";
+// ➕ ADICIONAR ESTE IMPORT:
+import { useUser } from "../../Context/UserContext";
 import { RouteProp } from "@react-navigation/native";
 import { RootStackParamList } from "../../Routers/AppRouter";
 import { DrawerNavigationProp } from "@react-navigation/drawer";
@@ -24,8 +25,10 @@ import { MaterialIcons, Ionicons } from "@expo/vector-icons";
 import { useLanguage } from "../../Context/LanguageContext";
 import WorkService from "../../Services/WorkService";
 import { usePermissions } from "../../Context/PermissionsContext";
-
-const { width } = Dimensions.get('window');
+import ResponsiveContainer from "../../Components/ResponsiveContainer";
+import ResponsiveText from "../../Components/ResponsiveText";
+import { useResponsive } from "../../hooks/useResponsive";
+import { getEquipmentStatusConfig, EquipmentStatus } from "../../constants/activityStatus";
 
 interface ActivityEquipmentListScreenProps {
     navigation: DrawerNavigationProp<RootStackParamList, "ActivityEquipmentListScreen">;
@@ -33,14 +36,24 @@ interface ActivityEquipmentListScreenProps {
 }
 
 const ActivityEquipmentListScreen: React.FC<ActivityEquipmentListScreenProps> = ({ route, navigation }) => {
+    const r = useResponsive();
+    const width = r?.width ?? 414;
+    const height = r?.height ?? 896;
     const { t } = useLanguage();
+    const { username, clientId: userId } = useUser();
     const { hasPermission } = usePermissions();
 
     const STATUS_OPTIONS = [
         { label: "Todos", value: "all", icon: "list" },
-        { label: "Pendente", value: "pending", icon: "pending" },
-        { label: "Aberto", value: "open", icon: "play-circle" },
-        { label: "Fechado", value: "closed", icon: "check" },
+        { label: "Criado", value: EquipmentStatus.CREATED, icon: "add-circle" },
+        { label: "Aberto", value: EquipmentStatus.OPEN, icon: "play-circle" },
+        { label: "Pendente", value: EquipmentStatus.PENDING, icon: "schedule" },
+        { label: "Aguardando Orçamento", value: EquipmentStatus.WAITING_BUDGET_APPROVAL, icon: "hourglass-outline" },
+        { label: "Orçamento Aprovado", value: EquipmentStatus.BUDGET_APPROVAL, icon: "checkmark-circle" },
+        { label: "Orçamento Reprovado", value: EquipmentStatus.BUDGET_DISAPPROVAL, icon: "close-circle" },
+        { label: "Concluído", value: EquipmentStatus.COMPLETED, icon: "checkmark-done-circle" },
+        { label: "Aguardando Registro", value: EquipmentStatus.WAITING_WORK_APPROVAL, icon: "time-outline" },
+        { label: "Fechado", value: EquipmentStatus.CLOSED, icon: "check-circle" },
     ];
     const { activityId, activityName, clientId, clientName } = route.params;
     const [equipments, setEquipments] = useState<any[]>([]);
@@ -49,7 +62,8 @@ const ActivityEquipmentListScreen: React.FC<ActivityEquipmentListScreenProps> = 
     const [error, setError] = useState<string | null>(null);
     const [selectedStatus, setSelectedStatus] = useState<string>("all");
     const [searchTerm, setSearchTerm] = useState<string>("");
-    const [showOnlyStarted, setShowOnlyStarted] = useState<boolean>(false);
+    
+    const [showOnlyStartedByMe, setShowOnlyStartedByMe] = useState<boolean>(false);
     const [sectors, setSectors] = useState<any[]>([]);
     const [selectedSector, setSelectedSector] = useState<string>("all");
     const [subsectors, setSubsectors] = useState<any[]>([]);
@@ -58,6 +72,7 @@ const ActivityEquipmentListScreen: React.FC<ActivityEquipmentListScreenProps> = 
     const [showCreateWorkModal, setShowCreateWorkModal] = useState<boolean>(false);
     const [workName, setWorkName] = useState<string>("");
     const [creatingWork, setCreatingWork] = useState<boolean>(false);
+    const [showFiltersModal, setShowFiltersModal] = useState<boolean>(false);
 
     // ✅ Novo estado para os detalhes da atividade
     const [activityDetails, setActivityDetails] = useState<any>(null);
@@ -67,7 +82,7 @@ const ActivityEquipmentListScreen: React.FC<ActivityEquipmentListScreenProps> = 
         fetchActivityDetails();
         fetchEquipments();
         fetchSectors();
-    }, [selectedStatus, showOnlyStarted, selectedSector, selectedSubsector]);
+    }, [selectedStatus,  selectedSector, selectedSubsector, showOnlyStartedByMe]);
 
     useEffect(() => {
         console.log('[ActivityEquipmentListScreen] Estado equipments mudou:', equipments.length, 'equipamentos');
@@ -79,10 +94,15 @@ const ActivityEquipmentListScreen: React.FC<ActivityEquipmentListScreenProps> = 
             setError(null);
             const token = await AsyncStorage.getItem("access_token");
             if (!token) throw new Error("Token não encontrado");
-
+   // ➕ DETERMINAR SE DEVE FILTRAR POR USUÁRIO ATUAL:
+        const openedById = showOnlyStartedByMe && userId !== null ? userId : undefined;
             console.log('[ActivityEquipmentListScreen] Buscando equipamentos da atividade:', activityId);
 
-            const response = await ActivityService.fetchAllActivityEquipments(activityId, { token });
+            // ➕ PASSAR O PARÂMETRO PARA A API:
+        const response = await ActivityService.fetchAllActivityEquipments(activityId, { 
+            token,
+            opened_by_id: openedById
+        });
             console.log('[ActivityEquipmentListScreen] Resposta completa:', JSON.stringify(response, null, 2));
             console.log('[ActivityEquipmentListScreen] Tipo da resposta:', typeof response);
             console.log('[ActivityEquipmentListScreen] É array?', Array.isArray(response));
@@ -108,7 +128,7 @@ const ActivityEquipmentListScreen: React.FC<ActivityEquipmentListScreenProps> = 
 
             console.log('[ActivityEquipmentListScreen] Equipamentos antes dos filtros:', filteredEquipments.length);
             console.log('[ActivityEquipmentListScreen] Status selecionado:', selectedStatus);
-            console.log('[ActivityEquipmentListScreen] Mostrar apenas iniciados:', showOnlyStarted);
+           
             console.log('[ActivityEquipmentListScreen] Termo de busca:', searchTerm);
 
             // Aplicar filtros
@@ -118,12 +138,7 @@ const ActivityEquipmentListScreen: React.FC<ActivityEquipmentListScreenProps> = 
                 console.log('[ActivityEquipmentListScreen] Filtro de status aplicado:', beforeFilter, '->', filteredEquipments.length);
             }
 
-            if (showOnlyStarted) {
-                const beforeFilter = filteredEquipments.length;
-                filteredEquipments = filteredEquipments.filter((eq: any) => eq.status === "open" || eq.status === "pending");
-                console.log('[ActivityEquipmentListScreen] Filtro de iniciados aplicado:', beforeFilter, '->', filteredEquipments.length);
-            }
-
+            
             if (selectedSector !== "all") {
                 filteredEquipments = filteredEquipments.filter((eq: any) =>
                     eq.equipment?.sector?.id?.toString() === selectedSector
@@ -233,38 +248,14 @@ const ActivityEquipmentListScreen: React.FC<ActivityEquipmentListScreenProps> = 
         setRefreshing(false);
     };
 
-    const statusTranslations: { [key: string]: string } = {
-        created: t('activityEquipmentList.created'),
-        pending: "Pendente",
-        open: "Aberto",
-        closed: "Fechado",
-        waiting_budget_approval: "Aguardando Aprovação de Orçamento",
-        budget_not_approved: "Orçamento não aprovado",
-    };
-
-    const statusColors: { [key: string]: string } = {
-        created: "#6c757d",
-        open: "#007bff", // Azul
-        pending: "#ffc107", // Amarelo
-        closed: "#6c757d", // Cinza
-        waiting_budget_approval: "#6f42c1", // Roxo
-        budget_not_approved: "#dc3545", // Vermelho
-    };
-
-    const statusIcons: { [key: string]: string } = {
-        created: "add-circle",
-        open: "play-circle",
-        pending: "schedule",
-        closed: "check-circle",
-        waiting_budget_approval: "cash",
-        budget_not_approved: "close-circle",
-    };
 
     const renderEquipmentCard = ({ item }: { item: any }) => {
         console.log('[ActivityEquipmentListScreen] Renderizando equipamento:', item.id, item.equipment?.tag);
         const equipment = item.equipment;
-        const statusColor = statusColors[item.status] || "#6c757d";
-        const statusIcon = statusIcons[item.status] || "help-circle";
+        const statusInfo = getEquipmentStatusConfig(item.status || EquipmentStatus.CREATED);
+        const statusColor = statusInfo.color;
+        const statusIcon = statusInfo.icon;
+        const statusTranslation = statusInfo.translation;
         const isSelected = selectedEquipmentVersionIds.includes(item.id);
 
         const navigateToDetails = () => {
@@ -284,8 +275,15 @@ const ActivityEquipmentListScreen: React.FC<ActivityEquipmentListScreenProps> = 
         };
 
         return (
-            <TouchableOpacity style={styles.equipmentCard} onPress={navigateToDetails}>
-                <View style={styles.cardHeader}>
+            <TouchableOpacity
+                style={[styles.equipmentCard, {
+                    marginBottom: r.spacing(1),
+                    minHeight: r.verticalScale(140)
+                }]}
+                onPress={navigateToDetails}
+                activeOpacity={0.7}
+            >
+                <View style={[styles.cardHeader, { padding: r.spacing(1.25) }]}>
                     <TouchableOpacity
                         onPress={() => {
                             setSelectedEquipmentVersionIds((prev) =>
@@ -294,58 +292,91 @@ const ActivityEquipmentListScreen: React.FC<ActivityEquipmentListScreenProps> = 
                                     : [...prev, item.id]
                             );
                         }}
-                        style={{ marginRight: 12 }}
+                        style={[styles.checkbox, { marginRight: r.spacing(1) }]}
                     >
-                        <MaterialIcons name={isSelected ? "check-box" : "check-box-outline-blank"} size={22} color={isSelected ? "#007bff" : "#666"} />
+                        <MaterialIcons
+                            name={isSelected ? "check-box" : "check-box-outline-blank"}
+                            size={r.scale(22)}
+                            color={isSelected ? "#007bff" : "#666"}
+                        />
                     </TouchableOpacity>
                     <View style={styles.equipmentInfo}>
-                        <MaterialIcons name="build" size={20} color="#007bff" />
-                        <Text style={styles.equipmentTag}>{equipment.tag}</Text>
+                        <View style={[styles.equipmentIcon, { backgroundColor: '#007bff20' }]}>
+                            <MaterialIcons name="build" size={r.scale(20)} color="#007bff" />
+                        </View>
+                        <View style={styles.equipmentDetails}>
+                            <ResponsiveText
+                                variant="subtitle"
+                                weight="600"
+                                style={styles.equipmentTag}
+                                numberOfLines={1}
+                            >
+                                {equipment.tag}
+                            </ResponsiveText>
+                            <ResponsiveText
+                                variant="caption"
+                                style={styles.equipmentId}
+                                numberOfLines={1}
+                            >
+                                ID: #{item.id}
+                            </ResponsiveText>
+                        </View>
                     </View>
                     <View style={[styles.statusBadge, { backgroundColor: statusColor + '20' }]}>
-                        <Ionicons name={statusIcon as any} size={16} color={statusColor} />
-                        <Text style={[styles.statusText, { color: statusColor }]}>
-                            {statusTranslations[item.status] || item.status}
-                        </Text>
+                        <Ionicons name={statusIcon as any} size={r.scale(16)} color={statusColor} />
+                        <ResponsiveText
+                            variant="caption"
+                            weight="600"
+                            style={[styles.statusText, { color: statusColor }]}
+                            numberOfLines={1}
+                        >
+                            {statusTranslation}
+                        </ResponsiveText>
                     </View>
                 </View>
 
-                <View style={styles.cardContent}>
-                    <View style={styles.infoRow}>
-                        <MaterialIcons name="person" size={16} color="#666" />
-                        <Text style={styles.infoText}>
-                            {clientName || "N/A"}
-                        </Text>
-                    </View>
+                <View style={[styles.cardContent, { padding: r.spacing(1.25), flex: 1 }]}>
+                    <View style={styles.equipmentMeta}>
+                        {item.open_by?.name && (
+                            <View style={styles.metaItem}>
+                                <View style={[styles.metaIcon, { backgroundColor: '#dc354520' }]}>
+                                    <MaterialIcons name="person" size={r.scale(14)} color="#dc3545" />
+                                </View>
+                                <View style={styles.metaContent}>
+                                    <ResponsiveText variant="caption" weight="600" style={styles.metaLabel}>
+                                        Iniciado por
+                                    </ResponsiveText>
+                                    <ResponsiveText variant="body" style={styles.metaValue}>
+                                        {item.open_by.name}
+                                    </ResponsiveText>
+                                </View>
+                            </View>
+                        )}
 
-                    <View style={styles.infoRow}>
-                        <MaterialIcons name="build" size={16} color="#666" />
-                        <Text style={styles.infoText}>
-                            Tag: {equipment.tag || "N/A"}
-                        </Text>
-                    </View>
+                        <View style={styles.specsGrid}>
+                            <View style={styles.specItem}>
+                                <MaterialIcons name="branding-watermark" size={r.scale(14)} color="#666" />
+                                <ResponsiveText variant="caption" style={styles.specText} numberOfLines={1}>
+                                    {equipment.brand?.name || equipment.manufacturer?.name || "N/A"}
+                                </ResponsiveText>
+                            </View>
 
-                    <View style={styles.infoRow}>
-                        <MaterialIcons name="branding-watermark" size={16} color="#666" />
-                        <Text style={styles.infoText}>
-                            {equipment.brand?.name || equipment.manufacturer?.name || "N/A"}
-                        </Text>
-                    </View>
-
-                    <View style={styles.infoRow}>
-                        <MaterialIcons name="category" size={16} color="#666" />
-                        <Text style={styles.infoText}>
-                            {equipment.equipment_type?.name || "N/A"}
-                        </Text>
+                            <View style={styles.specItem}>
+                                <MaterialIcons name="category" size={r.scale(14)} color="#666" />
+                                <ResponsiveText variant="caption" style={styles.specText} numberOfLines={1}>
+                                    {equipment.equipment_type?.name || "N/A"}
+                                </ResponsiveText>
+                            </View>
+                        </View>
                     </View>
                 </View>
 
-                <View style={styles.cardFooter}>
+                <View style={[styles.cardFooter, { padding: r.spacing(1.25) }]}>
                     <TouchableOpacity style={styles.detailsButton} onPress={navigateToDetails}>
-                        <Text style={styles.detailsButtonText}>
-                            {item.status === "created" ? t('activityEquipmentList.startActivity') : t('activityEquipmentList.viewDetails')}
-                        </Text>
-                        <MaterialIcons name="arrow-forward" size={16} color="#007bff" />
+                        <ResponsiveText variant="body" weight="600" style={styles.detailsButtonText}>
+                            {item.status === EquipmentStatus.CREATED ? t('activityEquipmentList.startActivity') : t('activityEquipmentList.viewDetails')}
+                        </ResponsiveText>
+                        <MaterialIcons name="arrow-forward" size={r.scale(18)} color="#007bff" />
                     </TouchableOpacity>
                 </View>
             </TouchableOpacity>
@@ -432,19 +463,37 @@ const ActivityEquipmentListScreen: React.FC<ActivityEquipmentListScreenProps> = 
     };
 
     return (
-        <View style={styles.container}>
+        <ResponsiveContainer withPadding={false} style={styles.container}>
             {/* Header */}
             <View style={styles.header}>
                 <TouchableOpacity
-                    style={styles.backButton}
+                    style={[styles.backButton, {
+                        width: r.scale(40),
+                        height: r.scale(40),
+                        borderRadius: r.scale(20),
+                    }]}
                     onPress={() => navigation.goBack()}
                 >
-                    <Ionicons name="arrow-back" size={24} color="#fff" />
+                    <Ionicons name="arrow-back" size={r.scale(24)} color="#fff" />
                 </TouchableOpacity>
                 <View style={styles.headerContent}>
-                    <Text style={styles.headerTitle}>{activityName}</Text>
-                    <Text style={styles.headerSubtitle}>{t('activityEquipmentList.title')}</Text>
+                    <ResponsiveText variant="title" weight="bold" style={styles.headerTitle}>
+                        {activityName}
+                    </ResponsiveText>
+                    <ResponsiveText variant="caption" style={styles.headerSubtitle}>
+                        {t('activityEquipmentList.title')}
+                    </ResponsiveText>
                 </View>
+                <TouchableOpacity
+                    style={[styles.filterButton, {
+                        width: r.scale(40),
+                        height: r.scale(40),
+                        borderRadius: r.scale(20),
+                    }]}
+                    onPress={() => setShowFiltersModal(true)}
+                >
+                    <MaterialIcons name="filter-list" size={r.scale(24)} color="#fff" />
+                </TouchableOpacity>
             </View>
 
             <ScrollView
@@ -456,77 +505,6 @@ const ActivityEquipmentListScreen: React.FC<ActivityEquipmentListScreenProps> = 
                 {/* ✅ NOVA SEÇÃO - Informações do Cliente */}
                 {renderClientInfo()}
 
-                {/* Filtros */}
-                <View style={styles.filtersSection}>
-                    <Text style={styles.sectionTitle}>{t('activityEquipmentList.filters')}</Text>
-
-                    {/* Busca */}
-                    <Text style={styles.filterLabel}>{t('activityEquipmentList.search')}</Text>
-                    <TextInput
-                        style={styles.searchInput}
-                        placeholder="Buscar por ID, Tag, Fabricante ou Tipo"
-                        placeholderTextColor="#999"
-                        value={searchTerm}
-                        onChangeText={setSearchTerm}
-                    />
-
-
-
-                    {/* Filtro de Status */}
-                    <Text style={styles.filterLabel}>{t('activityEquipmentList.status')}</Text>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
-                        {STATUS_OPTIONS.map((status) => (
-                            renderFilterChip(
-                                status,
-                                selectedStatus === status.value,
-                                () => setSelectedStatus(status.value)
-                            )
-                        ))}
-                    </ScrollView>
-
-                    {/* Filtro de Setor */}
-                    {sectors.length > 0 && (
-                        <>
-                            <Text style={styles.filterLabel}>{t('activityEquipmentList.sector')}</Text>
-                            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
-                                <TouchableOpacity
-                                    style={[styles.filterChip, selectedSector === "all" && styles.filterChipSelected]}
-                                    onPress={() => setSelectedSector("all")}
-                                >
-                                    <Text style={[styles.filterChipText, selectedSector === "all" && styles.filterChipTextSelected]}>
-                                        Todos
-                                    </Text>
-                                </TouchableOpacity>
-                                {sectors.map((sector) => (
-                                    <TouchableOpacity
-                                        key={sector.id}
-                                        style={[styles.filterChip, selectedSector === sector.id.toString() && styles.filterChipSelected]}
-                                        onPress={() => setSelectedSector(sector.id.toString())}
-                                    >
-                                        <Text style={[styles.filterChipText, selectedSector === sector.id.toString() && styles.filterChipTextSelected]}>
-                                            {sector.name}
-                                        </Text>
-                                    </TouchableOpacity>
-                                ))}
-                            </ScrollView>
-                        </>
-                    )}
-
-                    {/* Filtro de Apenas Iniciados */}
-                    <TouchableOpacity
-                        style={[styles.checkboxContainer, showOnlyStarted && styles.checkboxContainerSelected]}
-                        onPress={() => setShowOnlyStarted(!showOnlyStarted)}
-                    >
-                        <MaterialIcons
-                            name={showOnlyStarted ? "check-box" : "check-box-outline-blank"}
-                            size={20}
-                            color={showOnlyStarted ? "#007bff" : "#666"}
-                        />
-                        <Text style={[styles.checkboxText, showOnlyStarted && styles.checkboxTextSelected]}>
-                            {t('activityEquipmentList.showOnlyStarted')}
-                        </Text>
-                    </TouchableOpacity>
-                </View>
 
                 {/* Lista de Equipamentos */}
                 <View style={styles.equipmentsSection}>
@@ -608,6 +586,224 @@ const ActivityEquipmentListScreen: React.FC<ActivityEquipmentListScreenProps> = 
                 )}
             </ScrollView>
 
+            {/* Modal Centralizado */}
+            <Modal
+                visible={showFiltersModal}
+                transparent={true}
+                animationType="fade"
+                onRequestClose={() => setShowFiltersModal(false)}
+            >
+                <View style={styles.centeredModalOverlay}>
+                    <TouchableOpacity
+                        style={styles.centeredModalOverlayTouchable}
+                        activeOpacity={1}
+                        onPress={() => setShowFiltersModal(false)}
+                    />
+                    <View style={[styles.centeredModalContent, {
+                        maxWidth: r.width > 768 ? r.scale(500) : r.width * 0.95,
+                        maxHeight: r.height * 0.85
+                    }]}>
+                        {/* Botão Nova Atividade */}
+                        <View style={[styles.newActivitySection, { padding: r.spacing(1.5) }]}>
+                            <TouchableOpacity
+                                style={styles.newActivityButton}
+                                onPress={() => {
+                                    setShowFiltersModal(false);
+                                    navigation.navigate("NewActivityModal");
+                                }}
+                            >
+                                <View style={styles.newActivityButtonContent}>
+                                    <View style={styles.newActivityIcon}>
+                                        <MaterialIcons name="add" size={r.scale(24)} color="#fff" />
+                                    </View>
+                                    <View style={styles.newActivityTextContent}>
+                                        <ResponsiveText variant="subtitle" weight="bold" style={styles.newActivityTitle}>
+                                            Nova Atividade
+                                        </ResponsiveText>
+                                        <ResponsiveText variant="caption" style={styles.newActivitySubtitle}>
+                                            Criar uma nova atividade do zero
+                                        </ResponsiveText>
+                                    </View>
+                                    <MaterialIcons name="arrow-forward" size={r.scale(20)} color="#fff" />
+                                </View>
+                            </TouchableOpacity>
+                        </View>
+
+                        {/* Divisor */}
+                        <View style={styles.modalDivider} />
+
+                        {/* Header dos Filtros */}
+                        <View style={[styles.modalHeader, { padding: r.spacing(1.5) }]}>
+                            <View style={styles.modalHeaderContent}>
+                                <ResponsiveText variant="subtitle" weight="bold" style={styles.modalTitle}>
+                                    Filtros de Equipamentos
+                                </ResponsiveText>
+                                <ResponsiveText variant="caption" style={styles.modalSubtitle}>
+                                    Refine sua busca na atividade atual
+                                </ResponsiveText>
+                            </View>
+                            <TouchableOpacity
+                                style={styles.modalCloseButton}
+                                onPress={() => setShowFiltersModal(false)}
+                            >
+                                <Ionicons name="close" size={r.scale(24)} color="#666" />
+                            </TouchableOpacity>
+                        </View>
+
+                        <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
+                            {/* Busca */}
+                            <View style={styles.filterSection}>
+                                <ResponsiveText variant="body" weight="600" style={styles.filterSectionTitle}>
+                                    Busca
+                                </ResponsiveText>
+                                <TextInput
+                                    style={[styles.searchInput, { marginTop: r.spacing(0.5) }]}
+                                    placeholder="Buscar por ID, Tag, Fabricante ou Tipo"
+                                    placeholderTextColor="#999"
+                                    value={searchTerm}
+                                    onChangeText={setSearchTerm}
+                                />
+                            </View>
+
+                            {/* Status */}
+                            <View style={styles.filterSection}>
+                                <ResponsiveText variant="body" weight="600" style={styles.filterSectionTitle}>
+                                    Status
+                                </ResponsiveText>
+                                <View style={styles.statusGrid}>
+                                    {STATUS_OPTIONS.map((status) => (
+                                        <TouchableOpacity
+                                            key={status.value}
+                                            style={[
+                                                styles.statusChip,
+                                                selectedStatus === status.value && styles.statusChipSelected
+                                            ]}
+                                            onPress={() => setSelectedStatus(status.value)}
+                                        >
+                                            <Ionicons
+                                                name={status.icon as any}
+                                                size={r.scale(16)}
+                                                color={selectedStatus === status.value ? "#fff" : status.value === "all" ? "#007bff" : "#666"}
+                                            />
+                                            <ResponsiveText
+                                                variant="caption"
+                                                weight="600"
+                                                style={[
+                                                    styles.statusChipText,
+                                                    selectedStatus === status.value && styles.statusChipTextSelected
+                                                ]}
+                                            >
+                                                {status.label}
+                                            </ResponsiveText>
+                                        </TouchableOpacity>
+                                    ))}
+                                </View>
+                            </View>
+
+                            {/* Setor */}
+                            {sectors.length > 0 && (
+                                <View style={styles.filterSection}>
+                                    <ResponsiveText variant="body" weight="600" style={styles.filterSectionTitle}>
+                                        Setor
+                                    </ResponsiveText>
+                                    <View style={styles.sectorGrid}>
+                                        <TouchableOpacity
+                                            style={[
+                                                styles.sectorChip,
+                                                selectedSector === "all" && styles.sectorChipSelected
+                                            ]}
+                                            onPress={() => setSelectedSector("all")}
+                                        >
+                                            <ResponsiveText
+                                                variant="body"
+                                                style={[
+                                                    styles.sectorChipText,
+                                                    selectedSector === "all" && styles.sectorChipTextSelected
+                                                ]}
+                                            >
+                                                Todos
+                                            </ResponsiveText>
+                                        </TouchableOpacity>
+                                        {sectors.map((sector) => (
+                                            <TouchableOpacity
+                                                key={sector.id}
+                                                style={[
+                                                    styles.sectorChip,
+                                                    selectedSector === sector.id.toString() && styles.sectorChipSelected
+                                                ]}
+                                                onPress={() => setSelectedSector(sector.id.toString())}
+                                            >
+                                                <ResponsiveText
+                                                    variant="body"
+                                                    style={[
+                                                        styles.sectorChipText,
+                                                        selectedSector === sector.id.toString() && styles.sectorChipTextSelected
+                                                    ]}
+                                                >
+                                                    {sector.name}
+                                                </ResponsiveText>
+                                            </TouchableOpacity>
+                                        ))}
+                                    </View>
+                                </View>
+                            )}
+
+                            {/* Apenas Iniciados por Mim */}
+                            <View style={styles.filterSection}>
+                                <TouchableOpacity
+                                    style={[
+                                        styles.personalFilter,
+                                        showOnlyStartedByMe && styles.personalFilterSelected,
+                                        { padding: r.spacing(1) }
+                                    ]}
+                                    onPress={() => setShowOnlyStartedByMe(!showOnlyStartedByMe)}
+                                >
+                                    <MaterialIcons
+                                        name={showOnlyStartedByMe ? "check-box" : "check-box-outline-blank"}
+                                        size={r.scale(20)}
+                                        color={showOnlyStartedByMe ? "#6f42c1" : "#666"}
+                                    />
+                                    <ResponsiveText
+                                        variant="body"
+                                        style={[
+                                            styles.personalFilterText,
+                                            showOnlyStartedByMe && styles.personalFilterTextSelected
+                                        ]}
+                                    >
+                                        Iniciados por mim
+                                    </ResponsiveText>
+                                </TouchableOpacity>
+                            </View>
+
+                            {/* Botões de Ação */}
+                            <View style={[styles.modalActions, { marginTop: r.spacing(2) }]}>
+                                <TouchableOpacity
+                                    style={styles.clearFiltersButton}
+                                    onPress={() => {
+                                        setSelectedStatus("all");
+                                        setSelectedSector("all");
+                                        setShowOnlyStartedByMe(false);
+                                        setSearchTerm("");
+                                    }}
+                                >
+                                    <ResponsiveText variant="body" weight="600" style={styles.clearFiltersText}>
+                                        Limpar Filtros
+                                    </ResponsiveText>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    style={styles.applyFiltersButton}
+                                    onPress={() => setShowFiltersModal(false)}
+                                >
+                                    <ResponsiveText variant="button" weight="600" style={styles.applyFiltersText}>
+                                        Aplicar
+                                    </ResponsiveText>
+                                </TouchableOpacity>
+                            </View>
+                        </ScrollView>
+                    </View>
+                </View>
+            </Modal>
+
             {/* Modal de Criação de Trabalho */}
             <Modal visible={showCreateWorkModal && hasPermission('add_activitywork')} transparent animationType="slide" onRequestClose={() => setShowCreateWorkModal(false)}>
                 <KeyboardAvoidingView
@@ -620,7 +816,10 @@ const ActivityEquipmentListScreen: React.FC<ActivityEquipmentListScreenProps> = 
                         activeOpacity={1}
                         onPress={() => setShowCreateWorkModal(false)}
                     >
-                        <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
+                        <View
+                            style={[styles.modalContent, { maxWidth: width * 0.9, maxHeight: height * 0.85 }]}
+                            onStartShouldSetResponder={() => true}
+                        >
                             <View style={styles.modalHeader}>
                                 <View style={styles.modalHeaderContent}>
                                     <Text style={styles.modalTitle}>Criar Registro de Trabalho</Text>
@@ -635,7 +834,7 @@ const ActivityEquipmentListScreen: React.FC<ActivityEquipmentListScreenProps> = 
                             </View>
 
                             <ScrollView
-                                style={styles.modalBodyScroll}
+                                style={[styles.modalBodyScroll, { maxHeight: height * 0.45 }]}
                                 contentContainerStyle={styles.modalBodyContent}
                                 keyboardShouldPersistTaps="handled"
                                 showsVerticalScrollIndicator={true}
@@ -700,7 +899,7 @@ const ActivityEquipmentListScreen: React.FC<ActivityEquipmentListScreenProps> = 
                     </TouchableOpacity>
                 </KeyboardAvoidingView>
             </Modal>
-        </View>
+        </ResponsiveContainer>
     );
 };
 
@@ -716,42 +915,84 @@ const styles = StyleSheet.create({
         paddingHorizontal: 20,
         flexDirection: "row",
         alignItems: "center",
+        justifyContent: "space-between",
     },
     backButton: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
         backgroundColor: "rgba(255,255,255,0.2)",
         justifyContent: "center",
         alignItems: "center",
-        marginRight: 16,
+    },
+    filterButton: {
+        backgroundColor: "rgba(255,255,255,0.2)",
+        justifyContent: "center",
+        alignItems: "center",
     },
     headerContent: {
         flex: 1,
+        marginLeft: 16,
     },
     headerTitle: {
-        fontSize: 20,
-        fontWeight: "bold",
         color: "#fff",
         marginBottom: 4,
     },
     headerSubtitle: {
-        fontSize: 14,
         color: "rgba(255,255,255,0.8)",
     },
     content: {
         flex: 1,
     },
-    filtersSection: {
+    filtersBar: {
         backgroundColor: "#fff",
-        margin: 16,
+        marginHorizontal: 16,
+        marginTop: 16,
         borderRadius: 12,
-        padding: 16,
         shadowColor: "#000",
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.1,
         shadowRadius: 8,
         elevation: 4,
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 12,
+    },
+    filtersButton: {
+        flexDirection: "row",
+        alignItems: "center",
+        backgroundColor: "#fff",
+        borderRadius: 12,
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 3,
+        gap: 8,
+        borderWidth: 1,
+        borderColor: "#007bff",
+    },
+    filtersButtonText: {
+        color: "#007bff",
+        flex: 1,
+    },
+    filterBadge: {
+        backgroundColor: "#007bff",
+        borderRadius: 10,
+        minWidth: 20,
+        height: 20,
+        justifyContent: "center",
+        alignItems: "center",
+        paddingHorizontal: 6,
+    },
+    filterBadgeText: {
+        color: "#fff",
+        fontSize: 12,
+    },
+    quickSearchInput: {
+        flex: 1,
+        backgroundColor: "#f8f9fa",
+        fontSize: 16,
+        color: "#000",
+        borderWidth: 1,
+        borderColor: "#e9ecef",
     },
     sectionTitle: {
         fontSize: 18,
@@ -889,62 +1130,100 @@ const styles = StyleSheet.create({
     },
     equipmentCard: {
         backgroundColor: "#fff",
-        borderRadius: 12,
-        marginBottom: 12,
+        borderRadius: 16,
         shadowColor: "#000",
-        shadowOffset: { width: 0, height: 2 },
+        shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.1,
-        shadowRadius: 8,
-        elevation: 4,
+        shadowRadius: 12,
+        elevation: 6,
         overflow: "hidden",
     },
     cardHeader: {
         flexDirection: "row",
         justifyContent: "space-between",
         alignItems: "center",
-        padding: 16,
         borderBottomWidth: 1,
         borderBottomColor: "#f0f0f0",
+        backgroundColor: "#fafbfc",
+    },
+    checkbox: {
+        padding: 4,
     },
     equipmentInfo: {
         flexDirection: "row",
         alignItems: "center",
         flex: 1,
     },
+    equipmentIcon: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        justifyContent: "center",
+        alignItems: "center",
+        marginRight: 12,
+    },
+    equipmentDetails: {
+        flex: 1,
+    },
     equipmentTag: {
-        fontSize: 16,
-        fontWeight: "600",
         color: "#333",
-        marginLeft: 8,
-        backgroundColor: "transparent",
+        marginBottom: 2,
+    },
+    equipmentId: {
+        color: "#666",
     },
     statusBadge: {
         flexDirection: "row",
         alignItems: "center",
-        paddingHorizontal: 8,
-        paddingVertical: 4,
-        borderRadius: 12,
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        borderRadius: 16,
     },
     statusText: {
-        fontSize: 12,
-        fontWeight: "500",
         marginLeft: 4,
-        backgroundColor: "transparent",
     },
     cardContent: {
-        padding: 16,
+        backgroundColor: "#fff",
     },
-    infoRow: {
+    equipmentMeta: {
+        gap: 12,
+    },
+    metaItem: {
         flexDirection: "row",
         alignItems: "center",
-        marginBottom: 8,
     },
-    infoText: {
-        fontSize: 14,
-        color: "#333",
-        marginLeft: 8,
+    metaIcon: {
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        justifyContent: "center",
+        alignItems: "center",
+        marginRight: 10,
+    },
+    metaContent: {
         flex: 1,
-        backgroundColor: "transparent",
+    },
+    metaLabel: {
+        color: "#666",
+        marginBottom: 2,
+    },
+    metaValue: {
+        color: "#333",
+    },
+    specsGrid: {
+        flexDirection: "row",
+        gap: 16,
+        marginTop: 8,
+    },
+    specItem: {
+        flexDirection: "row",
+        alignItems: "center",
+        flex: 1,
+    },
+    specText: {
+        color: "#666",
+        marginLeft: 6,
+        flex: 1,
     },
     cardFooter: {
         padding: 16,
@@ -998,34 +1277,25 @@ const styles = StyleSheet.create({
     modalOverlay: {
         flex: 1,
         backgroundColor: "rgba(0,0,0,0.5)",
-        justifyContent: "center",
-        alignItems: "center",
-        padding: 16,
+        justifyContent: "flex-end",
     },
     modalOverlayTouchable: {
         flex: 1,
-        width: '100%',
-        justifyContent: "center",
-        alignItems: "center",
     },
-    modalContent: {
-        width: "100%",
-        maxWidth: width * 0.9,
-        maxHeight: Dimensions.get('window').height * 0.85,
+    filtersModal: {
         backgroundColor: "#fff",
-        borderRadius: 12,
+        borderTopLeftRadius: 20,
+        borderTopRightRadius: 20,
         shadowColor: "#000",
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 12,
-        elevation: 8,
-        overflow: 'hidden',
+        shadowOffset: { width: 0, height: -4 },
+        shadowOpacity: 0.2,
+        shadowRadius: 20,
+        elevation: 20,
     },
     modalHeader: {
         flexDirection: "row",
         justifyContent: "space-between",
         alignItems: "flex-start",
-        padding: 16,
         borderBottomWidth: 1,
         borderBottomColor: "#f0f0f0",
     },
@@ -1033,63 +1303,181 @@ const styles = StyleSheet.create({
         flex: 1,
     },
     modalTitle: {
-        fontSize: 18,
-        fontWeight: "700",
         color: "#333",
         marginBottom: 4,
     },
     modalSubtitle: {
-        fontSize: 12,
         color: "#666",
-        marginBottom: 0,
     },
     modalCloseButton: {
-        padding: 4,
-        marginLeft: 12,
-    },
-    modalBodyScroll: {
-        maxHeight: Dimensions.get('window').height * 0.45,
-    },
-    modalBodyContent: {
-        padding: 16,
-        paddingBottom: 10,
-    },
-    equipmentsListContainer: {
-        maxHeight: 160,
-        borderWidth: 1,
-        borderColor: "#e0e0e0",
-        borderRadius: 8,
         padding: 8,
-        backgroundColor: "#f8f9fa",
+        marginLeft: 16,
     },
-    inputLabel: {
-        fontSize: 14,
-        fontWeight: "600",
+    modalBody: {
+        padding: 20,
+    },
+    filterSection: {
+        marginBottom: 24,
+    },
+    filterSectionTitle: {
         color: "#333",
-        marginBottom: 6,
+        marginBottom: 8,
     },
-    textInput: {
-        borderWidth: 1,
-        borderColor: "#ddd",
-        borderRadius: 8,
-        padding: 10,
-        backgroundColor: "#fff",
-        color: "#000",
+    statusGrid: {
+        flexDirection: "row",
+        flexWrap: "wrap",
+        gap: 8,
+        marginTop: 8,
     },
-    summaryRow: {
+    statusChip: {
         flexDirection: "row",
         alignItems: "center",
-        gap: 8,
-        paddingVertical: 6,
+        backgroundColor: "#f8f9fa",
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        borderRadius: 20,
+        gap: 6,
+        borderWidth: 1,
+        borderColor: "#e9ecef",
     },
-    summaryText: {
-        color: "#333",
-        fontSize: 14,
+    statusChipSelected: {
+        backgroundColor: "#007bff",
+        borderColor: "#007bff",
+    },
+    statusChipText: {
+        color: "#666",
+    },
+    statusChipTextSelected: {
+        color: "#fff",
+    },
+    sectorGrid: {
+        flexDirection: "row",
+        flexWrap: "wrap",
+        gap: 8,
+        marginTop: 8,
+    },
+    sectorChip: {
+        backgroundColor: "#f8f9fa",
+        paddingHorizontal: 16,
+        paddingVertical: 10,
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: "#007bff",
+    },
+    sectorChipSelected: {
+        backgroundColor: "#007bff",
+    },
+    sectorChipText: {
+        color: "#007bff",
+    },
+    sectorChipTextSelected: {
+        color: "#fff",
+    },
+    personalFilter: {
+        flexDirection: "row",
+        alignItems: "center",
+        backgroundColor: "#f8f9fa",
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: "#e9ecef",
+    },
+    personalFilterSelected: {
+        backgroundColor: "#f3f0ff",
+        borderColor: "#6f42c1",
+    },
+    personalFilterText: {
+        color: "#666",
+        marginLeft: 8,
+    },
+    personalFilterTextSelected: {
+        color: "#6f42c1",
+        fontWeight: "500",
     },
     modalActions: {
         flexDirection: "row",
-        gap: 8,
-        marginTop: 16,
+        justifyContent: "space-between",
+        gap: 12,
+    },
+    clearFiltersButton: {
+        flex: 1,
+        backgroundColor: "#f8f9fa",
+        paddingVertical: 12,
+        borderRadius: 8,
+        alignItems: "center",
+    },
+    clearFiltersText: {
+        color: "#666",
+    },
+    applyFiltersButton: {
+        flex: 1,
+        backgroundColor: "#007bff",
+        paddingVertical: 12,
+        borderRadius: 8,
+        alignItems: "center",
+    },
+    applyFiltersText: {
+        color: "#fff",
+    },
+    centeredModalOverlay: {
+        flex: 1,
+        backgroundColor: "rgba(0,0,0,0.6)",
+        justifyContent: "center",
+        alignItems: "center",
+        padding: 20,
+    },
+    centeredModalOverlayTouchable: {
+        position: "absolute",
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+    },
+    centeredModalContent: {
+        backgroundColor: "#fff",
+        borderRadius: 20,
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 10 },
+        shadowOpacity: 0.3,
+        shadowRadius: 20,
+        elevation: 20,
+        overflow: "hidden",
+    },
+    newActivitySection: {
+        backgroundColor: "#667eea",
+    },
+    newActivityButton: {
+        backgroundColor: "rgba(255,255,255,0.1)",
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.2)",
+    },
+    newActivityButtonContent: {
+        flexDirection: "row",
+        alignItems: "center",
+        padding: 16,
+        gap: 12,
+    },
+    newActivityIcon: {
+        width: 48,
+        height: 48,
+        borderRadius: 24,
+        backgroundColor: "rgba(255,255,255,0.2)",
+        justifyContent: "center",
+        alignItems: "center",
+    },
+    newActivityTextContent: {
+        flex: 1,
+    },
+    newActivityTitle: {
+        color: "#fff",
+        marginBottom: 2,
+    },
+    newActivitySubtitle: {
+        color: "rgba(255,255,255,0.8)",
+    },
+    modalDivider: {
+        height: 1,
+        backgroundColor: "#e9ecef",
     },
     modalButton: {
         flex: 1,
@@ -1134,6 +1522,7 @@ const styles = StyleSheet.create({
         color: "#333",
         marginLeft: 8,
     },
+    
     addressesContainer: {
         marginTop: 8,
     },
@@ -1190,6 +1579,55 @@ const styles = StyleSheet.create({
         fontSize: 14,
         color: "#333",
         lineHeight: 20,
+    },
+    modalContent: {
+        width: "100%",
+        backgroundColor: "#fff",
+        borderRadius: 12,
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 12,
+        elevation: 8,
+        overflow: 'hidden',
+    },
+    modalBodyScroll: {
+    },
+    modalBodyContent: {
+        padding: 16,
+        paddingBottom: 10,
+    },
+    inputLabel: {
+        fontSize: 14,
+        fontWeight: "600",
+        color: "#333",
+        marginBottom: 6,
+    },
+    textInput: {
+        borderWidth: 1,
+        borderColor: "#ddd",
+        borderRadius: 8,
+        padding: 10,
+        backgroundColor: "#fff",
+        color: "#000",
+    },
+    equipmentsListContainer: {
+        maxHeight: 160,
+        borderWidth: 1,
+        borderColor: "#e0e0e0",
+        borderRadius: 8,
+        padding: 8,
+        backgroundColor: "#f8f9fa",
+    },
+    summaryRow: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 8,
+        paddingVertical: 6,
+    },
+    summaryText: {
+        color: "#333",
+        fontSize: 14,
     },
 });
 

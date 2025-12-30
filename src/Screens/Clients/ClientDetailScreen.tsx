@@ -18,6 +18,8 @@ import { usePermissions } from "../../Context/PermissionsContext";
 import { useLanguage } from "../../Context/LanguageContext";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Client, { IClient, Contract, Contact, Address } from "../../Models/Clientes";
+import ResponsiveContainer from "../../Components/ResponsiveContainer";
+import { useResponsive } from "../../hooks/useResponsive";
 
 interface ClientDetailScreenProps {
     route: RouteProp<RootStackParamList, "ClientDetailScreen">;
@@ -28,6 +30,8 @@ const ClientDetailScreen: React.FC<ClientDetailScreenProps> = ({ route, navigati
     const { hasPermission, permissions } = usePermissions();
     const { t } = useLanguage();
     const { clientId } = route.params;
+    const r = useResponsive();
+    const compact = r.fontScale > 1.25 || r.width < 360;
 
     // Debug das permissões
     console.log("[ClientDetailScreen] Permissões disponíveis:", permissions);
@@ -110,26 +114,26 @@ const ClientDetailScreen: React.FC<ClientDetailScreenProps> = ({ route, navigati
 
     if (!hasPermission("view_client")) {
         return (
-            <View style={styles.container}>
+            <ResponsiveContainer withPadding={false} style={styles.container}>
                 <Text style={styles.errorText}>{t('clients.noPermission')}</Text>
-            </View>
+            </ResponsiveContainer>
         );
     }
 
     if (loading) {
         return (
-            <View style={styles.container}>
+            <ResponsiveContainer withPadding={false} style={styles.container}>
                 <ActivityIndicator size="large" color="#007BFF" />
                 <Text style={styles.loadingText}>{t('clientDetails.loading')}</Text>
-            </View>
+            </ResponsiveContainer>
         );
     }
 
     if (!client) {
         return (
-            <View style={styles.container}>
+            <ResponsiveContainer withPadding={false} style={styles.container}>
                 <Text style={styles.errorText}>{t('clientDetails.notFound')}</Text>
-            </View>
+            </ResponsiveContainer>
         );
     }
 
@@ -206,48 +210,33 @@ const ClientDetailScreen: React.FC<ClientDetailScreenProps> = ({ route, navigati
         return result;
     };
 
+    const InfoRow = ({ label, value }: { label: string; value: any }) => (
+        <View style={[styles.infoRow, compact && styles.infoRowStack]}>
+            <Text style={[styles.label, compact && styles.labelStack]}>{label}</Text>
+            <Text style={[styles.value, compact && styles.valueStack]}>{String(value ?? "N/A")}</Text>
+        </View>
+    );
+
     return (
-        <ScrollView style={styles.container}>
+        <ResponsiveContainer
+            withPadding={true}
+            scroll={true}
+            style={styles.container}
+            contentContainerStyle={{ paddingBottom: r.spacing(2) }}
+        >
 
             {/* Informações Básicas */}
             <View style={styles.section}>
                 <Text style={styles.sectionTitle}>{t('clientDetails.basicInfo')}</Text>
-                <View style={styles.infoRow}>
-                    <Text style={styles.label}>{t('clients.name')}:</Text>
-                    <Text style={styles.value}>{client.name}</Text>
-                </View>
-                <View style={styles.infoRow}>
-                    <Text style={styles.label}>{t('clients.email')}:</Text>
-                    <Text style={styles.value}>{client.email}</Text>
-                </View>
-                <View style={styles.infoRow}>
-                    <Text style={styles.label}>{t('clients.document')}:</Text>
-                    <Text style={styles.value}>{client.document || "N/A"}</Text>
-                </View>
-                <View style={styles.infoRow}>
-                    <Text style={styles.label}>Telefone:</Text>
-                    <Text style={styles.value}>{client.phone || "N/A"}</Text>
-                </View>
-                <View style={styles.infoRow}>
-                    <Text style={styles.label}>{t('clientDetails.fantasyName')}:</Text>
-                    <Text style={styles.value}>{client.fantasy_name || "N/A"}</Text>
-                </View>
-                <View style={styles.infoRow}>
-                    <Text style={styles.label}>{t('clientDetails.stateRegistration')}:</Text>
-                    <Text style={styles.value}>{client.state_registration || "N/A"}</Text>
-                </View>
-                <View style={styles.infoRow}>
-                    <Text style={styles.label}>{t('clientDetails.openingDate')}:</Text>
-                    <Text style={styles.value}>{formatDate(client.opening_date || "")}</Text>
-                </View>
-                <View style={styles.infoRow}>
-                    <Text style={styles.label}>{t('clientDetails.totalSectors')}:</Text>
-                    <Text style={styles.value}>{client.total_sectors || 0}</Text>
-                </View>
-                <View style={styles.infoRow}>
-                    <Text style={styles.label}>{t('clientDetails.totalEquipments')}:</Text>
-                    <Text style={styles.value}>{client.total_equipments || 0}</Text>
-                </View>
+                <InfoRow label={`${t('clients.name')}:`} value={client.name} />
+                <InfoRow label={`${t('clients.email')}:`} value={client.email} />
+                <InfoRow label={`${t('clients.document')}:`} value={client.document || "N/A"} />
+                <InfoRow label={`Telefone:`} value={client.phone || "N/A"} />
+                <InfoRow label={`${t('clientDetails.fantasyName')}:`} value={client.fantasy_name || "N/A"} />
+                <InfoRow label={`${t('clientDetails.stateRegistration')}:`} value={client.state_registration || "N/A"} />
+                <InfoRow label={`${t('clientDetails.openingDate')}:`} value={formatDate(client.opening_date || "")} />
+                <InfoRow label={`${t('clientDetails.totalSectors')}:`} value={client.total_sectors || 0} />
+                <InfoRow label={`${t('clientDetails.totalEquipments')}:`} value={client.total_equipments || 0} />
             </View>
 
             {/* Contratos */}
@@ -387,13 +376,16 @@ const ClientDetailScreen: React.FC<ClientDetailScreenProps> = ({ route, navigati
             {/* Botão Listar Setores */}
             {hasPermission("list_sectors") && (
                 <TouchableOpacity
-                    style={styles.listSectorsButton}
+                    style={[
+                        styles.listSectorsButton,
+                        { minHeight: r.verticalScale(48), paddingVertical: r.spacing(1) },
+                    ]}
                     onPress={() => navigation.navigate("ClientSectorsScreen", { clientId })}
                 >
                     <Text style={styles.listSectorsButtonText}>{t('clientDetails.listSectors')}</Text>
                 </TouchableOpacity>
             )}
-        </ScrollView>
+        </ResponsiveContainer>
     );
 };
 
@@ -430,18 +422,31 @@ const styles = StyleSheet.create({
         paddingVertical: 8,
         borderBottomWidth: 1,
         borderBottomColor: "#f0f0f0",
+        gap: 12,
+    },
+    infoRowStack: {
+        flexDirection: "column",
+        alignItems: "flex-start",
     },
     label: {
         fontSize: 14,
         fontWeight: "bold",
         color: "#666",
-        flex: 1,
+        flexShrink: 1,
+    },
+    labelStack: {
+        marginBottom: 4,
     },
     value: {
         fontSize: 14,
         color: "#333",
-        flex: 2,
+        flexShrink: 1,
+        flexWrap: "wrap",
         textAlign: "right",
+    },
+    valueStack: {
+        textAlign: "left",
+        width: "100%",
     },
     listContainer: {
         marginTop: 10,
@@ -456,6 +461,8 @@ const styles = StyleSheet.create({
         fontSize: 14,
         color: "#333",
         marginBottom: 2,
+        flexShrink: 1,
+        flexWrap: "wrap",
     },
     bold: {
         fontWeight: "bold",

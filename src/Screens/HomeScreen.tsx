@@ -1,18 +1,17 @@
 import React, { useState, useEffect } from "react";
 import {
   View,
-  Text,
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  Dimensions,
   StatusBar,
   Animated,
   ActivityIndicator,
 } from "react-native";
-import ScreenContainer from "../Components/ScreenContainer";
+import ResponsiveContainer from "../Components/ResponsiveContainer";
+import ResponsiveText from "../Components/ResponsiveText";
+import { useResponsive } from "../hooks/useResponsive";
 import { Ionicons } from "@expo/vector-icons";
-import { FontAwesome } from "@expo/vector-icons";
 import { useFocusEffect } from '@react-navigation/native';
 import { RootStackParamList } from "../Routers/AppRouter";
 import { useLanguage } from "../Context/LanguageContext";
@@ -24,8 +23,6 @@ import EquipmentService from "../Services/EquipamentService";
 import SignatureService from "../Services/SignatureService";
 import SignatureRequiredModal from "../Components/SignatureRequiredModal";
 
-const { width, height } = Dimensions.get("window");
-
 interface HomeScreenProps {
   navigation: any;
 }
@@ -34,11 +31,12 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
   const { t } = useLanguage();
   const { username } = useUser();
   const { hasPermission } = usePermissions();
+  const r = useResponsive();
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
-    pendingActivities: 0,
-    todayActivities: 0,
-    totalEquipment: 0,
+    openActivities: 0,
+    waitingApproval: 0,
+    totalActivities: 0,
   });
   const [showSignatureModal, setShowSignatureModal] = useState(false);
 
@@ -98,52 +96,49 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
         return;
       }
 
-      console.log("[HomeScreen] Carregando estatísticas do dashboard resumido...");
-
-      // Preparado para usar o novo endpoint resumido quando disponível
-      // Por enquanto, usa valores padrão para evitar chamadas desnecessárias
-      let createdCount = 0;
-      let openCount = 0;
-      let totalCount = 0;
+      console.log("[HomeScreen] Carregando estatísticas do dashboard...");
 
       try {
-        // TODO: Quando o endpoint resumido estiver disponível no backend, descomentar:
-        // const counts = await ActivityService.getDashboardSummary({ token });
-        // createdCount = counts.created || 0;
-        // openCount = counts.open || 0;
-        // totalCount = counts.total || 0;
-
-        // Por enquanto, usar o método placeholder que retorna valores zerados
-        // para evitar chamadas GET /activities desnecessárias
-        const counts = await ActivityService.getDashboardSummary({ token });
-        createdCount = counts.created || 0;
-        openCount = counts.open || 0;
-        totalCount = counts.total || 0;
+        // Usar o novo endpoint /charts/activities
+        const charts = await ActivityService.getActivityCharts({ token });
 
         console.log("[HomeScreen] Estatísticas carregadas:", {
-          createdActivities: createdCount,
-          openActivities: openCount,
-          totalActivities: totalCount,
+          total: charts.total,
+          created: charts.created,
+          open: charts.open,
+          waiting_budget_approval: charts.waiting_budget_approval,
+          budget_approval: charts.budget_approval,
+          budget_disapproval: charts.budget_disapproval,
+          closed: charts.closed,
+          archived: charts.archived,
         });
+
+        setStats({
+          openActivities: charts.open,
+          waitingApproval: charts.waiting_budget_approval,
+          totalActivities: charts.total,
+        });
+
       } catch (error: any) {
         console.error("[HomeScreen] Erro ao carregar estatísticas:", error);
         console.warn("[HomeScreen] Usando valores zero como fallback");
-      }
 
-      setStats({
-        pendingActivities: createdCount,
-        todayActivities: openCount,
-        totalEquipment: totalCount,
-      });
+        // Em caso de erro, manter valores padrão
+        setStats({
+          openActivities: 0,
+          waitingApproval: 0,
+          totalActivities: 0,
+        });
+      }
 
       setLoading(false);
     } catch (error) {
       console.error("[HomeScreen] Erro ao carregar estatísticas:", error);
       // Em caso de erro, manter valores padrão
       setStats({
-        pendingActivities: 0,
-        todayActivities: 0,
-        totalEquipment: 0,
+        openActivities: 0,
+        waitingApproval: 0,
+        totalActivities: 0,
       });
       setLoading(false);
     }
@@ -156,20 +151,11 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
     {
       label: t('menu.pmocs'),
       icon: "document-text",
-      screen: "ActivityHistoryScreen",
+      screen: "ActivityListScreen",
       params: { activityTypeSlug: "pmoc", status: ["open", "pending"] },
       implemented: true,
       color: "#4CAF50",
       description: "Gerenciar PMOCs"
-    },
-    {
-      label: t('menu.serviceOrders'),
-      icon: "hammer",
-      screen: "ActivityHistoryScreen",
-      params: { activityTypeSlug: "service_order", status: ["open", "pending"] },
-      implemented: true,
-      color: "#FF9800",
-      description: "Ordens de serviço"
     },
     {
       label: "Roteiro",
@@ -181,7 +167,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
     {
       label: t('menu.technicalAssistance'),
       icon: "headset",
-      screen: "ActivityHistoryScreen",
+      screen: "ActivityListScreen",
       params: { activityTypeSlug: "technical_assistance", status: ["open", "pending"] },
       implemented: true,
       color: "#9C27B0",
@@ -190,7 +176,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
     {
       label: t('menu.installation'),
       icon: "cube",
-      screen: "ActivityHistoryScreen",
+      screen: "ActivityListScreen",
       params: { activityTypeSlug: "instalation", status: ["open", "pending"] },
       implemented: true,
       color: "#607D8B",
@@ -229,11 +215,15 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
   const StatCard = ({ title, value, icon, color, onPress }: any) => (
     <TouchableOpacity style={styles.statCard} onPress={onPress} activeOpacity={0.8}>
       <View style={[styles.statIcon, { backgroundColor: color + '20' }]}>
-        <Ionicons name={icon} size={24} color={color} />
+        <Ionicons name={icon} size={r.scale(24)} color={color} />
       </View>
       <View style={styles.statContent}>
-        <Text style={styles.statValue}>{value}</Text>
-        <Text style={styles.statTitle}>{title}</Text>
+        <ResponsiveText variant="title" weight="bold" style={{ color: '#2C3E50' }}>
+          {value}
+        </ResponsiveText>
+        <ResponsiveText variant="caption" style={{ color: '#6C757D', textAlign: 'center', marginTop: r.spacing(0.4) }}>
+          {title}
+        </ResponsiveText>
       </View>
     </TouchableOpacity>
   );
@@ -245,25 +235,31 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
       activeOpacity={0.8}
     >
       <View style={[styles.actionIcon, { backgroundColor: item.color + '20' }]}>
-        <Ionicons name={item.icon as any} size={28} color={item.color} />
+        <Ionicons name={item.icon as any} size={r.scale(28)} color={item.color} />
       </View>
-      <Text style={styles.actionTitle}>{item.label}</Text>
-      <Text style={styles.actionDescription}>{item.description}</Text>
+      <ResponsiveText variant="body" weight="bold" style={{ color: '#2C3E50', marginBottom: r.spacing(0.4) }}>
+        {item.label}
+      </ResponsiveText>
+      <ResponsiveText variant="caption" style={{ color: '#6C757D', lineHeight: r.responsiveFontSize(16) }}>
+        {item.description}
+      </ResponsiveText>
     </TouchableOpacity>
   );
 
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
+      <ResponsiveContainer style={styles.loadingContainer} withPadding={false}>
         <StatusBar backgroundColor="#2C3E50" barStyle="light-content" />
         <ActivityIndicator size="large" color="#007BFF" />
-        <Text style={styles.loadingText}>Carregando dashboard...</Text>
-      </View>
+        <ResponsiveText variant="body" style={{ color: '#6C757D', marginTop: r.spacing(1.5) }}>
+          Carregando dashboard...
+        </ResponsiveText>
+      </ResponsiveContainer>
     );
   }
 
   return (
-    <ScreenContainer style={styles.container} withPadding={false}>
+    <ResponsiveContainer style={styles.container} withPadding={false}>
       <StatusBar backgroundColor="#2C3E50" barStyle="light-content" />
 
       {/* Header */}
@@ -271,8 +267,12 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
         <View style={styles.headerContent}>
           <View style={styles.userInfo}>
             <View style={styles.userText}>
-              <Text style={styles.welcomeText}>{t('common.welcome')}</Text>
-              <Text style={styles.userName}>{username || t('common.user')}</Text>
+              <ResponsiveText variant="body" style={{ color: '#BDC3C7', fontWeight: '500' }}>
+                {t('common.welcome')}
+              </ResponsiveText>
+              <ResponsiveText variant="subtitle" weight="bold" style={{ color: '#FFFFFF' }}>
+                {username || t('common.user')}
+              </ResponsiveText>
             </View>
           </View>
         </View>
@@ -290,35 +290,39 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
         >
           {/* Estatísticas */}
           <View style={styles.statsSection}>
-            <Text style={styles.sectionTitle}>{t('dashboard.dailySummary')}</Text>
+            <ResponsiveText variant="subtitle" weight="bold" style={{ color: '#2C3E50', marginBottom: r.spacing(1.5) }}>
+              {t('dashboard.dailySummary')}
+            </ResponsiveText>
             <View style={styles.statsGrid}>
               <StatCard
-                title={t('dashboard.pendingActivities')}
-                value={stats.pendingActivities}
-                icon="time"
-                color="#FF6B6B"
-                onPress={() => navigation.navigate("ActivityHistoryScreen", { status: ["pending"] })}
-              />
-              <StatCard
-                title={t('dashboard.openActivities')}
-                value={stats.todayActivities}
+                title="Atividades Abertas"
+                value={stats.openActivities}
                 icon="calendar"
                 color="#4ECDC4"
-                onPress={() => navigation.navigate("ActivityHistoryScreen", { status: ["open"] })}
+                onPress={() => navigation.navigate("ActivityListScreen", { status: ["open"] })}
               />
               <StatCard
-                title={t('dashboard.totalActivities')}
-                value={stats.totalEquipment}
+                title="Aguardando Aprovação"
+                value={stats.waitingApproval}
+                icon="hourglass"
+                color="#FFA726"
+                onPress={() => navigation.navigate("ActivityListScreen", { status: ["waiting_budget_approval"] })}
+              />
+              <StatCard
+                title="Total de Atividades"
+                value={stats.totalActivities}
                 icon="list"
                 color="#45B7D1"
-                onPress={() => navigation.navigate("ActivityHistoryScreen", {})}
+                onPress={() => navigation.navigate("ActivityListScreen", {})}
               />
             </View>
           </View>
 
           {/* Ações Rápidas */}
           <View style={styles.quickActionsSection}>
-            <Text style={styles.sectionTitle}>{t('dashboard.quickActions')}</Text>
+            <ResponsiveText variant="subtitle" weight="bold" style={{ color: '#2C3E50', marginBottom: r.spacing(1.5) }}>
+              {t('dashboard.quickActions')}
+            </ResponsiveText>
             <View style={styles.quickActionsGrid}>
               {menuItems.slice(0, 4).map((item, index) => (
                 <QuickActionCard
@@ -345,7 +349,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
         </Animated.View>
       </ScrollView>
       <SignatureRequiredModal visible={showSignatureModal} onSignatureSaved={() => setShowSignatureModal(false)} />
-    </ScreenContainer>
+    </ResponsiveContainer>
   );
 };
 
@@ -359,12 +363,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#F8F9FA',
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  loadingText: {
-    marginTop: 15,
-    fontSize: 16,
-    color: '#6C757D',
-    fontWeight: '500',
   },
   header: {
     backgroundColor: '#2C3E50',
@@ -384,16 +382,6 @@ const styles = StyleSheet.create({
   },
   userText: {
     marginLeft: 12,
-  },
-  welcomeText: {
-    color: '#BDC3C7',
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  userName: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: 'bold',
   },
   notificationButton: {
     position: 'relative',
@@ -420,12 +408,6 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: 20,
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#2C3E50',
-    marginBottom: 15,
   },
   statsSection: {
     marginBottom: 30,
@@ -457,17 +439,6 @@ const styles = StyleSheet.create({
   statContent: {
     alignItems: 'center',
   },
-  statValue: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#2C3E50',
-  },
-  statTitle: {
-    fontSize: 12,
-    color: '#6C757D',
-    textAlign: 'center',
-    marginTop: 4,
-  },
   quickActionsSection: {
     marginBottom: 30,
   },
@@ -495,17 +466,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 12,
-  },
-  actionTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#2C3E50',
-    marginBottom: 4,
-  },
-  actionDescription: {
-    fontSize: 12,
-    color: '#6C757D',
-    lineHeight: 16,
   },
   moreOptionsSection: {
     marginBottom: 30,

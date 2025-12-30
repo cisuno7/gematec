@@ -20,6 +20,9 @@ import EquipmentService from "../../Services/EquipamentService";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { FontAwesome, MaterialIcons, Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from 'expo-linear-gradient';
+import ResponsiveContainer from "../../Components/ResponsiveContainer";
+import { useResponsive } from "../../hooks/useResponsive";
+import ResponsiveText from "../../Components/ResponsiveText";
 
 interface EquipmentListScreenProps {
     route: RouteProp<RootStackParamList, "EquipmentListScreen">;
@@ -30,6 +33,8 @@ const EquipmentListScreen: React.FC<EquipmentListScreenProps> = ({ route, naviga
     const { hasPermission } = usePermissions();
     const { t } = useLanguage();
     const { clientId, sectorId } = route.params;
+    const r = useResponsive();
+    const compact = r.fontScale > 1.25 || r.width < 360;
 
     console.log('[EquipmentListScreen] Montando componente com params:', { clientId, sectorId });
 
@@ -221,9 +226,9 @@ const EquipmentListScreen: React.FC<EquipmentListScreenProps> = ({ route, naviga
 
     if (!hasPermission("list_equipments")) {
         return (
-            <View style={styles.container}>
+            <ResponsiveContainer withPadding={false} style={styles.container}>
                 <Text style={styles.errorText}>{t('equipment.noPermission')}</Text>
-            </View>
+            </ResponsiveContainer>
         );
     }
 
@@ -266,7 +271,7 @@ const EquipmentListScreen: React.FC<EquipmentListScreenProps> = ({ route, naviga
     );
 
     return (
-        <View style={styles.container}>
+        <ResponsiveContainer withPadding={false} style={styles.container}>
             {/* Header */}
             <LinearGradient
                 colors={["#667eea", "#764ba2"]}
@@ -282,13 +287,21 @@ const EquipmentListScreen: React.FC<EquipmentListScreenProps> = ({ route, naviga
                         <Ionicons name="arrow-back" size={24} color="#fff" />
                     </TouchableOpacity>
                     <View style={styles.headerTextContainer}>
-                        <Text style={styles.headerTitle}>Cliente: {clientName || String(clientId)}</Text>
-                        <Text style={styles.headerSubtitle}>Setor: {sectorName || String(sectorId)}</Text>
+                        <Text style={[styles.headerTitle, compact && { flexWrap: "wrap" }]}>
+                            Cliente: {clientName || String(clientId)}
+                        </Text>
+                        <Text style={[styles.headerSubtitle, compact && { flexWrap: "wrap" }]}>
+                            Setor: {sectorName || String(sectorId)}
+                        </Text>
                     </View>
                 </View>
             </LinearGradient>
 
-            <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>
+            <ScrollView
+                style={styles.scrollContainer}
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+            >
                 {/* Filtros */}
                 <View style={{ marginTop: 16 }}>
                     <RestrictedEquipmentFilters
@@ -312,7 +325,9 @@ const EquipmentListScreen: React.FC<EquipmentListScreenProps> = ({ route, naviga
                             onPress={() => navigation.navigate("CreateEquipmentScreen", { clientId, sectorId })}
                         >
                             <FontAwesome name="plus" size={16} color="#fff" />
-                            <Text style={styles.createButtonText}>Novo</Text>
+                            <ResponsiveText variant="button" weight="bold" style={styles.createButtonText}>
+                                Novo
+                            </ResponsiveText>
                         </TouchableOpacity>
                     </View>
                 )}
@@ -333,12 +348,18 @@ const EquipmentListScreen: React.FC<EquipmentListScreenProps> = ({ route, naviga
                             >
                                 <View style={styles.equipmentHeader}>
                                     <View style={styles.equipmentInfo}>
-                                        <Text style={styles.equipmentTag}>{item.tag || "Sem Tag"}</Text>
-                                        <Text style={styles.equipmentPatrimony}>{item.patrimony || t('equipment.patrimonyMissing')}</Text>
+                                        <Text style={[styles.equipmentTag, { flexShrink: 1 }]} numberOfLines={2}>
+                                            {item.tag || "Sem Tag"}
+                                        </Text>
+                                        <Text style={[styles.equipmentPatrimony, { flexShrink: 1 }]} numberOfLines={2}>
+                                            {item.patrimony || t('equipment.patrimonyMissing')}
+                                        </Text>
                                     </View>
                                     <View style={styles.equipmentStatus}>
                                         <View style={[styles.statusBadge, item.is_active ? styles.statusActive : styles.statusInactive]}>
-                                            <Text style={styles.statusText}>{item.is_active ? t('equipment.active') : t('equipment.inactive')}</Text>
+                                            <Text style={styles.statusText} maxFontSizeMultiplier={1.3}>
+                                                {item.is_active ? t('equipment.active') : t('equipment.inactive')}
+                                            </Text>
                                         </View>
                                     </View>
                                 </View>
@@ -374,7 +395,7 @@ const EquipmentListScreen: React.FC<EquipmentListScreenProps> = ({ route, naviga
             {/* Botão Adicionar Equipamento movido para o topo */}
 
             {/* Botão Atualizar removido a pedido do usuário */}
-        </View>
+        </ResponsiveContainer>
     );
 };
 

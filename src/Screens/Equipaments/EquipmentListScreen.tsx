@@ -8,8 +8,8 @@ import {
   Alert,
   ActivityIndicator,
   Button,
-  TextInput,
-  Switch,
+  KeyboardAvoidingView,
+  Platform,
   ScrollView,
 } from "react-native";
 import { FontAwesome } from "@expo/vector-icons";
@@ -24,6 +24,10 @@ import { usePermissions } from "../../Context/PermissionsContext";
 import ClientService from "../../Services/ClientService";
 import CustomPicker from "../../Components/CustomPicker";
 import apiClient from "../../Context/ApiClient";
+import ResponsiveContainer from "../../Components/ResponsiveContainer";
+import { useResponsive } from "../../hooks/useResponsive";
+import AppTextInput from "../../Components/AppTextInput";
+import ResponsiveText from "../../Components/ResponsiveText";
 
 interface EquipmentListScreenProps {
   route: RouteProp<RootStackParamList, "EquipmentListScreen">;
@@ -35,6 +39,8 @@ const EquipmentListScreen: React.FC<EquipmentListScreenProps> = ({
   navigation,
 }) => {
   const { clientId, sectorId, activityId } = route.params as any;
+  const r = useResponsive();
+  const compact = r.fontScale > 1.25 || r.width < 360;
 
   console.log("[EquipmentListScreen] Parâmetros recebidos:", {
     clientId,
@@ -242,10 +248,20 @@ const EquipmentListScreen: React.FC<EquipmentListScreenProps> = ({
 
 
   return (
-    <View style={styles.container}>
-      <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>
+    <ResponsiveContainer withPadding={false} style={styles.container}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+        <ScrollView
+          style={styles.scrollContainer}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
         {/* Header com informações do cliente/setor */}
-        <View style={styles.headerSection}>
+        <View
+          style={[
+            styles.headerSection,
+            compact && { flexDirection: "column", alignItems: "stretch" },
+          ]}
+        >
           <View style={styles.headerInfo}>
             {selectedClientId && (
               <Text style={styles.headerText}>Cliente: {clientName}</Text>
@@ -258,7 +274,11 @@ const EquipmentListScreen: React.FC<EquipmentListScreenProps> = ({
 
           {hasPermission("add_equipment") && (
             <TouchableOpacity
-              style={styles.createButton}
+              style={[
+                styles.createButton,
+                { minHeight: r.verticalScale(48), paddingVertical: r.spacing(0.75) },
+                compact && { alignSelf: "stretch", justifyContent: "center", marginTop: r.spacing(1) },
+              ]}
               onPress={() => {
                 console.log("[EquipmentListScreen] Clicando em Adicionar Equipamento com:", {
                   selectedClientId,
@@ -273,7 +293,9 @@ const EquipmentListScreen: React.FC<EquipmentListScreenProps> = ({
               }}
             >
               <FontAwesome name="plus" size={16} color="#fff" />
-              <Text style={styles.createButtonText}>Adicionar Equipamento</Text>
+              <ResponsiveText variant="button" weight="bold" style={styles.createButtonText}>
+                Adicionar Equipamento
+              </ResponsiveText>
             </TouchableOpacity>
           )}
         </View>
@@ -283,8 +305,8 @@ const EquipmentListScreen: React.FC<EquipmentListScreenProps> = ({
           <Text style={styles.filtersTitle}>Filtros</Text>
 
           {/* Filtro de Status */}
-          <View style={styles.filterRow}>
-            <Text style={styles.filterLabel}>Status:</Text>
+          <View style={[styles.filterRow, compact && { flexDirection: "column", alignItems: "stretch" }]}>
+            <Text style={[styles.filterLabel, compact && { minWidth: 0, marginBottom: r.spacing(0.5) }]}>Status:</Text>
             <CustomPicker
               selectedValue={statusFilter}
               onValueChange={(value) => setStatusFilter(value || "")}
@@ -301,8 +323,8 @@ const EquipmentListScreen: React.FC<EquipmentListScreenProps> = ({
 
           {/* Filtro de Subsetor */}
           {selectedClientId && selectedSectorId && (
-            <View style={styles.filterRow}>
-              <Text style={styles.filterLabel}>Subsetor:</Text>
+            <View style={[styles.filterRow, compact && { flexDirection: "column", alignItems: "stretch" }]}>
+              <Text style={[styles.filterLabel, compact && { minWidth: 0, marginBottom: r.spacing(0.5) }]}>Subsetor:</Text>
               <CustomPicker
                 selectedValue={subsectorFilter ? String(subsectorFilter) : ""}
                 onValueChange={(value) => setSubsectorFilter(value ? parseInt(String(value)) : undefined)}
@@ -316,8 +338,8 @@ const EquipmentListScreen: React.FC<EquipmentListScreenProps> = ({
 
 
 
-          <TextInput
-            style={styles.searchInput}
+          <AppTextInput
+            style={{ marginBottom: r.spacing(1) }}
             placeholder="Buscar por Tag"
             placeholderTextColor="#999"
             value={searchTerm}
@@ -325,8 +347,8 @@ const EquipmentListScreen: React.FC<EquipmentListScreenProps> = ({
           />
 
           {/* Filtro de Fabricante */}
-          <View style={styles.filterRow}>
-            <Text style={styles.filterLabel}>Fabricante:</Text>
+          <View style={[styles.filterRow, compact && { flexDirection: "column", alignItems: "stretch" }]}>
+            <Text style={[styles.filterLabel, compact && { minWidth: 0, marginBottom: r.spacing(0.5) }]}>Fabricante:</Text>
             {loadingBrands ? (
               <ActivityIndicator size="small" color="#007BFF" />
             ) : (
@@ -345,8 +367,8 @@ const EquipmentListScreen: React.FC<EquipmentListScreenProps> = ({
           </View>
 
           {/* Filtro de Tipo de Equipamento */}
-          <View style={styles.filterRow}>
-            <Text style={styles.filterLabel}>Tipo:</Text>
+          <View style={[styles.filterRow, compact && { flexDirection: "column", alignItems: "stretch" }]}>
+            <Text style={[styles.filterLabel, compact && { minWidth: 0, marginBottom: r.spacing(0.5) }]}>Tipo:</Text>
             {loadingEquipmentTypes ? (
               <ActivityIndicator size="small" color="#007BFF" />
             ) : (
@@ -438,7 +460,8 @@ const EquipmentListScreen: React.FC<EquipmentListScreenProps> = ({
           </View>
         )}
       </ScrollView>
-    </View>
+      </KeyboardAvoidingView>
+    </ResponsiveContainer>
   );
 };
 
@@ -497,15 +520,6 @@ const styles = StyleSheet.create({
     color: "#333",
     marginBottom: 12,
   },
-  searchInput: {
-    borderWidth: 1,
-    borderColor: "#ddd",
-    borderRadius: 6,
-    padding: 12,
-    marginBottom: 12,
-    backgroundColor: "#fff",
-    fontSize: 14,
-  },
   filterRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -533,7 +547,6 @@ const styles = StyleSheet.create({
     borderColor: "#ddd",
     borderRadius: 6,
     backgroundColor: "#fff",
-    height: 40,
   },
   equipmentListContainer: {
     marginBottom: 20,

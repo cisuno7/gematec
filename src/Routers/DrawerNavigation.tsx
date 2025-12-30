@@ -12,7 +12,6 @@ import {
   TouchableOpacity,
   Alert,
   ActivityIndicator,
-  useWindowDimensions,
   Animated,
   StatusBar
 } from "react-native";
@@ -25,9 +24,6 @@ import { ClientsAvulsosScreen, ClientsComContratoScreen } from "../Screens/Clien
 import EquipamentScreen from "../Screens/Equipaments/EquipamentScreen";
 import EquipmentQRCodeScreen from "../Screens/Equipaments/EquipmentQRCodeScreen";
 import EquipmentListScreen from "../Screens/Equipaments/EquipmentListScreen";
-import PmocListScreen from "../Screens/Pmoc/PmocListScreen";
-import ListOrderServiceScreen from "../Screens/Orders/ListOrderServiceScreen";
-import TechnicalAssistanceScreen from "../Screens/TechnicalAssistance/TechnicalAssistanceScreen";
 import ActivityHistoryScreen from "../Screens/Activity/ActivityHistoryScreen";
 import CreateEquipmentScreen from "../Screens/Equipaments/CreateEquipmentScreen";
 import { RootStackParamList } from "./AppRouter";
@@ -39,6 +35,7 @@ import AuthService from "../Services/AuthService";
 import MenuService from "../Services/MenuService";
 import { MenuItem } from "../Models/MenuItem";
 import PreferencesScreen from "../Screens/PreferencesScreen";
+import { useResponsive } from "../hooks/useResponsive";
 
 const Drawer = createDrawerNavigator<RootStackParamList>();
 
@@ -50,7 +47,7 @@ const SLUG_TO_APP_DATA: { [key: string]: { titleKey: string; route?: keyof RootS
   "clients_with_contract": { titleKey: "menu.clientsWithContract", route: "ClientsComContratoScreen" },
   "clients_without_contract": { titleKey: "menu.clientsWithoutContract", route: "ClientsAvulsosScreen" },
   "equipments": { titleKey: "menu.equipments", route: "GeneralEquipmentListScreen" },
-  "activities": { titleKey: "menu.activities", route: "ActivityHistoryScreen" },
+  "activities": { titleKey: "menu.activities", route: "ActivityListScreen" },
   "home": { titleKey: "menu.home", route: "HomeScreen", icon: "home" },
   "manuals": { titleKey: "menu.manuals", route: "ManualsScreen", icon: "book" },
   "personal_data": { titleKey: "menu.personalData", route: "PersonalDataScreen", icon: "person" },
@@ -68,9 +65,6 @@ const SLUG_TO_APP_DATA: { [key: string]: { titleKey: string; route?: keyof RootS
   "capacity_units": { titleKey: "menu.capacityUnits", route: "CapacityUnitsScreen" },
   "administrative": { titleKey: "menu.administrative", icon: "shield" },
   "support": { titleKey: "menu.support", icon: "help-circle" },
-  "pmocs": { titleKey: "menu.pmocs", route: "PmocListScreen" },
-  "service_orders": { titleKey: "menu.serviceOrders", route: "ListOrderServiceScreen" },
-  "technical_assistance": { titleKey: "menu.technicalAssistance", route: "TechnicalAssistanceScreen" },
   "equipment_qr_code": { titleKey: "menu.equipmentQrCode", route: "EquipmentQRCodeScreen" },
   "create_equipment": { titleKey: "menu.createEquipment", route: "CreateEquipmentScreen" },
   "filter_equipment": { titleKey: "menu.filterEquipment", route: "EquipamentScreen" },
@@ -282,10 +276,6 @@ const CustomDrawerContent = (props: any & { extraData: {} }) => {
             } else {
               props.navigation.navigate(item.route as any, { clientId, sectorId });
             }
-          } else if (item.route === "ActivityHistoryScreen") {
-            props.navigation.navigate(item.route as any, {});
-          } else if (item.route === "ListOrderServiceScreen") {
-            props.navigation.navigate(item.route as any, { equipmentId: equipmentId || 0 });
           } else {
             console.log(`[DrawerNavigation] Navegando para: ${item.route}`);
             props.navigation.navigate(item.route as any, {});
@@ -403,7 +393,9 @@ const CustomDrawerContent = (props: any & { extraData: {} }) => {
 };
 
 const DrawerNavigator: React.FC = () => {
-  const { width } = useWindowDimensions();
+  const r = useResponsive();
+  // `useResponsive()` já retorna width/height sempre válidos (com fallback interno seguro).
+  const width = r.width;
   const drawerWidth = Math.min(width * 0.8, 400);
   const { t } = useLanguage();
   return (

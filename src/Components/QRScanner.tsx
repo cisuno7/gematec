@@ -24,7 +24,6 @@ const QRScanner: React.FC<QRScannerProps> = ({ onScanned }) => {
     const payload = (data as any)?.data ?? data;
     console.log('Dados do QR Code escaneado:', payload);
     onScanned(String(payload));
-    Alert.alert('QR Code Escaneado', `Dados: ${payload}`);
     setTimeout(() => setScanned(false), 2000); // Permitir novo scan após 2s
   };
 

@@ -12,7 +12,6 @@ import {
     ScrollView,
     Platform,
     Keyboard,
-    Dimensions,
 } from 'react-native';
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -26,6 +25,8 @@ import { Equipment } from '../../Models/Equipament';
 import CustomPicker from '../../Components/CustomPicker';
 import DynamicEquipmentFields from '../../Components/DynamicEquipmentFields';
 import { RootStackParamList } from '../../Routers/AppRouter';
+import ResponsiveContainer from '../../Components/ResponsiveContainer';
+import { useResponsive } from '../../hooks/useResponsive';
 
 type AddMultipleEquipmentsRoute = RouteProp<RootStackParamList, 'AddMultipleEquipmentsScreen'>;
 
@@ -34,6 +35,7 @@ const EMPTY_FIELDS: { [key: string]: any } = {};
 const AddMultipleEquipmentsScreen: React.FC = () => {
     const navigation = useNavigation<any>();
     const route = useRoute<AddMultipleEquipmentsRoute>();
+    const { height: windowHeight } = useResponsive();
 
     const activityIdFromRoute = route.params?.activityId as number | undefined;
     const activityTypeIdFromRoute = route.params?.activityTypeId as number;
@@ -87,7 +89,6 @@ const AddMultipleEquipmentsScreen: React.FC = () => {
     const [refreshing, setRefreshing] = useState(false);
     const [adding, setAdding] = useState(false);
     const [keyboardPadding, setKeyboardPadding] = useState(0);
-    const [screenHeight, setScreenHeight] = useState(Dimensions.get('window').height);
 
     const [showCreate, setShowCreate] = useState(false);
     const [brands, setBrands] = useState<any[]>([]);
@@ -195,14 +196,7 @@ const AddMultipleEquipmentsScreen: React.FC = () => {
         };
     }, []);
 
-    // Atualiza dimensões da tela quando mudar orientação
-    useEffect(() => {
-        const subscription = Dimensions.addEventListener('change', ({ window }) => {
-            setScreenHeight(window.height);
-        });
-
-        return () => subscription?.remove();
-    }, []);
+    // Dimensões reativas já são fornecidas pelo `useResponsive()` (rotação inclusa)
 
     const toggleEquipment = (equipmentId: number) => {
         setSelectedEquipmentsIds(prev => {
@@ -461,7 +455,7 @@ const AddMultipleEquipmentsScreen: React.FC = () => {
 
     const renderCreateForm = useMemo(() => {
         // Calcula altura máxima responsiva para campos dinâmicos
-        const maxDynamicFieldsHeight = Math.max(200, screenHeight * 0.25);
+        const maxDynamicFieldsHeight = Math.max(200, windowHeight * 0.25);
         
         return (
             <View style={styles.createContainer}>
@@ -551,7 +545,7 @@ const AddMultipleEquipmentsScreen: React.FC = () => {
         newDynamicFields,
         brands,
         equipmentTypes,
-        screenHeight,
+        windowHeight,
         handleTagChange,
         handleBrandChange,
         handleEquipmentTypeChange,
@@ -603,7 +597,7 @@ const AddMultipleEquipmentsScreen: React.FC = () => {
     ), [keyboardPadding]);
 
     return (
-        <View style={styles.screenContainer}>
+        <ResponsiveContainer withPadding={false} style={styles.screenContainer}>
             <View style={styles.header}>
                 <Text style={styles.title}>Adicionar Equipamentos</Text>
                 <TouchableOpacity onPress={() => navigation.goBack()} style={styles.closeButton}>
@@ -716,7 +710,7 @@ const AddMultipleEquipmentsScreen: React.FC = () => {
                     </TouchableOpacity>
                 </View>
             </View>
-        </View>
+        </ResponsiveContainer>
     );
 };
 

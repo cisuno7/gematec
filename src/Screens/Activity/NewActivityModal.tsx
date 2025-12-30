@@ -9,7 +9,6 @@ import {
     Alert,
     Modal,
     TextInput,
-    Dimensions,
     KeyboardAvoidingView,
     Platform,
 } from "react-native";
@@ -27,8 +26,9 @@ import apiClient from "../../Context/ApiClient";
 import DynamicEquipmentFields from "../../Components/DynamicEquipmentFields";
 import CustomPicker from "../../Components/CustomPicker";
 // Modal antigo substituído por tela dedicada AddMultipleEquipmentsScreen
-import ScreenContainer from '../../Components/ScreenContainer';
+import ResponsiveContainer from '../../Components/ResponsiveContainer';
 import FormRow from '../../Components/FormRow';
+import { useResponsive } from '../../hooks/useResponsive';
 
 interface NewActivityModalProps {
     navigation: DrawerNavigationProp<RootStackParamList, any>;
@@ -73,6 +73,36 @@ interface Equipment {
 
 const NewActivityModal: React.FC<NewActivityModalProps> = ({ navigation, route }) => {
     const { t } = useLanguage();
+    const r = useResponsive();
+    const styles = useStyles();
+
+    // Dimensões devem ser aplicadas SOMENTE via estilo inline (nunca dentro de StyleSheet.create)
+    const stepContentDynStyle = {
+        padding: Math.max(16, r.width * 0.04),
+        minHeight: r.height * 0.4,
+    };
+    const pickerContainerDynStyle = {
+        marginBottom: Math.max(12, r.height * 0.02),
+    };
+    const optionButtonDynStyle = {
+        padding: Math.max(12, r.height * 0.018),
+        marginBottom: Math.max(10, r.height * 0.015),
+    };
+    const inputDynStyle = {
+        padding: Math.max(10, r.height * 0.014),
+        fontSize: Math.max(14, r.width * 0.04),
+    };
+    const footerDynStyle = {
+        padding: Math.max(12, r.width * 0.04),
+        paddingBottom:
+            Platform.OS === 'ios'
+                ? Math.max(20, r.height * 0.02)
+                : Math.max(12, r.height * 0.015),
+    };
+    const footerButtonDynStyle = {
+        paddingVertical: Math.max(10, r.height * 0.014),
+        paddingHorizontal: Math.max(16, r.width * 0.04),
+    };
     const [currentStep, setCurrentStep] = useState(1);
     const [loading, setLoading] = useState(false);
 
@@ -836,7 +866,7 @@ const NewActivityModal: React.FC<NewActivityModalProps> = ({ navigation, route }
     );
 
     const renderStep1 = () => (
-        <View style={styles.stepContent}>
+        <View style={[styles.stepContent, stepContentDynStyle]}>
             <Text style={styles.sectionTitle}>{t('activity.selectActivityType')}</Text>
             <CustomPicker
                 selectedValue={selectedActivityType?.id ? selectedActivityType.id.toString() : ""}
@@ -846,7 +876,7 @@ const NewActivityModal: React.FC<NewActivityModalProps> = ({ navigation, route }
                 }}
                 items={activityTypes.map(type => ({ label: type.name, value: type.id.toString() }))}
                 placeholder="Selecione um tipo de atividade"
-                style={styles.pickerContainer}
+                style={[styles.pickerContainer, pickerContainerDynStyle]}
                 searchable={true}
             />
 
@@ -854,6 +884,7 @@ const NewActivityModal: React.FC<NewActivityModalProps> = ({ navigation, route }
             <TouchableOpacity
                 style={[
                     styles.optionButton,
+                    optionButtonDynStyle,
                     clientOption === "existing" && styles.optionButtonSelected,
                 ]}
                 onPress={() => setClientOption("existing")}
@@ -874,6 +905,7 @@ const NewActivityModal: React.FC<NewActivityModalProps> = ({ navigation, route }
             <TouchableOpacity
                 style={[
                     styles.optionButton,
+                    optionButtonDynStyle,
                     clientOption === "new" && styles.optionButtonSelected,
                 ]}
                 onPress={() => setClientOption("new")}
@@ -894,7 +926,7 @@ const NewActivityModal: React.FC<NewActivityModalProps> = ({ navigation, route }
     );
 
     const renderStep2ExistingClient = () => (
-        <View style={styles.stepContent}>
+        <View style={[styles.stepContent, stepContentDynStyle]}>
             <Text style={styles.sectionTitle}>Dados do Cliente</Text>
 
             {/* Filtro Cliente */}
@@ -907,7 +939,7 @@ const NewActivityModal: React.FC<NewActivityModalProps> = ({ navigation, route }
                 }}
                 items={clients.map(client => ({ label: client.name, value: client.id.toString() }))}
                 placeholder="Selecione um cliente"
-                style={styles.pickerContainer}
+                style={[styles.pickerContainer, pickerContainerDynStyle]}
                 searchable={true}
             />
 
@@ -921,7 +953,7 @@ const NewActivityModal: React.FC<NewActivityModalProps> = ({ navigation, route }
                 }}
                 items={sectors.map(sector => ({ label: sector.name, value: sector.id.toString() }))}
                 placeholder="Selecione um setor"
-                style={styles.pickerContainer}
+                style={[styles.pickerContainer, pickerContainerDynStyle]}
                 searchable={true}
             />
 
@@ -937,7 +969,7 @@ const NewActivityModal: React.FC<NewActivityModalProps> = ({ navigation, route }
                         }}
                         items={subsectors.map(subsector => ({ label: subsector.name, value: subsector.id.toString() }))}
                         placeholder="Selecione um subsetor (opcional)"
-                        style={styles.pickerContainer}
+                        style={[styles.pickerContainer, pickerContainerDynStyle]}
                         searchable={true}
                     />
                 </>
@@ -975,12 +1007,12 @@ const NewActivityModal: React.FC<NewActivityModalProps> = ({ navigation, route }
     );
 
     const renderStep2NewClient = () => (
-        <View style={styles.stepContent}>
+        <View style={[styles.stepContent, stepContentDynStyle]}>
             <Text style={styles.sectionTitle}>{t('activity.newClientData')}</Text>
 
             <Text style={styles.inputLabel}>Nome do Cliente *</Text>
             <TextInput
-                style={styles.input}
+                style={[styles.input, inputDynStyle]}
                 value={newClientName}
                 onChangeText={setNewClientName}
                 placeholder="Digite o nome do cliente"
@@ -989,7 +1021,7 @@ const NewActivityModal: React.FC<NewActivityModalProps> = ({ navigation, route }
 
             <Text style={styles.inputLabel}>Documento (Opcional)</Text>
             <TextInput
-                style={styles.input}
+                style={[styles.input, inputDynStyle]}
                 value={newClientDocument}
                 onChangeText={handleDocumentChange}
                 placeholder="Digite o documento"
@@ -999,7 +1031,7 @@ const NewActivityModal: React.FC<NewActivityModalProps> = ({ navigation, route }
 
             <Text style={styles.inputLabel}>Telefone (Opcional)</Text>
             <TextInput
-                style={styles.input}
+                style={[styles.input, inputDynStyle]}
                 value={newClientPhone}
                 onChangeText={handlePhoneChange}
                 placeholder="Digite o telefone"
@@ -1010,7 +1042,7 @@ const NewActivityModal: React.FC<NewActivityModalProps> = ({ navigation, route }
 
             <Text style={styles.inputLabel}>E-mail *</Text>
             <TextInput
-                style={styles.input}
+                style={[styles.input, inputDynStyle]}
                 value={newClientEmail}
                 onChangeText={setNewClientEmail}
                 placeholder="Digite o e-mail"
@@ -1021,7 +1053,7 @@ const NewActivityModal: React.FC<NewActivityModalProps> = ({ navigation, route }
 
             <Text style={styles.inputLabel}>Contato (Pessoa de Contato) *</Text>
             <TextInput
-                style={styles.input}
+                style={[styles.input, inputDynStyle]}
                 value={newClientContact}
                 onChangeText={setNewClientContact}
                 placeholder="Digite o nome do contato"
@@ -1030,7 +1062,7 @@ const NewActivityModal: React.FC<NewActivityModalProps> = ({ navigation, route }
 
             <Text style={styles.inputLabel}>Nome do Setor *</Text>
             <TextInput
-                style={styles.input}
+                style={[styles.input, inputDynStyle]}
                 value={newClientSector}
                 onChangeText={setNewClientSector}
                 placeholder="Digite o nome do setor"
@@ -1039,7 +1071,7 @@ const NewActivityModal: React.FC<NewActivityModalProps> = ({ navigation, route }
 
             <Text style={styles.inputLabel}>Nome do Sub Setor (Opcional)</Text>
             <TextInput
-                style={styles.input}
+                style={[styles.input, inputDynStyle]}
                 value={newClientSubsector}
                 onChangeText={setNewClientSubsector}
                 placeholder="Digite o nome do subsetor"
@@ -1078,7 +1110,7 @@ const NewActivityModal: React.FC<NewActivityModalProps> = ({ navigation, route }
     );
 
     return (
-        <ScreenContainer scroll={false}>
+        <ResponsiveContainer scroll={false}>
         <View style={styles.container}>
             <View style={styles.header}>
                 <TouchableOpacity
@@ -1117,10 +1149,10 @@ const NewActivityModal: React.FC<NewActivityModalProps> = ({ navigation, route }
                     </ScrollView>
                 )}
 
-                <View style={styles.footer}>
+                <View style={[styles.footer, footerDynStyle]}>
                     {currentStep > 1 && (
                         <TouchableOpacity
-                            style={[styles.footerButton, styles.backButton]}
+                            style={[styles.footerButton, footerButtonDynStyle, styles.backButton]}
                             onPress={handlePreviousStep}
                         >
                             <Ionicons name="arrow-back" size={20} color="#666" />
@@ -1128,7 +1160,7 @@ const NewActivityModal: React.FC<NewActivityModalProps> = ({ navigation, route }
                         </TouchableOpacity>
                     )}
                     <TouchableOpacity
-                        style={[styles.footerButton, styles.nextButton]}
+                        style={[styles.footerButton, footerButtonDynStyle, styles.nextButton]}
                         onPress={handleNextStep}
                     >
                         <Text style={styles.nextButtonText}>
@@ -1139,19 +1171,19 @@ const NewActivityModal: React.FC<NewActivityModalProps> = ({ navigation, route }
                 </View>
             </KeyboardAvoidingView>
         </View>
-        </ScreenContainer>
+        </ResponsiveContainer>
     );
 };
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-
-const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: "#f8f9fa",
-    },
-    keyboardView: {
-        flex: 1,
+const useStyles = () => {
+    // Regras de auditoria: não usar dimensões dentro do StyleSheet.create()
+    return StyleSheet.create({
+        container: {
+            flex: 1,
+            backgroundColor: "#f8f9fa",
+        },
+        keyboardView: {
+            flex: 1,
     },
     contentContainer: {
         flexGrow: 1,
@@ -1230,8 +1262,7 @@ const styles = StyleSheet.create({
         flex: 1,
     },
     stepContent: {
-        padding: Math.max(16, SCREEN_WIDTH * 0.04),
-        minHeight: SCREEN_HEIGHT * 0.4,
+        padding: 16,
     },
     sectionTitle: {
         fontSize: 18,
@@ -1243,7 +1274,7 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         borderColor: "#ddd",
         borderRadius: 8,
-        marginBottom: Math.max(12, SCREEN_HEIGHT * 0.02),
+        marginBottom: 12,
         backgroundColor: "#fff",
         minHeight: 50,
     },
@@ -1254,11 +1285,11 @@ const styles = StyleSheet.create({
     optionButton: {
         flexDirection: "row",
         alignItems: "center",
-        padding: Math.max(12, SCREEN_HEIGHT * 0.018),
+        padding: 12,
         borderWidth: 1,
         borderColor: "#007bff",
         borderRadius: 8,
-        marginBottom: Math.max(10, SCREEN_HEIGHT * 0.015),
+        marginBottom: 10,
         backgroundColor: "#fff",
         minHeight: 50,
     },
@@ -1330,8 +1361,8 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         borderColor: "#ddd",
         borderRadius: 8,
-        padding: Math.max(10, SCREEN_HEIGHT * 0.014),
-        fontSize: Math.max(14, SCREEN_WIDTH * 0.04),
+        padding: 10,
+        fontSize: 16,
         backgroundColor: "#fff",
         minHeight: 44,
     },
@@ -1348,17 +1379,17 @@ const styles = StyleSheet.create({
     footer: {
         flexDirection: "row",
         justifyContent: "space-between",
-        padding: Math.max(12, SCREEN_WIDTH * 0.04),
+        padding: 12,
         backgroundColor: "#fff",
         borderTopWidth: 1,
         borderTopColor: "#e0e0e0",
-        paddingBottom: Platform.OS === 'ios' ? Math.max(20, SCREEN_HEIGHT * 0.02) : Math.max(12, SCREEN_HEIGHT * 0.015),
+        paddingBottom: Platform.OS === 'ios' ? 20 : 12,
     },
     footerButton: {
         flexDirection: "row",
         alignItems: "center",
-        paddingVertical: Math.max(10, SCREEN_HEIGHT * 0.014),
-        paddingHorizontal: Math.max(16, SCREEN_WIDTH * 0.04),
+        paddingVertical: 10,
+        paddingHorizontal: 16,
         borderRadius: 8,
         minHeight: 44,
         justifyContent: 'center',
@@ -1384,6 +1415,7 @@ const styles = StyleSheet.create({
         fontWeight: "600",
         marginRight: 8,
     },
-});
+    });
+};
 
 export default NewActivityModal;

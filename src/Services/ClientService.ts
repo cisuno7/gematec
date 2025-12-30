@@ -307,6 +307,82 @@ export default class ClientService {
     }
   }
 
+  static async getAllClients(accessToken: string): Promise<Client[]> {
+    try {
+      if (!accessToken) {
+        console.error("[ClientService] Token de acesso ausente.");
+        throw new Error("Token de acesso ausente.");
+      }
+
+      console.log("[ClientService] Buscando todos os clientes sem filtros");
+
+      // Buscar todos os clientes paginados para garantir que todos sejam retornados
+      let allClients: any[] = [];
+      let currentPage = 1;
+      const perPage = 200; // Aumentar para reduzir número de requisições
+      const maxPages = 50; // Limite de segurança para evitar loops infinitos
+
+      while (true) {
+        if (currentPage > maxPages) {
+          console.warn(`[ClientService] Limite de ${maxPages} páginas atingido. Alguns clientes podem não ter sido carregados.`);
+          break;
+        }
+
+        const params: any = {
+          page: currentPage.toString(),
+          per_page: perPage.toString(),
+          page_size: perPage.toString(),
+          include: "sectors,addresses",
+        };
+
+        console.log(`[ClientService] Buscando página ${currentPage} de clientes...`);
+
+        const response = await apiClient.get('/clients', { params });
+
+        const pageResults = response.data.results || [];
+        const totalCount = response.data.count || 0;
+
+        console.log(`[ClientService] Página ${currentPage}: ${pageResults.length} clientes, total: ${totalCount}`);
+
+        allClients = allClients.concat(pageResults);
+
+        // Verifica se há mais páginas
+        const totalPages = Math.ceil(totalCount / perPage);
+        if (currentPage >= totalPages || pageResults.length === 0) {
+          console.log("[ClientService] Busca concluída - todos os clientes obtidos");
+          break;
+        }
+
+        currentPage += 1;
+
+        // Pequeno delay para reduzir pressão no servidor
+        if (currentPage > 1) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+      }
+
+      console.log(`[ClientService] Total de clientes retornados: ${allClients.length}`);
+
+      // Converte para objetos Client
+      const clientList = allClients.map((data: any) => new Client(data));
+      return clientList;
+
+    } catch (error: any) {
+      console.error("[ClientService] Erro ao buscar todos os clientes:", error.message);
+      console.error("[ClientService] Status do erro:", error.response?.status);
+
+      if (error.response) {
+        console.error("[ClientService] Resposta do servidor:", error.response.data);
+      } else if (error.request) {
+        console.error("[ClientService] Nenhuma resposta recebida do servidor.", error.request);
+      } else {
+        console.error("[ClientService] Erro ao configurar requisição:", error.message);
+      }
+
+      throw error;
+    }
+  }
+
   static async createClient(clientData: {
     name: string;
     email: string;

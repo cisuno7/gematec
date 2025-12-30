@@ -16,6 +16,8 @@ import ClientService from "../../Services/ClientService";
 import { Sector } from "../../Models/Clientes";
 import { usePermissions } from "../../Context/PermissionsContext";
 import { Ionicons } from '@expo/vector-icons';
+import ResponsiveContainer from "../../Components/ResponsiveContainer";
+import { useResponsive } from "../../hooks/useResponsive";
 // Remover: import { router } from 'expo-router';
 
 interface SubSectorScreenProps {
@@ -26,6 +28,7 @@ interface SubSectorScreenProps {
 
 const SubSectorScreen: React.FC<SubSectorScreenProps> = ({ route, navigation }) => {
     const { clientId, parentSector } = route.params;
+    const r = useResponsive();
     const { hasPermission } = usePermissions();
     const [subSectors, setSubSectors] = useState<Sector[]>([]);
     const [allSectors, setAllSectors] = useState<Sector[]>([]);
@@ -33,9 +36,9 @@ const SubSectorScreen: React.FC<SubSectorScreenProps> = ({ route, navigation }) 
 
     if (!hasPermission("list_clients")) {
         return (
-            <View style={styles.container}>
+            <ResponsiveContainer withPadding={false} style={styles.container} scroll={false}>
                 <Text style={styles.errorText}>Você não tem permissão para visualizar setores.</Text>
-            </View>
+            </ResponsiveContainer>
         );
     }
 
@@ -114,26 +117,26 @@ const SubSectorScreen: React.FC<SubSectorScreenProps> = ({ route, navigation }) 
 
     if (loading) {
         return (
-            <View style={styles.container}>
+            <ResponsiveContainer withPadding={false} style={styles.container} scroll={false}>
                 <ActivityIndicator size="large" color="#007BFF" />
-            </View>
+            </ResponsiveContainer>
         );
     }
 
     if (subSectors.length === 0 && !loading) {
         return (
-            <View style={styles.container}>
+            <ResponsiveContainer withPadding={false} style={styles.container} scroll={false}>
                 <Text style={styles.emptyText}>Nenhum sub-setor encontrado para este setor.</Text>
                 <Text style={styles.emptyText}>Redirecionando para equipamentos...</Text>
                 <TouchableOpacity onPress={() => navigation.replace("EquipmentListScreen", { clientId, sectorId: parentSector.id })}>
                     <Text style={styles.linkText}>Clique aqui para ver equipamentos</Text>
                 </TouchableOpacity>
-            </View>
+            </ResponsiveContainer>
         );
     }
 
     return (
-        <View style={styles.container}>
+        <ResponsiveContainer withPadding={false} style={styles.container} scroll={false}>
             <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
                 <Ionicons name="arrow-back" size={24} color="black" />
                 <Text style={styles.backText}>Voltar</Text>
@@ -143,8 +146,10 @@ const SubSectorScreen: React.FC<SubSectorScreenProps> = ({ route, navigation }) 
                 data={subSectors}
                 keyExtractor={(item) => item.id.toString()}
                 renderItem={renderSubSectorItem}
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={{ paddingBottom: r.spacing(2) }}
             />
-        </View>
+        </ResponsiveContainer>
     );
 };
 
@@ -163,12 +168,14 @@ const styles = StyleSheet.create({
         marginLeft: 8,
         fontSize: 16,
         color: "blue",
+        flexShrink: 1,
     },
     title: {
         fontSize: 20,
         fontWeight: "bold",
         marginBottom: 15,
         textAlign: "center",
+        flexShrink: 1,
     },
     itemContainer: {
         padding: 15,
@@ -181,12 +188,16 @@ const styles = StyleSheet.create({
     itemText: {
         fontSize: 16,
         color: "#333",
+        flexShrink: 1,
+        flexWrap: "wrap",
     },
     linkText: {
         color: "#007BFF",
         fontSize: 14,
         marginTop: 5,
         textDecorationLine: "underline",
+        flexShrink: 1,
+        flexWrap: "wrap",
     },
     emptyText: {
         textAlign: "center",

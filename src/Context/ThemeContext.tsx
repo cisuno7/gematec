@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useMemo } from 'react';
-import { useWindowDimensions, PixelRatio } from 'react-native';
+import { PixelRatio } from 'react-native';
+import { useResponsive } from '../hooks/useResponsive';
 
 type Breakpoint = 'phone' | 'tablet' | 'desktop';
 
@@ -32,7 +33,9 @@ function detectBreakpoint(width: number): Breakpoint {
 }
 
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { width } = useWindowDimensions();
+  const r = useResponsive();
+  // `useResponsive()` já retorna width/height sempre válidos (com fallback interno seguro).
+  const width = r.width;
 
   const theme = useMemo<Theme>(() => {
     const breakpoint = detectBreakpoint(width);

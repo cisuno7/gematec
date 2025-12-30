@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
-import { Image, ImageProps, ImageStyle, StyleProp, useWindowDimensions } from 'react-native';
+import { Image, ImageProps, ImageStyle, StyleProp } from 'react-native';
+import { useResponsive } from '../hooks/useResponsive';
 
 type Props = ImageProps & {
   widthPct?: number; // 0..1 da largura da tela
@@ -9,7 +10,8 @@ type Props = ImageProps & {
 };
 
 const ResponsiveImage: React.FC<Props> = ({ widthPct = 0.8, maxWidth = 480, aspectRatio, style, ...rest }) => {
-  const { width: screenWidth } = useWindowDimensions();
+  const r = useResponsive();
+  const screenWidth = r?.width ?? 414;
   const computed = useMemo(() => {
     const width = Math.min(screenWidth * widthPct, maxWidth);
     const heightStyle = aspectRatio ? { height: width / aspectRatio } : undefined;

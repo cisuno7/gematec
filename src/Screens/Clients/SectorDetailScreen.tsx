@@ -1,15 +1,14 @@
 import React, { useState, useEffect } from "react";
 import {
     View,
-    Text,
     StyleSheet,
-    ScrollView,
     ActivityIndicator,
     Alert,
     TouchableOpacity,
     FlatList,
     Modal,
-    TextInput,
+    KeyboardAvoidingView,
+    Platform,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { RouteProp } from "@react-navigation/native";
@@ -20,6 +19,10 @@ import { usePermissions } from "../../Context/PermissionsContext";
 import { useLanguage } from "../../Context/LanguageContext";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Sector } from "../../Models/Clientes";
+import ResponsiveContainer from "../../Components/ResponsiveContainer";
+import AppTextInput from "../../Components/AppTextInput";
+import ResponsiveText from "../../Components/ResponsiveText";
+import { useResponsive } from "../../hooks/useResponsive";
 
 interface SectorDetailScreenProps {
     route: RouteProp<RootStackParamList, "SectorDetailScreen">;
@@ -29,6 +32,7 @@ interface SectorDetailScreenProps {
 const SectorDetailScreen: React.FC<SectorDetailScreenProps> = ({ route, navigation }) => {
     const { hasPermission } = usePermissions();
     const { t } = useLanguage();
+    const r = useResponsive();
     const { clientId, sectorId } = route.params;
 
     const [sector, setSector] = useState<Sector | null>(null);
@@ -46,11 +50,25 @@ const SectorDetailScreen: React.FC<SectorDetailScreenProps> = ({ route, navigati
         try {
             setLoading(true);
             const token = await AsyncStorage.getItem("access_token");
+            console.log("[SectorDetailScreen] 🚀 FUNÇÃO fetchSectorDetails FOI CHAMADA!");
+            console.log("[SectorDetailScreen] ClientId:", clientId, "SectorId:", sectorId);
+            
             if (!token) throw new Error("Token de acesso não encontrado.");
-
+            console.log("[SectorDetailScreen] 🔍 DEBUG - Buscando detalhes do setor:");
+            console.log("[SectorDetailScreen] Client ID:", clientId);
+            console.log("[SectorDetailScreen] Sector ID:", sectorId);
             // Buscar detalhes do setor
             const sectorData = await ClientService.getSectorDetails(clientId.toString(), sectorId, token);
             setSector(sectorData);
+            console.log("[SectorDetailScreen] 🚨 RESPOSTA DO ENDPOINT DE DETALHES:");
+console.log("[SectorDetailScreen] URL chamada: /clients/" + clientId + "/sectors/" + sectorId);
+console.log("[SectorDetailScreen] JSON completo:", JSON.stringify(sectorData, null, 2));
+console.log("[SectorDetailScreen] Campos procurados:");
+console.log("[SectorDetailScreen] equipment_count:", sectorData.equipment_count, "(esperado: number)");
+console.log("[SectorDetailScreen] subsector_count:", sectorData.subsector_count, "(esperado: number)");
+console.log("[SectorDetailScreen] Campos que existem na resposta:");
+console.log("[SectorDetailScreen] total_equipments:", sectorData.total_equipments);
+console.log("[SectorDetailScreen] total_subsectors:", sectorData.total_subsectors);
 
             // Buscar subsetores se for um setor pai
             if (sectorData.level === 0) {
@@ -92,104 +110,136 @@ const SectorDetailScreen: React.FC<SectorDetailScreenProps> = ({ route, navigati
 
     if (!hasPermission("view_sector")) {
         return (
-            <View style={styles.container}>
-                <Text style={styles.errorText}>{t('sectors.noPermission')}</Text>
-            </View>
+            <ResponsiveContainer withPadding={false} style={styles.container}>
+                <ResponsiveText variant="body" style={styles.errorText}>
+                    {t('sectors.noPermission')}
+                </ResponsiveText>
+            </ResponsiveContainer>
         );
     }
 
     if (loading) {
         return (
-            <View style={styles.container}>
+            <ResponsiveContainer withPadding={false} style={styles.container}>
                 <ActivityIndicator size="large" color="#007BFF" />
-                <Text style={styles.loadingText}>{t('sectors.loadingDetails')}</Text>
-            </View>
+                <ResponsiveText variant="body" style={styles.loadingText}>
+                    {t('sectors.loadingDetails')}
+                </ResponsiveText>
+            </ResponsiveContainer>
         );
     }
 
     if (!sector) {
         return (
-            <View style={styles.container}>
-                <Text style={styles.errorText}>{t('sectors.notFound')}</Text>
-            </View>
+            <ResponsiveContainer withPadding={false} style={styles.container}>
+                <ResponsiveText variant="body" style={styles.errorText}>
+                    {t('sectors.notFound')}
+                </ResponsiveText>
+            </ResponsiveContainer>
         );
     }
 
     const renderSubsectorItem = ({ item }: { item: Sector }) => (
         <View style={styles.subsectorItem}>
             <View style={styles.subsectorHeader}>
-                <Text style={styles.subsectorName}>{item.name}</Text>
+                <ResponsiveText variant="subtitle" style={styles.subsectorName} numberOfLines={2}>
+                    {item.name}
+                </ResponsiveText>
             </View>
 
             <View style={styles.actionButtons}>
                 <TouchableOpacity
-                    style={styles.actionButton}
+                    style={[styles.actionButton, { minHeight: r.verticalScale(40) }]}
                     onPress={() => navigation.navigate("EquipmentListScreen", { clientId, sectorId: item.id })}
                 >
-                    <Text style={styles.actionButtonText}>🔧 Listar Equipamentos</Text>
+                    <ResponsiveText variant="button" maxFontSizeMultiplier={1.3} style={styles.actionButtonText}>
+                        🔧 Listar Equipamentos
+                    </ResponsiveText>
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                    style={styles.actionButton}
+                    style={[styles.actionButton, { minHeight: r.verticalScale(40) }]}
                     onPress={() => navigation.navigate("SectorDetailScreen", { clientId, sectorId: item.id })}
                 >
-                    <Text style={styles.actionButtonText}>👁️ Visualizar Setor</Text>
+                    <ResponsiveText variant="button" maxFontSizeMultiplier={1.3} style={styles.actionButtonText}>
+                        👁️ Visualizar Setor
+                    </ResponsiveText>
                 </TouchableOpacity>
             </View>
         </View>
     );
 
     return (
-        <ScrollView style={styles.container}>
+        <ResponsiveContainer withPadding={false} style={styles.container} scroll={true}>
             {/* Informações do Setor */}
             <View style={styles.section}>
-                <Text style={styles.sectionTitle}>{t('sectors.infoTitle')}</Text>
+                <ResponsiveText variant="subtitle" style={styles.sectionTitle}>
+                    {t('sectors.infoTitle')}
+                </ResponsiveText>
                 <View style={styles.infoRow}>
-                    <Text style={styles.label}>{t('sectors.name')}:</Text>
-                    <Text style={styles.value}>{sector.name}</Text>
+                    <ResponsiveText variant="caption" style={styles.label}>
+                        {t('sectors.name')}:
+                    </ResponsiveText>
+                    <ResponsiveText variant="body" style={styles.value} numberOfLines={2}>
+                        {sector.name}
+                    </ResponsiveText>
                 </View>
                 <View style={styles.infoRow}>
-                    <Text style={styles.label}>{t('sectors.fullName')}:</Text>
-                    <Text style={styles.value}>{sector.complete_name}</Text>
+                    <ResponsiveText variant="caption" style={styles.label}>
+                        {t('sectors.fullName')}:
+                    </ResponsiveText>
+                    <ResponsiveText variant="body" style={styles.value} numberOfLines={2}>
+                        {sector.complete_name}
+                    </ResponsiveText>
                 </View>
                 <View style={styles.infoRow}>
-                    <Text style={styles.label}>{t('sectors.level')}:</Text>
-                    <Text style={styles.value}>{sector.level}</Text>
+                    <ResponsiveText variant="caption" style={styles.label}>
+                        {t('sectors.equipments')}:
+                    </ResponsiveText>
+                    <ResponsiveText variant="body" style={styles.value}>
+                        {sector.equipment_count || 0}
+                    </ResponsiveText>
                 </View>
                 <View style={styles.infoRow}>
-                    <Text style={styles.label}>{t('sectors.equipments')}:</Text>
-                    <Text style={styles.value}>{sector.equipment_count || 0}</Text>
-                </View>
-                <View style={styles.infoRow}>
-                    <Text style={styles.label}>{t('sectors.subsectors')}:</Text>
-                    <Text style={styles.value}>{sector.subsector_count || 0}</Text>
+                    <ResponsiveText variant="caption" style={styles.label}>
+                        {t('sectors.subsectors')}:
+                    </ResponsiveText>
+                    <ResponsiveText variant="body" style={styles.value}>
+                        {sector.subsector_count || 0}
+                    </ResponsiveText>
                 </View>
             </View>
 
             {/* Botão Listar Equipamentos */}
             <TouchableOpacity
-                style={styles.listEquipmentButton}
+                style={[styles.listEquipmentButton, { minHeight: r.verticalScale(50) }]}
                 onPress={() => navigation.navigate("EquipmentListScreen", { clientId, sectorId })}
             >
-                <Text style={styles.listEquipmentButtonText}>{t('sectors.listEquipments')}</Text>
+                <ResponsiveText variant="button" maxFontSizeMultiplier={1.3} style={styles.listEquipmentButtonText}>
+                    {t('sectors.listEquipments')}
+                </ResponsiveText>
             </TouchableOpacity>
 
             {/* Mensagem explicativa para setores pais */}
             {sector.level === 0 && (
                 <View style={styles.infoSection}>
-                    <Text style={styles.infoText}>
-                        <Text style={styles.bold}>ℹ️ Informação:</Text> Esta opção lista equipamentos que não estão alocados em nenhum setor filho.
-                    </Text>
+                    <ResponsiveText variant="body" style={styles.infoText}>
+                        <ResponsiveText variant="body" weight="bold">ℹ️ Informação:</ResponsiveText> Esta opção lista equipamentos que não estão alocados em nenhum setor filho.
+                    </ResponsiveText>
                 </View>
             )}
 
             {/* Lista de Subsetores (apenas para setores pais) */}
             {sector.level === 0 && subsectors.length > 0 && (
                 <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>{t('sectors.subsectorsTitle')} ({subsectors.length})</Text>
+                    <ResponsiveText variant="subtitle" style={styles.sectionTitle}>
+                        {t('sectors.subsectorsTitle')} ({subsectors.length})
+                    </ResponsiveText>
                     <View style={styles.actionsRow}>
-                        <TouchableOpacity style={styles.createButton} onPress={() => setShowCreateModal(true)}>
-                            <Text style={styles.createButtonText}>Adicionar Subsetor</Text>
+                        <TouchableOpacity style={[styles.createButton, { minHeight: r.verticalScale(40) }]} onPress={() => setShowCreateModal(true)}>
+                            <ResponsiveText variant="button" maxFontSizeMultiplier={1.3} style={styles.createButtonText}>
+                                Adicionar Subsetor
+                            </ResponsiveText>
                         </TouchableOpacity>
                     </View>
                     <FlatList
@@ -203,38 +253,54 @@ const SectorDetailScreen: React.FC<SectorDetailScreenProps> = ({ route, navigati
 
             {sector.level === 0 && subsectors.length === 0 && (
                 <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>{t('sectors.subsectorsTitle')}</Text>
-                    <Text style={styles.emptyText}>{t('sectors.noSubsectors')}</Text>
+                    <ResponsiveText variant="subtitle" style={styles.sectionTitle}>
+                        {t('sectors.subsectorsTitle')}
+                    </ResponsiveText>
+                    <ResponsiveText variant="body" style={styles.emptyText}>
+                        {t('sectors.noSubsectors')}
+                    </ResponsiveText>
                     <View style={styles.actionsRow}>
-                        <TouchableOpacity style={styles.createButton} onPress={() => setShowCreateModal(true)}>
-                            <Text style={styles.createButtonText}>Adicionar Subsetor</Text>
+                        <TouchableOpacity style={[styles.createButton, { minHeight: r.verticalScale(40) }]} onPress={() => setShowCreateModal(true)}>
+                            <ResponsiveText variant="button" maxFontSizeMultiplier={1.3} style={styles.createButtonText}>
+                                Adicionar Subsetor
+                            </ResponsiveText>
                         </TouchableOpacity>
                     </View>
                 </View>
             )}
 
             <Modal visible={showCreateModal} transparent animationType="fade">
-                <View style={styles.modalBackdrop}>
-                    <View style={styles.modalCard}>
-                        <Text style={styles.modalTitle}>{t('sectors.name')}</Text>
-                        <TextInput
+                <KeyboardAvoidingView
+                    behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                    style={styles.modalBackdrop}
+                >
+                    <View style={[styles.modalCard, { maxWidth: r.width * 0.9 }]}>
+                        <ResponsiveText variant="subtitle" style={styles.modalTitle}>
+                            {t('sectors.name')}
+                        </ResponsiveText>
+                        <AppTextInput
                             style={styles.input}
                             placeholder={t('sectors.name')}
                             value={newSubsectorName}
                             onChangeText={setNewSubsectorName}
+                            maxFontSizeMultiplier={1.8}
                         />
                         <View style={styles.modalActions}>
-                            <TouchableOpacity style={[styles.modalButton, styles.cancelButton]} onPress={() => setShowCreateModal(false)}>
-                                <Text style={styles.modalButtonText}>Cancelar</Text>
+                            <TouchableOpacity style={[styles.modalButton, styles.cancelButton, { minHeight: r.verticalScale(44) }]} onPress={() => setShowCreateModal(false)}>
+                                <ResponsiveText variant="button" maxFontSizeMultiplier={1.3} style={styles.modalButtonText}>
+                                    Cancelar
+                                </ResponsiveText>
                             </TouchableOpacity>
-                            <TouchableOpacity disabled={creating} style={[styles.modalButton, styles.confirmButton]} onPress={handleCreateSubsector}>
-                                <Text style={styles.modalButtonText}>{creating ? '...' : 'Criar'}</Text>
+                            <TouchableOpacity disabled={creating} style={[styles.modalButton, styles.confirmButton, { minHeight: r.verticalScale(44) }]} onPress={handleCreateSubsector}>
+                                <ResponsiveText variant="button" maxFontSizeMultiplier={1.3} style={styles.modalButtonText}>
+                                    {creating ? '...' : 'Criar'}
+                                </ResponsiveText>
                             </TouchableOpacity>
                         </View>
                     </View>
-                </View>
+                </KeyboardAvoidingView>
             </Modal>
-        </ScrollView>
+        </ResponsiveContainer>
     );
 };
 
@@ -255,7 +321,6 @@ const styles = StyleSheet.create({
         shadowRadius: 3,
     },
     sectionTitle: {
-        fontSize: 18,
         fontWeight: "bold",
         color: "#333",
         marginBottom: 15,
@@ -266,18 +331,19 @@ const styles = StyleSheet.create({
         paddingVertical: 8,
         borderBottomWidth: 1,
         borderBottomColor: "#f0f0f0",
+        flexWrap: 'wrap',
     },
     label: {
-        fontSize: 14,
         fontWeight: "bold",
         color: "#666",
         flex: 1,
+        marginRight: 8,
     },
     value: {
-        fontSize: 14,
         color: "#333",
         flex: 2,
         textAlign: "right",
+        flexShrink: 1,
     },
     listEquipmentButton: {
         backgroundColor: "#28a745",
@@ -285,10 +351,10 @@ const styles = StyleSheet.create({
         padding: 15,
         borderRadius: 10,
         alignItems: "center",
+        justifyContent: 'center',
     },
     listEquipmentButtonText: {
         color: "#fff",
-        fontSize: 16,
         fontWeight: "bold",
     },
     infoSection: {
@@ -300,12 +366,8 @@ const styles = StyleSheet.create({
         borderLeftColor: "#2196F3",
     },
     infoText: {
-        fontSize: 14,
         color: "#1976D2",
         lineHeight: 20,
-    },
-    bold: {
-        fontWeight: "bold",
     },
     subsectorItem: {
         backgroundColor: "#f9f9f9",
@@ -317,13 +379,14 @@ const styles = StyleSheet.create({
         marginBottom: 10,
     },
     subsectorName: {
-        fontSize: 16,
         fontWeight: "bold",
         color: "#333",
     },
     actionButtons: {
         flexDirection: "row",
         justifyContent: "space-around",
+        flexWrap: 'wrap',
+        gap: 8,
     },
     actionButton: {
         backgroundColor: "#007BFF",
@@ -331,10 +394,10 @@ const styles = StyleSheet.create({
         borderRadius: 5,
         minWidth: 120,
         alignItems: "center",
+        justifyContent: 'center',
     },
     actionButtonText: {
         color: "#fff",
-        fontSize: 12,
         fontWeight: "bold",
     },
     emptyText: {
@@ -353,6 +416,8 @@ const styles = StyleSheet.create({
         paddingVertical: 8,
         paddingHorizontal: 12,
         borderRadius: 6,
+        justifyContent: 'center',
+        alignItems: 'center',
     },
     createButtonText: {
         color: '#fff',
@@ -372,7 +437,6 @@ const styles = StyleSheet.create({
         padding: 16,
     },
     modalTitle: {
-        fontSize: 16,
         fontWeight: 'bold',
         marginBottom: 10,
     },
@@ -387,11 +451,15 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         justifyContent: 'flex-end',
         gap: 8,
+        flexWrap: 'wrap',
     },
     modalButton: {
         paddingVertical: 10,
         paddingHorizontal: 14,
         borderRadius: 6,
+        justifyContent: 'center',
+        alignItems: 'center',
+        minWidth: 80,
     },
     cancelButton: {
         backgroundColor: '#6c757d',
@@ -409,7 +477,6 @@ const styles = StyleSheet.create({
         color: "#666",
     },
     errorText: {
-        fontSize: 16,
         color: "#FF0000",
         textAlign: "center",
         marginTop: 20,

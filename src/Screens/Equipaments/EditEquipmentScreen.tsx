@@ -2,16 +2,13 @@ import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
-  TextInput,
   StyleSheet,
   Alert,
   ActivityIndicator,
   ScrollView,
   TouchableOpacity,
   Switch,
-  Dimensions,
 } from "react-native";
-import { Picker } from "@react-native-picker/picker";
 import { RouteProp } from "@react-navigation/native";
 import { DrawerNavigationProp } from "@react-navigation/drawer";
 import { RootStackParamList } from "../../Routers/AppRouter";
@@ -24,8 +21,9 @@ import { DynamicField, EquipmentTemplate } from "../../Models/EquipmentTemplate"
 import { Equipment } from "../../Models/Equipament";
 import { setDynamicApiUrl } from "../../config/apiConfig";
 import apiClient, { getRequestStats, addRequestListener, removeRequestListener, addResponseListener, removeResponseListener, resetRequestStats, EquipmentLock } from "../../Context/ApiClient";
-
-const { width } = Dimensions.get('window');
+import ResponsiveContainer from "../../Components/ResponsiveContainer";
+import AppTextInput from "../../Components/AppTextInput";
+import CustomPicker from "../../Components/CustomPicker";
 
 interface EditEquipmentScreenProps {
   route: RouteProp<RootStackParamList, "EditEquipmentScreen">;
@@ -686,7 +684,7 @@ const EditEquipmentScreen: React.FC<EditEquipmentScreenProps> = ({
     switch (field.type) {
       case 'text':
         return (
-          <TextInput
+          <AppTextInput
             style={styles.textInput}
             placeholder={`Digite ${fieldLabel?.toLowerCase() || 'valor'}`}
             placeholderTextColor="#999"
@@ -697,7 +695,7 @@ const EditEquipmentScreen: React.FC<EditEquipmentScreenProps> = ({
 
       case 'number':
         return (
-          <TextInput
+          <AppTextInput
             style={styles.textInput}
             placeholder={`Digite ${fieldLabel?.toLowerCase() || 'valor'}`}
             placeholderTextColor="#999"
@@ -710,7 +708,7 @@ const EditEquipmentScreen: React.FC<EditEquipmentScreenProps> = ({
       case 'measure':
         return (
           <View style={styles.measureContainer}>
-            <TextInput
+            <AppTextInput
               style={styles.measureInput}
               placeholder={`Digite ${fieldLabel?.toLowerCase() || 'valor'}`}
               placeholderTextColor="#999"
@@ -726,18 +724,17 @@ const EditEquipmentScreen: React.FC<EditEquipmentScreenProps> = ({
 
       case 'select':
         return (
-          <View style={styles.pickerContainer}>
-            <Picker
-              selectedValue={value}
-              onValueChange={(itemValue) => setDynamicFields(prev => ({ ...prev, [fieldKey]: itemValue }))}
-              style={styles.picker}
-            >
-              <Picker.Item label={`Selecione ${fieldLabel?.toLowerCase() || 'opção'}`} value="" />
-              {field.options?.map((option, index) => (
-                <Picker.Item key={index} label={option} value={option} />
-              ))}
-            </Picker>
-          </View>
+          <CustomPicker
+            selectedValue={value}
+            onValueChange={(itemValue) => setDynamicFields(prev => ({ ...prev, [fieldKey]: itemValue }))}
+            items={[
+              { label: `Selecione ${fieldLabel?.toLowerCase() || 'opção'}`, value: "" },
+              ...(field.options || []).map((option, index) => ({ label: option, value: option })),
+            ]}
+            placeholder={`Selecione ${fieldLabel?.toLowerCase() || 'opção'}`}
+            style={styles.pickerContainer}
+            searchable={true}
+          />
         );
 
       case 'radio':
@@ -774,7 +771,7 @@ const EditEquipmentScreen: React.FC<EditEquipmentScreenProps> = ({
               ))}
             </View>
             {value === field.justification_target && (
-              <TextInput
+              <AppTextInput
                 style={styles.justificationInput}
                 placeholder="Justificativa"
                 placeholderTextColor="#999"
@@ -800,7 +797,7 @@ const EditEquipmentScreen: React.FC<EditEquipmentScreenProps> = ({
 
       default:
         return (
-          <TextInput
+          <AppTextInput
             style={styles.textInput}
             placeholder={`Digite ${fieldLabel?.toLowerCase() || 'valor'}`}
             placeholderTextColor="#999"
@@ -814,32 +811,31 @@ const EditEquipmentScreen: React.FC<EditEquipmentScreenProps> = ({
   const renderSelectField = (label: string, value: string, onValueChange: (value: string) => void, options: any[], placeholder: string) => (
     <View style={styles.inputGroup}>
       <Text style={styles.inputLabel}>{label}*</Text>
-      <View style={styles.pickerContainer}>
-        <Picker
-          selectedValue={value}
-          onValueChange={onValueChange}
-          style={styles.picker}
-        >
-          <Picker.Item label={placeholder} value="" />
-          {options.map((option) => (
-            <Picker.Item key={option.id} label={(option.complete_name || option.name)} value={option.id.toString()} />
-          ))}
-        </Picker>
-      </View>
+      <CustomPicker
+        selectedValue={value}
+        onValueChange={onValueChange}
+        items={(options || []).map((option: any) => ({
+          label: option.complete_name || option.name,
+          value: option.id?.toString?.() || String(option.id),
+        }))}
+        placeholder={placeholder}
+        style={styles.pickerContainer}
+        searchable={true}
+      />
     </View>
   );
 
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
+      <ResponsiveContainer withPadding={false} style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#007BFF" />
         <Text style={styles.loadingText}>Carregando dados do equipamento...</Text>
-      </View>
+      </ResponsiveContainer>
     );
   }
 
   return (
-    <View style={styles.container}>
+    <ResponsiveContainer withPadding={false} style={styles.container}>
       {/* Header */}
       <LinearGradient
         colors={["#667eea", "#764ba2"]}
@@ -872,7 +868,7 @@ const EditEquipmentScreen: React.FC<EditEquipmentScreenProps> = ({
 
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Tag*</Text>
-              <TextInput
+              <AppTextInput
                 style={styles.textInput}
                 placeholder="Digite a tag do equipamento"
                 placeholderTextColor="#999"
@@ -951,7 +947,7 @@ const EditEquipmentScreen: React.FC<EditEquipmentScreenProps> = ({
           )}
         </TouchableOpacity>
       </View>
-    </View>
+    </ResponsiveContainer>
   );
 };
 

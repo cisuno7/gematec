@@ -5,6 +5,7 @@ import { ActivityAnswer } from "../Models/ActivityAnswer";
 import { UploadFile } from "../Models/UploadFile";
 import NetInfo from '@react-native-community/netinfo';
 import OfflineService from './OfflineService';
+import ApiClient from "../Context/ApiClient";
 
 type ActivitiesListResponse = {
     links?: { next?: string | null; previous?: string | null };
@@ -421,12 +422,22 @@ export default class ActivityService {
     }
 
     // 2.1. Buscar TODOS os equipamentos vinculados (todas as páginas)
-    static async fetchAllActivityEquipments(activityId: number, params: { token: string }): Promise<any> {
+    static async fetchAllActivityEquipments(
+        activityId: number, 
+        params: { 
+            token: string;
+            opened_by_id?: number; // Novo parâmetro opcional
+        }
+    ): Promise<any> {
         console.log('[ActivityService] ===== BUSCANDO TODAS AS PÁGINAS DE EQUIPAMENTOS =====');
         console.log('[ActivityService] activityId:', activityId);
+        console.log('[ActivityService] opened_by_id:', params.opened_by_id);
 
         const aggregated: any[] = [];
-        let nextUrl: string | null = `/activities/${activityId}/equipments`;
+        // Construir URL base com parâmetro opcional
+        const baseUrl = `/activities/${activityId}/equipments`;
+        const queryParams = params.opened_by_id ? `?opened_by_id=${params.opened_by_id}` : '';
+        let nextUrl: string | null = `${baseUrl}${queryParams}`;
         let safety = 0;
         let pageCount = 0;
 
@@ -723,6 +734,16 @@ export default class ActivityService {
 
                 // justification é obrigatório conforme spec, sempre enviar (mesmo que vazio)
                 formData.append('justification', answer.justification || '');
+
+                // Campos de auditoria para edições após fechamento
+                if (answer.completed_at) {
+                    formData.append('completed_at', answer.completed_at);
+                    console.log('[ActivityService] 📝 Adicionando completed_at:', answer.completed_at);
+                }
+                if (answer.completed_by) {
+                    formData.append('completed_by', answer.completed_by);
+                    console.log('[ActivityService] 👤 Adicionando completed_by:', answer.completed_by);
+                }
 
                 // Se houver uploads, adicionar arquivos ao FormData
                 if (answer.uploads && answer.uploads.length > 0) {
@@ -1441,6 +1462,220 @@ export default class ActivityService {
             return response.data;
         } catch (error: any) {
             console.error('[ActivityService] Erro ao buscar detalhes da atividade:', error);
+            throw error;
+        }
+    }
+
+    // Método para buscar estatísticas do dashboard via endpoint /charts/activities
+    static async getActivityCharts(params: { token: string }): Promise<{
+        total: number;
+        created: number;
+        open: number;
+        waiting_budget_approval: number;
+        budget_approval: number;
+        budget_disapproval: number;
+        closed: number;
+        archived: number;
+    }> {
+        console.log('[ActivityService] ===== BUSCANDO ESTATÍSTICAS DO DASHBOARD (/charts/activities) =====');
+        try {
+            const response = await apiClient.get('/charts/activities', {
+                headers: { Authorization: `Bearer ${params.token}` },
+            });
+
+            console.log('[ActivityService] Estatísticas recebidas:', response.data);
+            return {
+                total: response.data.total || 0,
+                created: response.data.created || 0,
+                open: response.data.open || 0,
+                waiting_budget_approval: response.data.waiting_budget_approval || 0,
+                budget_approval: response.data.budget_approval || 0,
+                budget_disapproval: response.data.budget_disapproval || 0,
+                closed: response.data.closed || 0,
+                archived: response.data.archived || 0,
+            };
+        } catch (error: any) {
+            console.error('[ActivityService] ===== ERRO AO BUSCAR ESTATÍSTICAS DO DASHBOARD =====');
+            console.error('[ActivityService] Erro ao buscar estatísticas:', error);
+            console.error('[ActivityService] Stack trace:', error?.stack);
+
+            // Retornar valores padrão em caso de erro
+            return {
+                total: 0,
+                created: 0,
+                open: 0,
+                waiting_budget_approval: 0,
+                budget_approval: 0,
+                budget_disapproval: 0,
+                closed: 0,
+                archived: 0,
+            };
+        }
+    }
+
+    // 10. Aprovar orçamento de um equipamento
+    static async approveBudget(
+        activityId: number,
+        activityEquipmentId: number,
+        token: string
+    ): Promise<any> {
+        try {
+            console.log('[ActivityService] Aprovando orçamento:', {
+                activityId,
+                activityEquipmentId
+            });
+
+            const response = await apiClient.patch(
+                `/activities/${activityId}/equipments/${activityEquipmentId}`,
+                { status: "budget_approval" },
+                {
+                    headers: { Authorization: `Bearer ${token}` },
+                }
+            );
+
+            console.log('[ActivityService] Orçamento aprovado com sucesso:', response.data);
+            return response.data;
+        } catch (error: any) {
+            console.error('[ActivityService] Erro ao aprovar orçamento:', error);
+            throw error;
+        }
+    }
+
+    // 11. Reprovar orçamento de um equipamento
+    static async disapproveBudget(
+        activityId: number,
+        activityEquipmentId: number,
+        token: string
+    ): Promise<any> {
+        try {
+            console.log('[ActivityService] Reprovando orçamento:', {
+                activityId,
+                activityEquipmentId
+            });
+
+            const response = await apiClient.patch(
+                `/activities/${activityId}/equipments/${activityEquipmentId}`,
+                { status: "budget_disapproval" },
+                {
+                    headers: { Authorization: `Bearer ${token}` },
+                }
+            );
+
+            console.log('[ActivityService] Orçamento reprovado:', response.data);
+            return response.data;
+        } catch (error: any) {
+            console.error('[ActivityService] Erro ao reprovar orçamento:', error);
+            throw error;
+        }
+    }
+
+    // 12. Sincronizar status da atividade baseado nos status dos equipamentos
+    static async syncActivityStatusFromEquipments(
+        activityId: number,
+        token: string
+    ): Promise<void> {
+        try {
+            console.log('[ActivityService] Sincronizando status da atividade:', activityId);
+
+            // Buscar todos os equipamentos da atividade
+            const equipmentsResponse = await this.fetchActivityEquipments(activityId, { token });
+            const equipments = Array.isArray(equipmentsResponse)
+                ? equipmentsResponse
+                : (equipmentsResponse?.results || equipmentsResponse?.data || []);
+
+            if (equipments.length === 0) {
+                console.log('[ActivityService] Nenhum equipamento encontrado, mantendo status atual');
+                return;
+            }
+
+            // Calcular status da atividade baseado nos status dos equipamentos
+            const statusCounts: Record<string, number> = {};
+            equipments.forEach((eq: any) => {
+                const status = eq.status?.toLowerCase() || 'created';
+                statusCounts[status] = (statusCounts[status] || 0) + 1;
+            });
+
+            console.log('[ActivityService] Contagem de status dos equipamentos:', statusCounts);
+
+            let newActivityStatus: string | null = null;
+
+            // Regras de sincronização:
+            // 1. Se pelo menos um equipamento está OPEN → atividade OPEN
+            if (statusCounts['open'] > 0) {
+                newActivityStatus = 'open';
+            }
+            // 2. Se todos os equipamentos estão WAITING_BUDGET_APPROVAL → atividade WAITING_BUDGET_APPROVAL
+            else if (statusCounts['waiting_budget_approval'] === equipments.length && equipments.length > 0) {
+                newActivityStatus = 'waiting_budget_approval';
+            }
+            // 3. Se todos os equipamentos estão BUDGET_APPROVAL → atividade BUDGET_APPROVAL
+            else if (statusCounts['budget_approval'] === equipments.length && equipments.length > 0) {
+                newActivityStatus = 'budget_approval';
+            }
+            // 4. Se todos os equipamentos estão BUDGET_DISAPPROVAL → atividade BUDGET_DISAPPROVAL
+            else if (statusCounts['budget_disapproval'] === equipments.length && equipments.length > 0) {
+                newActivityStatus = 'budget_disapproval';
+            }
+            // 5. Se todos os equipamentos estão CLOSED → atividade pode ser fechada (mas não mudamos automaticamente)
+            // 6. Se todos estão CREATED → atividade CREATED
+            else if (statusCounts['created'] === equipments.length && equipments.length > 0) {
+                newActivityStatus = 'created';
+            }
+
+            if (newActivityStatus) {
+                // Buscar status atual da atividade
+                const activityDetails = await this.fetchActivityDetails(activityId, { token });
+                const currentStatus = activityDetails.status?.toLowerCase();
+
+                if (currentStatus !== newActivityStatus) {
+                    console.log('[ActivityService] Atualizando status da atividade:', currentStatus, '→', newActivityStatus);
+                    
+                    // Atualizar status da atividade
+                    // Nota: Assumindo que existe um endpoint para atualizar status da atividade
+                    // Se não existir, pode ser necessário criar ou usar outro método
+                    try {
+                        await apiClient.patch(
+                            `/activities/${activityId}`,
+                            { status: newActivityStatus },
+                            {
+                                headers: { Authorization: `Bearer ${token}` },
+                            }
+                        );
+                        console.log('[ActivityService] Status da atividade atualizado com sucesso');
+                    } catch (updateError: any) {
+                        console.warn('[ActivityService] Não foi possível atualizar status da atividade:', updateError);
+                        // Não lançar erro para não bloquear o fluxo principal
+                    }
+                } else {
+                    console.log('[ActivityService] Status da atividade já está correto:', newActivityStatus);
+                }
+            } else {
+                console.log('[ActivityService] Não foi necessário atualizar status da atividade');
+            }
+        } catch (error: any) {
+            console.error('[ActivityService] Erro ao sincronizar status da atividade:', error);
+            // Não lançar erro para não bloquear o fluxo principal
+        }
+    }
+
+    /**
+     * Busca atividades relacionadas a um equipamento específico
+     */
+    static async fetchEquipmentActivities(equipmentId: number, params: { token: string }): Promise<any> {
+        try {
+            console.log(`[ActivityService] Buscando atividades do equipamento ${equipmentId}...`);
+
+            const response = await apiClient.get(`/equipments/${equipmentId}/activities`, {
+                headers: {
+                    'Authorization': `Bearer ${params.token}`,
+                    'Content-Type': 'application/json',
+                },
+            });
+
+            console.log(`[ActivityService] Encontradas ${response.data?.count || 0} atividades para o equipamento ${equipmentId}`);
+            return response.data;
+        } catch (error: any) {
+            console.error(`[ActivityService] Erro ao buscar atividades do equipamento ${equipmentId}:`, error);
             throw error;
         }
     }

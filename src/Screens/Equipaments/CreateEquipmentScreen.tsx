@@ -2,16 +2,13 @@ import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
-  TextInput,
   StyleSheet,
   Alert,
   ActivityIndicator,
   ScrollView,
   TouchableOpacity,
   Switch,
-  Dimensions,
 } from "react-native";
-import { Picker } from "@react-native-picker/picker";
 import { RouteProp } from "@react-navigation/native";
 import { DrawerNavigationProp } from "@react-navigation/drawer";
 import { RootStackParamList } from "../../Routers/AppRouter";
@@ -26,8 +23,8 @@ import { setDynamicApiUrl } from "../../config/apiConfig";
 import apiClient from "../../Context/ApiClient";
 import CustomPicker from "../../Components/CustomPicker";
 import DynamicEquipmentFields from "../../Components/DynamicEquipmentFields";
-
-const { width } = Dimensions.get('window');
+import ResponsiveContainer from "../../Components/ResponsiveContainer";
+import AppTextInput from "../../Components/AppTextInput";
 
 interface CreateEquipmentScreenProps {
   route: RouteProp<RootStackParamList, "CreateEquipmentScreen">;
@@ -457,7 +454,7 @@ const CreateEquipmentScreen: React.FC<CreateEquipmentScreenProps> = ({
     switch (field.type) {
       case 'text':
         return (
-          <TextInput
+          <AppTextInput
             style={styles.textInput}
             placeholder={`Digite ${fieldLabel?.toLowerCase() || 'valor'}`}
             placeholderTextColor="#999"
@@ -468,7 +465,7 @@ const CreateEquipmentScreen: React.FC<CreateEquipmentScreenProps> = ({
 
       case 'number':
         return (
-          <TextInput
+          <AppTextInput
             style={styles.textInput}
             placeholder={`Digite ${fieldLabel?.toLowerCase() || 'valor'}`}
             placeholderTextColor="#999"
@@ -481,7 +478,7 @@ const CreateEquipmentScreen: React.FC<CreateEquipmentScreenProps> = ({
       case 'measure':
         return (
           <View style={styles.measureContainer}>
-            <TextInput
+            <AppTextInput
               style={styles.measureInput}
               placeholder={`Digite ${fieldLabel?.toLowerCase() || 'valor'}`}
               placeholderTextColor="#999"
@@ -497,18 +494,17 @@ const CreateEquipmentScreen: React.FC<CreateEquipmentScreenProps> = ({
 
       case 'select':
         return (
-          <View style={styles.pickerContainer}>
-            <Picker
-              selectedValue={value}
-              onValueChange={(itemValue) => setDynamicFields(prev => ({ ...prev, [fieldKey]: itemValue }))}
-              style={styles.picker}
-            >
-              <Picker.Item label={`Selecione ${fieldLabel?.toLowerCase() || 'opção'}`} value="" />
-              {field.options?.map((option, index) => (
-                <Picker.Item key={index} label={option} value={option} />
-              ))}
-            </Picker>
-          </View>
+          <CustomPicker
+            selectedValue={value}
+            onValueChange={(itemValue) => setDynamicFields(prev => ({ ...prev, [fieldKey]: itemValue }))}
+            items={[
+              { label: `Selecione ${fieldLabel?.toLowerCase() || 'opção'}`, value: "" },
+              ...(field.options || []).map((option, index) => ({ label: option, value: option })),
+            ]}
+            placeholder={`Selecione ${fieldLabel?.toLowerCase() || 'opção'}`}
+            style={styles.pickerContainer}
+            searchable={true}
+          />
         );
 
       case 'radio':
@@ -546,7 +542,7 @@ const CreateEquipmentScreen: React.FC<CreateEquipmentScreenProps> = ({
             </View>
             {/* Justificativa condicional */}
             {value === field.justification_target && (
-              <TextInput
+              <AppTextInput
                 style={styles.justificationInput}
                 placeholder="Justificativa"
                 placeholderTextColor="#999"
@@ -572,7 +568,7 @@ const CreateEquipmentScreen: React.FC<CreateEquipmentScreenProps> = ({
 
       default:
         return (
-          <TextInput
+          <AppTextInput
             style={styles.textInput}
             placeholder={`Digite ${fieldLabel?.toLowerCase() || 'valor'}`}
             placeholderTextColor="#999"
@@ -599,15 +595,15 @@ const CreateEquipmentScreen: React.FC<CreateEquipmentScreenProps> = ({
 
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
+      <ResponsiveContainer withPadding={false} style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#007BFF" />
         <Text style={styles.loadingText}>Carregando dados...</Text>
-      </View>
+      </ResponsiveContainer>
     );
   }
 
   return (
-    <View style={styles.container}>
+    <ResponsiveContainer withPadding={false} style={styles.container}>
       {/* Header */}
       <LinearGradient
         colors={["#667eea", "#764ba2"]}
@@ -640,7 +636,7 @@ const CreateEquipmentScreen: React.FC<CreateEquipmentScreenProps> = ({
 
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Tag*</Text>
-              <TextInput
+              <AppTextInput
                 style={styles.textInput}
                 placeholder="Digite a tag do equipamento"
                 placeholderTextColor="#999"
@@ -710,7 +706,7 @@ const CreateEquipmentScreen: React.FC<CreateEquipmentScreenProps> = ({
           )}
         </TouchableOpacity>
       </View>
-    </View>
+    </ResponsiveContainer>
   );
 };
 

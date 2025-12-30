@@ -74,51 +74,32 @@ const EquipmentFilters: React.FC<EquipmentFiltersProps> = ({ onFilter, sectorId,
     setLoadingClients(true);
     try {
       if (!forceApi) {
-        // Tenta carregar de cache primeiro (agregando com e sem contrato)
-        const [cachedWithContract, cachedWithoutContract] = await Promise.all([
-          CacheService.get<any[]>(CacheService.KEYS.CLIENTS_WITH_CONTRACT),
-          CacheService.get<any[]>(CacheService.KEYS.CLIENTS_WITHOUT_CONTRACT)
-        ]);
-
-        if ((cachedWithContract && cachedWithContract.length > 0) ||
-          (cachedWithoutContract && cachedWithoutContract.length > 0)) {
-          const allClients = [
-            ...(cachedWithContract || []),
-            ...(cachedWithoutContract || [])
-          ];
-          const uniqueClients = Array.from(
-            new Map(allClients.map(c => [c.id, c])).values()
-          );
-          console.log("[EquipmentFilters] Clientes carregados do cache:", uniqueClients.length);
-          setClients(uniqueClients);
+        // Tenta carregar do cache primeiro
+        const cachedAllClients = await CacheService.get<any[]>(CacheService.KEYS.CLIENTS_ALL);
+        if (cachedAllClients && cachedAllClients.length > 0) {
+          console.log("[EquipmentFilters] Todos os clientes carregados do cache:", cachedAllClients.length);
+          setClients(cachedAllClients);
           setLoadingClients(false);
           return;
         }
       }
 
-      // Buscar da API e unir com/sem contrato explicitamente
-      console.log("[EquipmentFilters] Buscando clientes via apiClient /clients (com e sem contrato)");
-      const [withContract, withoutContract] = await Promise.all([
-        apiClient.get('/clients', { params: { per_page: 100, has_contract: 'true' } }),
-        apiClient.get('/clients', { params: { per_page: 100, has_contract: 'false' } }),
-      ]);
+      // Buscar todos os clientes da API usando o novo método
+      console.log("[EquipmentFilters] Buscando todos os clientes via ClientService.getAllClients");
+      const token = await AsyncStorage.getItem("access_token");
+      if (!token) throw new Error("Token não encontrado");
 
-      const parseList = (resp: any) => {
-        const payload = resp.data;
-        return Array.isArray(payload) ? payload : (payload?.results || []);
-      };
-      const allClients = [...parseList(withContract), ...parseList(withoutContract)];
-      const uniqueClients = Array.from(new Map(allClients.map((c: any) => [c.id, c])).values());
+      const { default: ClientService } = require('../Services/ClientService');
+      const allClients = await ClientService.getAllClients(token);
 
-      // Atualiza caches separadamente
-      await Promise.all([
-        CacheService.set(CacheService.KEYS.CLIENTS_WITH_CONTRACT, parseList(withContract), 30 * 60 * 1000),
-        CacheService.set(CacheService.KEYS.CLIENTS_WITHOUT_CONTRACT, parseList(withoutContract), 30 * 60 * 1000),
-      ]);
+      console.log("[EquipmentFilters] Todos os clientes carregados da API:", allClients.length);
 
-      setClients(uniqueClients);
+      // Salva no cache
+      await CacheService.set(CacheService.KEYS.CLIENTS_ALL, allClients, 30 * 60 * 1000); // 30 minutos
+
+      setClients(allClients);
     } catch (error) {
-      console.error("[EquipmentFilters] Erro ao buscar clientes:", error);
+      console.error("[EquipmentFilters] Erro ao buscar todos os clientes:", error);
       setClients([]); // Garantir lista vazia em caso de erro
     } finally {
       setLoadingClients(false);

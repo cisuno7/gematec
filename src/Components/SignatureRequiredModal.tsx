@@ -7,12 +7,12 @@ import {
     TouchableOpacity,
     StyleSheet,
     Alert,
-    Dimensions,
     ActivityIndicator,
 } from 'react-native';
 import SignatureCanvas from 'react-native-signature-canvas';
 import { useLanguage } from '../Context/LanguageContext';
 import SignatureService from '../Services/SignatureService';
+import { useResponsive } from '../hooks/useResponsive';
 
 interface SignatureRequiredModalProps {
     visible: boolean;
@@ -24,13 +24,13 @@ const SignatureRequiredModal: React.FC<SignatureRequiredModalProps> = ({
     onSignatureSaved,
 }) => {
     const { t } = useLanguage();
+    const r = useResponsive();
+    const screenWidth = r?.width ?? 414;
+    const screenHeight = r?.height ?? 896;
     const signatureRef = useRef<any>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [showConfirmation, setShowConfirmation] = useState(false);
     const [pendingSignature, setPendingSignature] = useState<string>('');
-
-    const screenWidth = Dimensions.get('window').width;
-    const screenHeight = Dimensions.get('window').height;
 
     // Estilo customizado para o canvas de assinatura
     const signatureWebStyle = `

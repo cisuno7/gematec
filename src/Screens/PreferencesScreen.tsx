@@ -15,6 +15,7 @@ import { useLanguage } from '../Context/LanguageContext';
 import { useNavigation } from '@react-navigation/native';
 import { MaterialIcons } from '@expo/vector-icons';
 import PreferencesService from '../Services/PreferencesService';
+import ResponsiveContainer from '../Components/ResponsiveContainer';
 
 const PreferencesScreen: React.FC = () => {
     const navigation = useNavigation();
@@ -104,16 +105,17 @@ const PreferencesScreen: React.FC = () => {
 
     if (loading) {
         return (
-            <View style={styles.loadingContainer}>
+            <ResponsiveContainer withPadding={false} style={styles.loadingContainer}>
                 <ActivityIndicator size="large" color="#007BFF" />
                 <Text style={styles.loadingText}>{t('preferences.loading')}</Text>
-            </View>
+            </ResponsiveContainer>
         );
     }
 
     return (
-        <ScrollView style={styles.container}>
-            <View style={styles.content}>
+        <ResponsiveContainer withPadding={false} style={styles.container}>
+            <ScrollView style={styles.container}>
+                <View style={styles.content}>
                 <Text style={styles.title}>{t('preferences.title')}</Text>
 
                 <View style={styles.section}>
@@ -203,8 +205,9 @@ const PreferencesScreen: React.FC = () => {
                         )}
                     </TouchableOpacity>
                 </View>
-            </View>
-        </ScrollView>
+                </View>
+            </ScrollView>
+        </ResponsiveContainer>
     );
 };
 

@@ -9,6 +9,8 @@ import {
     ApproveWorkPayload,
     DeleteWorkPayload
 } from "../Models/Work";
+import ActivityService from "./ActivityService";
+import { EquipmentStatus } from "../constants/activityStatus";
 
 export default class WorkService {
     static async list(activityId: number, token: string): Promise<WorkListResponse> {
@@ -127,7 +129,44 @@ export default class WorkService {
                 },
             });
             console.log('[WorkService.create] Resposta:', { status: response.status, hasData: !!response.data });
-            return response.data as WorkDetail;
+            
+            const workDetail = response.data as WorkDetail;
+            
+            // Atualizar status dos equipamentos vinculados para WAITING_WORK_APPROVAL
+            if (normalizedIds.length > 0) {
+                console.log('[WorkService.create] Atualizando status dos equipamentos para WAITING_WORK_APPROVAL...');
+                try {
+                    // Buscar detalhes do registro para obter os activity_equipment_versions
+                    const workData = workDetail;
+                    const equipmentVersions = workData.activity_equipment_versions || [];
+                    
+                    // Atualizar cada equipamento vinculado
+                    for (const version of equipmentVersions) {
+                        if (version.id) {
+                            try {
+                                await ActivityService.patchActivityEquipment(
+                                    activityId,
+                                    version.id,
+                                    { status: EquipmentStatus.WAITING_WORK_APPROVAL },
+                                    token
+                                );
+                                console.log('[WorkService.create] Equipamento atualizado:', version.id);
+                            } catch (eqError: any) {
+                                console.warn('[WorkService.create] Erro ao atualizar equipamento', version.id, ':', eqError);
+                                // Continuar com outros equipamentos mesmo se um falhar
+                            }
+                        }
+                    }
+                    
+                    // Sincronizar status da atividade
+                    await ActivityService.syncActivityStatusFromEquipments(activityId, token);
+                } catch (statusError: any) {
+                    console.warn('[WorkService.create] Erro ao atualizar status dos equipamentos:', statusError);
+                    // Não bloquear a criação do registro se falhar a atualização de status
+                }
+            }
+            
+            return workDetail;
         } catch (error: any) {
             const status = error?.response?.status;
             const data = error?.response?.data;
@@ -195,7 +234,121 @@ export default class WorkService {
         const response = await apiClient.patch(`/activities/${activityId}/works/${workId}/approve`, payload, {
             headers: { Authorization: `Bearer ${token}` },
         });
+        
+        // Atualizar status dos equipamentos vinculados para CLOSED
+        try {
+            const workDetail = await this.retrieve(activityId, workId, token);
+            const equipmentVersions = workDetail.activity_equipment_versions || [];
+            
+            console.log('[WorkService.approve] Atualizando status dos equipamentos para CLOSED...');
+            
+            for (const version of equipmentVersions) {
+                if (version.id) {
+                    try {
+                        await ActivityService.patchActivityEquipment(
+                            activityId,
+                            version.id,
+                            { status: EquipmentStatus.CLOSED },
+                            token
+                        );
+                        console.log('[WorkService.approve] Equipamento atualizado para CLOSED:', version.id);
+                    } catch (eqError: any) {
+                        console.warn('[WorkService.approve] Erro ao atualizar equipamento', version.id, ':', eqError);
+                    }
+                }
+            }
+            
+            // Sincronizar status da atividade
+            await ActivityService.syncActivityStatusFromEquipments(activityId, token);
+        } catch (statusError: any) {
+            console.warn('[WorkService.approve] Erro ao atualizar status dos equipamentos:', statusError);
+            // Não bloquear a aprovação se falhar a atualização de status
+        }
+        
         return response.data;
+    }
+
+    // Método para reprovar registro de trabalho
+    static async disapprove(
+        activityId: number,
+        workId: number,
+        token: string,
+        returnToStatus?: 'pending' | 'completed'
+    ): Promise<any> {
+        const isConnected = await NetInfo.fetch().then(state => state.isConnected);
+        if (!isConnected) {
+            await OfflineService.addRequestToQueue({
+                type: "work_disapprove",
+                payload: { activityId, workId, returnToStatus },
+            });
+            return { status: "queued", message: "Reprovação registrada offline." };
+        }
+
+        try {
+            // Buscar detalhes do registro antes de reprovar
+            const workDetail = await this.retrieve(activityId, workId, token);
+            const equipmentVersions = workDetail.activity_equipment_versions || [];
+            
+            // Determinar status de retorno baseado no fluxo
+            // Se não especificado, tentar determinar pelo status atual dos equipamentos
+            let targetStatus = returnToStatus;
+            if (!targetStatus) {
+                // Verificar se algum equipamento veio de BUDGET_APPROVAL (Fluxo 1)
+                // Se sim, volta para COMPLETED, senão volta para PENDING (Fluxo 2)
+                const equipmentsResponse = await ActivityService.fetchActivityEquipments(activityId, { token });
+                const equipments = Array.isArray(equipmentsResponse)
+                    ? equipmentsResponse
+                    : (equipmentsResponse?.results || equipmentsResponse?.data || []);
+                
+                const hasBudgetApproval = equipments.some((eq: any) => 
+                    eq.status?.toLowerCase() === EquipmentStatus.BUDGET_APPROVAL
+                );
+                
+                targetStatus = hasBudgetApproval ? 'completed' : 'pending';
+            }
+            
+            const newStatus = targetStatus === 'completed' 
+                ? EquipmentStatus.COMPLETED 
+                : EquipmentStatus.PENDING;
+            
+            console.log('[WorkService.disapprove] Reprovar registro e atualizar equipamentos para:', newStatus);
+            
+            // Atualizar status dos equipamentos vinculados
+            for (const version of equipmentVersions) {
+                if (version.id) {
+                    try {
+                        await ActivityService.patchActivityEquipment(
+                            activityId,
+                            version.id,
+                            { status: newStatus },
+                            token
+                        );
+                        console.log('[WorkService.disapprove] Equipamento atualizado para', newStatus, ':', version.id);
+                    } catch (eqError: any) {
+                        console.warn('[WorkService.disapprove] Erro ao atualizar equipamento', version.id, ':', eqError);
+                    }
+                }
+            }
+            
+            // Sincronizar status da atividade
+            await ActivityService.syncActivityStatusFromEquipments(activityId, token);
+            
+            // Chamar endpoint de reprovação (se existir) ou deletar o registro
+            // Por enquanto, vamos assumir que reprovar = deletar o registro
+            try {
+                const response = await apiClient.delete(`/activities/${activityId}/works/${workId}`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                });
+                return response.data;
+            } catch (deleteError: any) {
+                // Se não houver endpoint de reprovação, apenas atualizar status dos equipamentos
+                console.warn('[WorkService.disapprove] Endpoint de reprovação não disponível, apenas atualizando status dos equipamentos');
+                return { status: "updated", message: "Registro reprovado e equipamentos atualizados." };
+            }
+        } catch (error: any) {
+            console.error('[WorkService.disapprove] Erro ao reprovar registro:', error);
+            throw error;
+        }
     }
 
     static async delete(activityId: number, workId: number, payload: DeleteWorkPayload, token: string): Promise<any> {

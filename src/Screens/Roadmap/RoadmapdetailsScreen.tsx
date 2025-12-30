@@ -1,14 +1,11 @@
 import React, { useState } from 'react';
 import {
     View,
-    Text,
     StyleSheet,
-    ScrollView,
     TouchableOpacity,
     Alert,
     ActivityIndicator,
     Modal,
-    TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { RoadmapActivity } from '../../Models/Roadmap';
@@ -18,6 +15,9 @@ import { ptBR } from 'date-fns/locale';
 import NetInfo from '@react-native-community/netinfo';
 import OfflineService from '../../Services/OfflineService';
 import { useLanguage } from '../../Context/LanguageContext';
+import ResponsiveContainer from '../../Components/ResponsiveContainer';
+import ResponsiveText from '../../Components/ResponsiveText';
+import { useResponsive } from '../../hooks/useResponsive';
 
 
 interface RoadmapActivityDetailsScreenProps {
@@ -35,6 +35,7 @@ const RoadmapActivityDetailsScreen: React.FC<RoadmapActivityDetailsScreenProps> 
 }) => {
     const { activity } = route.params;
     const { t } = useLanguage();
+    const r = useResponsive();
     const [currentActivity, setCurrentActivity] = useState(activity);
 
     const getStatusColor = (status: RoadmapActivity['status']) => {
@@ -144,82 +145,90 @@ const RoadmapActivityDetailsScreen: React.FC<RoadmapActivityDetailsScreenProps> 
 
     const renderInfoSection = (title: string, children: React.ReactNode) => (
         <View style={styles.section}>
-            <Text style={styles.sectionTitle}>{title}</Text>
+            <ResponsiveText variant="subtitle" style={styles.sectionTitle}>
+                {title}
+            </ResponsiveText>
             {children}
         </View>
     );
 
     const renderInfoRow = (icon: string, label: string, value: string) => (
         <View style={styles.infoRow}>
-            <Ionicons name={icon as any} size={20} color="#007BFF" style={styles.infoIcon} />
+            <Ionicons name={icon as any} size={r.responsiveFontSize(20, { max: 1.5 })} color="#007BFF" style={styles.infoIcon} />
             <View style={styles.infoContent}>
-                <Text style={styles.infoLabel}>{label}</Text>
-                <Text style={styles.infoValue}>{value}</Text>
+                <ResponsiveText variant="caption" style={styles.infoLabel}>
+                    {label}
+                </ResponsiveText>
+                <ResponsiveText variant="body" style={styles.infoValue} numberOfLines={3}>
+                    {value}
+                </ResponsiveText>
             </View>
         </View>
     );
 
     return (
-        <View style={styles.container}>
-            <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-                {/* Header com título e status */}
-                <View style={styles.header}>
-                    <View style={styles.titleContainer}>
-                        <Ionicons
-                            name={getTypeIcon(currentActivity.type) as any}
-                            size={32}
-                            color="#007BFF"
-                            style={styles.typeIcon}
-                        />
-                        <Text style={styles.title}>{currentActivity.title}</Text>
-                    </View>
-                    <View
-                        style={[
-                            styles.statusBadge,
-                            { backgroundColor: getStatusColor(currentActivity.status) }
-                        ]}
-                    >
-                        <Text style={styles.statusText}>{getStatusText(currentActivity.status)}</Text>
-                    </View>
+        <ResponsiveContainer withPadding={false} style={styles.container} scroll={true}>
+            {/* Header com título e status */}
+            <View style={styles.header}>
+                <View style={styles.titleContainer}>
+                    <Ionicons
+                        name={getTypeIcon(currentActivity.type) as any}
+                        size={r.responsiveFontSize(32, { max: 1.5 })}
+                        color="#007BFF"
+                        style={styles.typeIcon}
+                    />
+                    <ResponsiveText variant="title" style={styles.title} numberOfLines={3}>
+                        {currentActivity.title}
+                    </ResponsiveText>
                 </View>
+                <View
+                    style={[
+                        styles.statusBadge,
+                        { backgroundColor: getStatusColor(currentActivity.status) }
+                    ]}
+                >
+                    <ResponsiveText variant="body" maxFontSizeMultiplier={1.3} style={styles.statusText}>
+                        {getStatusText(currentActivity.status)}
+                    </ResponsiveText>
+                </View>
+            </View>
 
-                {/* Informações básicas */}
-                {renderInfoSection(t('roadmapDetails.generalInfo'), (
-                    <View style={styles.sectionContent}>
-                        {renderInfoRow('business', t('roadmapDetails.client'), currentActivity.clientName)}
-                        {currentActivity.equipmentName &&
-                            renderInfoRow('hardware-chip', t('roadmapDetails.equipment'), currentActivity.equipmentName)
-                        }
-                        {renderInfoRow('construct', t('roadmapDetails.type'), getTypeText(currentActivity.type))}
+            {/* Informações básicas */}
+            {renderInfoSection(t('roadmapDetails.generalInfo'), (
+                <View style={styles.sectionContent}>
+                    {renderInfoRow('business', t('roadmapDetails.client'), currentActivity.clientName)}
+                    {currentActivity.equipmentName &&
+                        renderInfoRow('hardware-chip', t('roadmapDetails.equipment'), currentActivity.equipmentName)
+                    }
+                    {renderInfoRow('construct', t('roadmapDetails.type'), getTypeText(currentActivity.type))}
 
-                        {currentActivity.estimatedDuration &&
-                            renderInfoRow('timer', t('roadmapDetails.estimatedDuration'), formatDuration(currentActivity.estimatedDuration))
-                        }
-                    </View>
-                ))}
+                    {currentActivity.estimatedDuration &&
+                        renderInfoRow('timer', t('roadmapDetails.estimatedDuration'), formatDuration(currentActivity.estimatedDuration))
+                    }
+                </View>
+            ))}
 
-                {/* Descrição */}
-                {currentActivity.description && renderInfoSection(t('roadmapDetails.description'), (
-                    <View style={styles.sectionContent}>
-                        <Text style={styles.descriptionText}>{currentActivity.description}</Text>
-                    </View>
-                ))}
+            {/* Descrição */}
+            {currentActivity.description && renderInfoSection(t('roadmapDetails.description'), (
+                <View style={styles.sectionContent}>
+                    <ResponsiveText variant="body" style={styles.descriptionText}>
+                        {currentActivity.description}
+                    </ResponsiveText>
+                </View>
+            ))}
 
-
-
-                {/* Informações do sistema */}
-                {renderInfoSection(t('roadmapDetails.systemInfo'), (
-                    <View style={styles.sectionContent}>
-                        {renderInfoRow('calendar', t('roadmapDetails.createdAt'), formatDateTime(currentActivity.createdAt))}
-                        {renderInfoRow('refresh', t('roadmapDetails.updatedAt'), formatDateTime(currentActivity.updatedAt))}
-                    </View>
-                ))}
-            </ScrollView>
+            {/* Informações do sistema */}
+            {renderInfoSection(t('roadmapDetails.systemInfo'), (
+                <View style={styles.sectionContent}>
+                    {renderInfoRow('calendar', t('roadmapDetails.createdAt'), formatDateTime(currentActivity.createdAt))}
+                    {renderInfoRow('refresh', t('roadmapDetails.updatedAt'), formatDateTime(currentActivity.updatedAt))}
+                </View>
+            ))}
 
             {/* Botões de ação */}
             <View style={styles.actionButtons}>
                 <TouchableOpacity
-                    style={[styles.actionButton, styles.equipmentButton]}
+                    style={[styles.actionButton, styles.equipmentButton, { minHeight: r.verticalScale(50) }]}
                     onPress={() => {
                         navigation.navigate('ActivityEquipmentListScreen', {
                             activityId: currentActivity.activityId || currentActivity.id,
@@ -228,12 +237,14 @@ const RoadmapActivityDetailsScreen: React.FC<RoadmapActivityDetailsScreenProps> 
                         });
                     }}
                 >
-                    <Ionicons name="hardware-chip" size={20} color="#fff" />
-                    <Text style={styles.actionButtonText}>{t('roadmapDetails.viewEquipments')}</Text>
+                    <Ionicons name="hardware-chip" size={r.responsiveFontSize(20, { max: 1.5 })} color="#fff" />
+                    <ResponsiveText variant="button" maxFontSizeMultiplier={1.3} style={styles.actionButtonText}>
+                        {t('roadmapDetails.viewEquipments')}
+                    </ResponsiveText>
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                    style={[styles.actionButton, styles.workButton]}
+                    style={[styles.actionButton, styles.workButton, { minHeight: r.verticalScale(50) }]}
                     onPress={() => {
                         navigation.navigate('WorkListScreen', {
                             activityId: currentActivity.activityId || currentActivity.id,
@@ -241,15 +252,13 @@ const RoadmapActivityDetailsScreen: React.FC<RoadmapActivityDetailsScreenProps> 
                         });
                     }}
                 >
-                    <Ionicons name="document-text" size={20} color="#fff" />
-                    <Text style={styles.actionButtonText}>{t('activityHistory.viewWork')}</Text>
+                    <Ionicons name="document-text" size={r.responsiveFontSize(20, { max: 1.5 })} color="#fff" />
+                    <ResponsiveText variant="button" maxFontSizeMultiplier={1.3} style={styles.actionButtonText}>
+                        {t('activityHistory.viewWork')}
+                    </ResponsiveText>
                 </TouchableOpacity>
             </View>
-
-
-
-
-        </View>
+        </ResponsiveContainer>
     );
 };
 
@@ -257,9 +266,6 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: '#f5f5f5',
-    },
-    scrollView: {
-        flex: 1,
     },
     header: {
         backgroundColor: '#fff',
@@ -280,7 +286,6 @@ const styles = StyleSheet.create({
         marginRight: 12,
     },
     title: {
-        fontSize: 20,
         fontWeight: 'bold',
         color: '#333',
         flex: 1,
@@ -291,7 +296,6 @@ const styles = StyleSheet.create({
         borderRadius: 16,
     },
     statusText: {
-        fontSize: 14,
         fontWeight: '600',
         color: '#fff',
     },
@@ -301,7 +305,6 @@ const styles = StyleSheet.create({
         padding: 20,
     },
     sectionTitle: {
-        fontSize: 18,
         fontWeight: '600',
         color: '#333',
         marginBottom: 16,
@@ -321,17 +324,14 @@ const styles = StyleSheet.create({
         flex: 1,
     },
     infoLabel: {
-        fontSize: 14,
         color: '#666',
         marginBottom: 4,
     },
     infoValue: {
-        fontSize: 16,
         color: '#333',
         fontWeight: '500',
     },
     descriptionText: {
-        fontSize: 16,
         color: '#333',
         lineHeight: 24,
     },
@@ -351,6 +351,7 @@ const styles = StyleSheet.create({
         padding: 16,
         borderRadius: 8,
         marginHorizontal: 4,
+        minWidth: 120,
     },
 
 
@@ -362,9 +363,9 @@ const styles = StyleSheet.create({
     },
     actionButtonText: {
         color: '#fff',
-        fontSize: 16,
         fontWeight: '600',
         marginLeft: 8,
+        flexShrink: 1,
     },
     modalOverlay: {
         flex: 1,

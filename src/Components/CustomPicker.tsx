@@ -8,10 +8,10 @@ import {
     FlatList,
     TextInput,
     Platform,
-    useWindowDimensions,
     Pressable,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
+import { useResponsive } from '../hooks/useResponsive';
 
 interface CustomPickerProps {
     selectedValue: any;
@@ -20,6 +20,7 @@ interface CustomPickerProps {
     placeholder?: string;
     style?: any;
     searchable?: boolean;
+    enabled?: boolean;
 }
 
 const CustomPicker: React.FC<CustomPickerProps> = ({
@@ -29,11 +30,15 @@ const CustomPicker: React.FC<CustomPickerProps> = ({
                                                            placeholder = "Selecione uma opção",
                                                            style,
                                                            searchable = true, // Por padrão, ter busca
+                                                           enabled = true,
                                                        }) => {
     const [isVisible, setIsVisible] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
 
-    const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT, fontScale } = useWindowDimensions();
+    const r = useResponsive();
+    const SCREEN_WIDTH = r?.width ?? 414;
+    const SCREEN_HEIGHT = r?.height ?? 896;
+    const fontScale = r?.fontScale ?? 1;
 
     // Limitar crescimento da fonte para evitar problemas
     const maxFontScale = 1.3;
@@ -125,10 +130,12 @@ const CustomPicker: React.FC<CustomPickerProps> = ({
                         minHeight: buttonHeight,
                         paddingVertical: scaledFontSize * 0.6,
                     },
+                    !enabled && styles.buttonDisabled,
                     style,
                 ]}
-                onPress={() => setIsVisible(true)}
+                onPress={() => enabled && setIsVisible(true)}
                 activeOpacity={0.7}
+                disabled={!enabled}
             >
                 <Text
                     style={[
@@ -271,6 +278,9 @@ const styles = StyleSheet.create({
         borderColor: '#ddd',
         borderRadius: 8,
         backgroundColor: '#fff',
+    },
+    buttonDisabled: {
+        opacity: 0.6,
     },
     buttonText: {
         flex: 1,

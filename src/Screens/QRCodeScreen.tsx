@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, Alert } from "react-native";
 import QRScanner from "../Components/QRScanner";
 import QRCodeService from "../Services/QRCodeService";
 import { NavigationProp } from "@react-navigation/native";
+import ResponsiveContainer from "../Components/ResponsiveContainer";
 
 interface QRCodeScreenProps {
   navigation: NavigationProp<any>;
@@ -24,12 +25,12 @@ const QRCodeScreen: React.FC<QRCodeScreenProps> = ({ navigation }) => {
   
 
   return (
-    <View style={styles.container}>
+    <ResponsiveContainer withPadding={false} style={styles.container}>
       <Text style={styles.title}>Leia o QR Code para configurar o backend:</Text>
       <View style={styles.scannerContainer}>
         <QRScanner onScanned={handleScannedData} />
       </View>
-    </View>
+    </ResponsiveContainer>
   );
 };
 

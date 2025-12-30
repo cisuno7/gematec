@@ -1,5 +1,6 @@
 import React, { useRef, useState } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, Alert, useWindowDimensions, ScrollView } from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity, Alert, ScrollView } from "react-native";
+import { useResponsive } from "../../hooks/useResponsive";
 import SignatureCanvas from "react-native-signature-canvas";
 import { RouteProp } from "@react-navigation/native";
 import { DrawerNavigationProp } from "@react-navigation/drawer";
@@ -23,7 +24,9 @@ const WorkApproveScreen: React.FC<WorkApproveScreenProps> = ({ route, navigation
     const { hasPermission, isLoading: isPermLoading } = usePermissions();
     const canApprove = hasPermission("approve_activitywork") || hasPermission("approval_activity");
     const { t } = useLanguage();
-    const { width, height } = useWindowDimensions();
+    const r = useResponsive();
+    const width = r?.width ?? 414;
+    const height = r?.height ?? 896;
     const isLandscape = width > height;
     const sideBarWidth = Math.max(120, Math.min(240, Math.floor(width * 0.25)));
     const portraitMinHeight = Math.max(300, Math.floor(height * 0.6));

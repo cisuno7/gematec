@@ -1,14 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import {
     View,
-    Text,
     StyleSheet,
     FlatList,
     TouchableOpacity,
     RefreshControl,
     Alert,
     ActivityIndicator,
-    Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { RoadmapService } from '../../Services/RoadmapService';
@@ -17,16 +15,19 @@ import { useLanguage } from '../../Context/LanguageContext';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import OfflineService from '../../Services/OfflineService';
+import ResponsiveContainer from '../../Components/ResponsiveContainer';
+import ResponsiveText from '../../Components/ResponsiveText';
+import { useResponsive } from '../../hooks/useResponsive';
 
 interface RoadmapScreenProps {
     navigation: any;
 }
 
-const { width } = Dimensions.get('window');
 const CURRENT_ROADMAP_CACHE_KEY = 'current_roadmap_cache';
 
 const RoadmapScreen: React.FC<RoadmapScreenProps> = ({ navigation }) => {
     const { t } = useLanguage();
+    const r = useResponsive();
     const [activities, setActivities] = useState<RoadmapActivity[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
@@ -287,13 +288,13 @@ const RoadmapScreen: React.FC<RoadmapScreenProps> = ({ navigation }) => {
                 <View style={styles.activityTitleContainer}>
                     <Ionicons
                         name={getTypeIcon(item.type) as any}
-                        size={20}
+                        size={r.responsiveFontSize(20, { max: 1.5 })}
                         color="#007BFF"
                         style={styles.typeIcon}
                     />
-                    <Text style={styles.activityTitle} numberOfLines={2}>
+                    <ResponsiveText variant="subtitle" style={styles.activityTitle} numberOfLines={2}>
                         {item.title}
-                    </Text>
+                    </ResponsiveText>
                 </View>
                 <View style={styles.statusContainer}>
                     <View
@@ -302,46 +303,50 @@ const RoadmapScreen: React.FC<RoadmapScreenProps> = ({ navigation }) => {
                             { backgroundColor: getStatusColor(item.status) }
                         ]}
                     >
-                        <Text style={styles.statusText}>{getStatusText(item.status)}</Text>
+                        <ResponsiveText variant="caption" maxFontSizeMultiplier={1.3} style={styles.statusText}>
+                            {getStatusText(item.status)}
+                        </ResponsiveText>
                     </View>
                 </View>
             </View>
 
             <View style={styles.activityInfo}>
                 <View style={styles.infoRow}>
-                    <Ionicons name="business" size={16} color="#666" />
-                    <Text style={styles.infoText} numberOfLines={1}>
+                    <Ionicons name="business" size={r.responsiveFontSize(16, { max: 1.5 })} color="#666" />
+                    <ResponsiveText variant="body" style={styles.infoText} numberOfLines={1}>
                         {item.clientName}
-                    </Text>
+                    </ResponsiveText>
                 </View>
 
                 {item.equipmentName && (
                     <View style={styles.infoRow}>
-                        <Ionicons name="hardware-chip" size={16} color="#666" />
-                        <Text style={styles.infoText} numberOfLines={1}>
+                        <Ionicons name="hardware-chip" size={r.responsiveFontSize(16, { max: 1.5 })} color="#666" />
+                        <ResponsiveText variant="body" style={styles.infoText} numberOfLines={1}>
                             {item.equipmentName}
-                        </Text>
+                        </ResponsiveText>
                     </View>
                 )}
 
                 <View style={styles.infoRow}>
-                    <Ionicons name="location" size={16} color="#666" />
-                    <Text style={styles.infoText} numberOfLines={1}>
+                    <Ionicons name="location" size={r.responsiveFontSize(16, { max: 1.5 })} color="#666" />
+                    <ResponsiveText variant="body" style={styles.infoText} numberOfLines={1}>
                         {item.address}
-                    </Text>
+                    </ResponsiveText>
                 </View>
 
                 <View style={styles.infoRow}>
-                    <Ionicons name="time" size={16} color="#666" />
-                    <Text style={styles.infoText}>
+                    <Ionicons name="time" size={r.responsiveFontSize(16, { max: 1.5 })} color="#666" />
+                    <ResponsiveText variant="body" style={styles.infoText}>
                         {formatTime(item.scheduledTime)}
-                    </Text>
+                    </ResponsiveText>
                 </View>
             </View>
 
             <View style={styles.activityFooter}>
                 <View style={styles.typeContainer}>
-                    <Text style={styles.typeText}>{getTypeText(item.type)}</Text>
+                    <ResponsiveText variant="caption" maxFontSizeMultiplier={1.3} style={styles.typeText}>
+                        {getTypeText(item.type)}
+                    </ResponsiveText>
                 </View>
             </View>
         </TouchableOpacity>
@@ -349,44 +354,50 @@ const RoadmapScreen: React.FC<RoadmapScreenProps> = ({ navigation }) => {
 
     const renderEmptyState = () => (
         <View style={styles.emptyContainer}>
-            <Ionicons name="map-outline" size={64} color="#ccc" />
-            <Text style={styles.emptyTitle}>{t('roadmap.noActivitiesFound')}</Text>
-            <Text style={styles.emptySubtitle}>
+            <Ionicons name="map-outline" size={r.responsiveFontSize(64, { max: 1.5 })} color="#ccc" />
+            <ResponsiveText variant="subtitle" style={styles.emptyTitle}>
+                {t('roadmap.noActivitiesFound')}
+            </ResponsiveText>
+            <ResponsiveText variant="body" style={styles.emptySubtitle}>
                 {t('roadmap.noActivitiesSubtitle')}
-            </Text>
+            </ResponsiveText>
         </View>
     );
 
     if (loading) {
         return (
-            <View style={styles.loadingContainer}>
+            <ResponsiveContainer withPadding={false} style={styles.loadingContainer}>
                 <ActivityIndicator size="large" color="#007BFF" />
-                <Text style={styles.loadingText}>{t('roadmap.loading')}</Text>
-            </View>
+                <ResponsiveText variant="body" style={styles.loadingText}>
+                    {t('roadmap.loading')}
+                </ResponsiveText>
+            </ResponsiveContainer>
         );
     }
 
     return (
-        <View style={styles.container}>
+        <ResponsiveContainer withPadding={false} style={styles.container}>
             <View style={styles.header}>
                 <View style={styles.headerInfo}>
-                    <Text style={styles.headerTitle}>{t('roadmap.dayRoadmap')}</Text>
-                    <Text style={styles.headerDate}>
+                    <ResponsiveText variant="title" style={styles.headerTitle} numberOfLines={2}>
+                        {t('roadmap.dayRoadmap')}
+                    </ResponsiveText>
+                    <ResponsiveText variant="body" style={styles.headerDate} numberOfLines={1}>
                         {format(currentDate, "EEEE, dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
-                    </Text>
-                    <Text style={styles.headerSubtitle}>
+                    </ResponsiveText>
+                    <ResponsiveText variant="caption" style={styles.headerSubtitle}>
                         {activities.length} {t('roadmap.activitiesCount')}
-                    </Text>
+                    </ResponsiveText>
                 </View>
                 <TouchableOpacity
-                    style={styles.refreshButton}
+                    style={[styles.refreshButton, { minHeight: r.verticalScale(44), minWidth: r.verticalScale(44) }]}
                     onPress={onRefresh}
                     disabled={refreshing}
                 >
                     <Ionicons
-                        name="refresh"
-                        size={24}
-                        color="#007BFF"
+                        name="refresh-outline"
+                        size={32}
+                        color="#fff"
                     />
                 </TouchableOpacity>
             </View>
@@ -395,14 +406,14 @@ const RoadmapScreen: React.FC<RoadmapScreenProps> = ({ navigation }) => {
                 data={activities}
                 renderItem={renderActivityItem}
                 keyExtractor={(item) => item.id.toString()}
-                contentContainerStyle={styles.listContainer}
+                contentContainerStyle={[styles.listContainer, { paddingBottom: r.height * 0.1 }]}
                 refreshControl={
                     <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
                 }
                 ListEmptyComponent={renderEmptyState}
                 showsVerticalScrollIndicator={false}
             />
-        </View>
+        </ResponsiveContainer>
     );
 };
 
@@ -419,7 +430,6 @@ const styles = StyleSheet.create({
     },
     loadingText: {
         marginTop: 10,
-        fontSize: 16,
         color: '#666',
         backgroundColor: 'transparent',
     },
@@ -430,39 +440,39 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'flex-start',
+        flexWrap: 'wrap',
     },
     headerInfo: {
         flex: 1,
+        minWidth: 200,
     },
     refreshButton: {
-        padding: 8,
-        backgroundColor: 'rgba(255, 255, 255, 0.2)',
-        borderRadius: 8,
+        padding: 10,
         marginLeft: 10,
+        justifyContent: 'center',
+        alignItems: 'center',
+        minWidth: 40,
+        minHeight: 40,
     },
     headerTitle: {
-        fontSize: 24,
         fontWeight: 'bold',
         color: '#fff',
         marginBottom: 5,
         backgroundColor: 'transparent',
     },
     headerDate: {
-        fontSize: 16,
         color: '#fff',
         opacity: 0.9,
         marginBottom: 5,
         backgroundColor: 'transparent',
     },
     headerSubtitle: {
-        fontSize: 14,
         color: '#fff',
         opacity: 0.8,
         backgroundColor: 'transparent',
     },
     listContainer: {
         padding: 16,
-        paddingBottom: 100,
     },
     activityCard: {
         backgroundColor: '#fff',
@@ -491,7 +501,6 @@ const styles = StyleSheet.create({
         marginRight: 8,
     },
     activityTitle: {
-        fontSize: 16,
         fontWeight: '600',
         color: '#333',
         flex: 1,
@@ -506,7 +515,6 @@ const styles = StyleSheet.create({
         borderRadius: 12,
     },
     statusText: {
-        fontSize: 12,
         fontWeight: '600',
         color: '#fff',
         backgroundColor: 'transparent',
@@ -518,9 +526,9 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         marginBottom: 6,
+        flexShrink: 1,
     },
     infoText: {
-        fontSize: 14,
         color: '#666',
         marginLeft: 8,
         flex: 1,
@@ -549,7 +557,6 @@ const styles = StyleSheet.create({
         alignItems: 'flex-end',
     },
     typeText: {
-        fontSize: 12,
         color: '#666',
         fontStyle: 'italic',
         backgroundColor: 'transparent',
@@ -559,9 +566,9 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
         paddingVertical: 60,
+        paddingHorizontal: 20,
     },
     emptyTitle: {
-        fontSize: 18,
         fontWeight: '600',
         color: '#666',
         marginTop: 16,
@@ -569,7 +576,6 @@ const styles = StyleSheet.create({
         backgroundColor: 'transparent',
     },
     emptySubtitle: {
-        fontSize: 14,
         color: '#999',
         textAlign: 'center',
         backgroundColor: 'transparent',

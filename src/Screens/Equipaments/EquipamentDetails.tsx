@@ -9,7 +9,6 @@ import {
   Alert,
   Modal,
   TextInput,
-  Dimensions,
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
@@ -17,7 +16,6 @@ import {
 import { RouteProp } from "@react-navigation/native";
 import { DrawerNavigationProp } from "@react-navigation/drawer";
 import { RootStackParamList } from "../../Routers/AppRouter";
-import TechnicalAssistanceService from "../../Services/TechnicalAssistanceService";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { usePermissions } from "../../Context/PermissionsContext";
 import ActivityService from "../../Services/ActivityService";
@@ -28,8 +26,9 @@ import { EquipmentTemplate } from "../../Models/EquipmentTemplate";
 import DateMaskInput from "../../Components/DateMaskInput";
 import DatePickerInput from "../../Components/DatePickerInput";
 import CustomPicker from "../../Components/CustomPicker";
-
-const { width } = Dimensions.get('window');
+import ResponsiveContainer from "../../Components/ResponsiveContainer";
+import { useResponsive } from "../../hooks/useResponsive";
+import AppTextInput from "../../Components/AppTextInput";
 
 interface EquipmentDetailsScreenProps {
   route: RouteProp<RootStackParamList, "EquipmentDetailsScreen">;
@@ -37,6 +36,9 @@ interface EquipmentDetailsScreenProps {
 }
 
 const EquipmentDetailsScreen: React.FC<EquipmentDetailsScreenProps> = ({ route, navigation }) => {
+  const r = useResponsive();
+  const width = r?.width ?? 414;
+  const height = r?.height ?? 896;
   const { equipmentId } = route.params;
   const { hasPermission, permissions } = usePermissions();
   const [equipment, setEquipment] = useState<any>(null);
@@ -248,27 +250,27 @@ const EquipmentDetailsScreen: React.FC<EquipmentDetailsScreenProps> = ({ route, 
 
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
+      <ResponsiveContainer withPadding={false} style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#007BFF" />
         <Text style={styles.loadingText}>Carregando detalhes do equipamento...</Text>
-      </View>
+      </ResponsiveContainer>
     );
   }
 
   if (!equipment) {
     return (
-      <View style={styles.errorContainer}>
+      <ResponsiveContainer withPadding={false} style={styles.errorContainer}>
         <MaterialIcons name="error-outline" size={64} color="#FF6B6B" />
         <Text style={styles.errorText}>Equipamento não encontrado</Text>
         <TouchableOpacity style={styles.retryButton} onPress={() => navigation.goBack()}>
           <Text style={styles.retryButtonText}>Voltar</Text>
         </TouchableOpacity>
-      </View>
+      </ResponsiveContainer>
     );
   }
 
   return (
-    <View style={styles.container}>
+    <ResponsiveContainer withPadding={false} style={styles.container}>
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* Header com gradiente */}
         <LinearGradient
@@ -556,7 +558,10 @@ const EquipmentDetailsScreen: React.FC<EquipmentDetailsScreenProps> = ({ route, 
             activeOpacity={1}
             onPress={() => setShowCreateActivity(false)}
           >
-            <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
+            <View
+              style={[styles.modalContent, { maxWidth: width * 0.9, maxHeight: height * 0.85 }]}
+              onStartShouldSetResponder={() => true}
+            >
                 <View style={styles.modalHeader}>
                   <Text style={styles.modalTitle}>Criar Nova Atividade</Text>
                   <TouchableOpacity
@@ -568,7 +573,7 @@ const EquipmentDetailsScreen: React.FC<EquipmentDetailsScreenProps> = ({ route, 
                 </View>
 
                 <ScrollView
-                  style={styles.modalBodyScroll}
+                  style={[styles.modalBodyScroll, { maxHeight: height * 0.5 }]}
                   contentContainerStyle={styles.modalBodyContent}
                   keyboardShouldPersistTaps="handled"
                   showsVerticalScrollIndicator={true}
@@ -590,7 +595,7 @@ const EquipmentDetailsScreen: React.FC<EquipmentDetailsScreenProps> = ({ route, 
 
                   <View style={styles.inputGroup}>
                     <Text style={styles.inputLabel}>Observação (opcional)</Text>
-                    <TextInput
+                    <AppTextInput
                       style={[styles.textInput, { minHeight: 80, textAlignVertical: 'top' }]}
                       placeholder="Digite uma observação (opcional)"
                       placeholderTextColor="#999"
@@ -625,7 +630,7 @@ const EquipmentDetailsScreen: React.FC<EquipmentDetailsScreenProps> = ({ route, 
           </TouchableOpacity>
         </KeyboardAvoidingView>
       </Modal>
-    </View>
+    </ResponsiveContainer>
   );
 };
 
@@ -813,8 +818,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     borderRadius: 16,
     width: "100%",
-    maxWidth: width * 0.9,
-    maxHeight: Dimensions.get('window').height * 0.85,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
@@ -841,7 +844,6 @@ const styles = StyleSheet.create({
     marginLeft: 12,
   },
   modalBodyScroll: {
-    maxHeight: Dimensions.get('window').height * 0.5,
   },
   modalBodyContent: {
     padding: 20,
