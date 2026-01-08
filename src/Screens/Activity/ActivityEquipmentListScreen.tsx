@@ -55,7 +55,7 @@ const ActivityEquipmentListScreen: React.FC<ActivityEquipmentListScreenProps> = 
         { label: "Aguardando Registro", value: EquipmentStatus.WAITING_WORK_APPROVAL, icon: "time-outline" },
         { label: "Fechado", value: EquipmentStatus.CLOSED, icon: "check-circle" },
     ];
-    const { activityId, activityName, clientId, clientName } = route.params;
+    const { activityId, activityName, clientId, clientName, budgetPolicy, fromNewActivityFlow } = route.params as any;
     const [equipments, setEquipments] = useState<any[]>([]);
     const [loading, setLoading] = useState(false);
     const [refreshing, setRefreshing] = useState(false);
@@ -261,13 +261,15 @@ const ActivityEquipmentListScreen: React.FC<ActivityEquipmentListScreenProps> = 
         const navigateToDetails = () => {
             // Navegar para a tela de questionário da atividade
             // Tag é opcional - pode ser undefined/null
-            const params = {
+            const params: any = {
                 activityId: activityId,
                 activityEquipmentId: item.id,
                 equipmentId: equipment.id,
                 equipmentTag: equipment.tag || undefined, // Tag opcional
                 activityName: activityName,
             };
+            if (budgetPolicy) params.budgetPolicy = budgetPolicy;
+            if (fromNewActivityFlow) params.fromNewActivityFlow = true;
 
             console.log('[ActivityEquipmentListScreen] Navegando para questionário com params:', params);
 

@@ -26,7 +26,7 @@ export default class MenuService {
                 return this.menuCache;
             }
 
-            const endpoint = `/me/menu`;
+            const endpoint = `/me/menu?mobile=true`;
 
             console.log("[MenuService] Buscando menu dinâmico do endpoint:", endpoint);
             this.lastFetchAttempt = now;

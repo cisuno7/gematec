@@ -18,6 +18,8 @@ import { ActivityDynamicField } from '../Models/ActivityDynamicField';
 import { UploadFile } from '../Models/UploadFile';
 import CustomPicker from './CustomPicker';
 import { useLanguage } from '../Context/LanguageContext';
+import { useResponsive } from '../hooks/useResponsive';
+import ResponsiveText from './ResponsiveText';
 
 interface DynamicActivityQuestionnaireProps {
   fields: ActivityDynamicField[];
@@ -45,6 +47,7 @@ const DynamicActivityQuestionnaire: React.FC<DynamicActivityQuestionnaireProps> 
   readOnly = false,
 }) => {
   const { t } = useLanguage();
+  const r = useResponsive();
   const [answers, setAnswers] = useState<{ [key: string]: any }>(initialValues);
   const [uploads, setUploads] = useState<{ [key: string]: UploadFile[] }>(initialUploads || {});
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
@@ -147,8 +150,8 @@ const DynamicActivityQuestionnaire: React.FC<DynamicActivityQuestionnaireProps> 
     }
   };
 
-  // Função de salvamento automático com debounce
-  const scheduleAutoSave = (questionId: string, value: any, justification?: string, uploadList?: UploadFile[]) => {
+  // Função de salvamento automático com debounce (otimizado para 400ms)
+  const scheduleAutoSave = (questionId: string, value: any, justification?: string, uploadList?: UploadFile[], debounceMs: number = 400) => {
     console.log(`[DynamicActivityQuestionnaire] 🕐 Agendando auto-save para ${questionId}...`);
 
     // Cancelar timeout anterior se existir
@@ -161,75 +164,86 @@ const DynamicActivityQuestionnaire: React.FC<DynamicActivityQuestionnaireProps> 
     setSavingStatus(prev => ({ ...prev, [questionId]: 'saving' }));
     console.log(`[DynamicActivityQuestionnaire] 💾 Status: SALVANDO para ${questionId}`);
 
+    // Se debounceMs for 0, salvar imediatamente
+    if (debounceMs === 0) {
+      executeSave(questionId, value, justification, uploadList);
+      return;
+    }
+
     // Agendar novo salvamento
     saveTimeouts.current[questionId] = setTimeout(async () => {
-      try {
-        console.log(`[DynamicActivityQuestionnaire] ⏰ Timeout atingido - iniciando salvamento de ${questionId}`);
-        console.log(`[DynamicActivityQuestionnaire] 📦 Dados a salvar:`, {
-          questionId,
-          hasValue: value !== undefined && value !== null,
-          valueType: typeof value,
-          hasJustification: !!justification,
-          uploadsCount: uploadList?.length || 0
+      await executeSave(questionId, value, justification, uploadList);
+    }, debounceMs);
+
+    console.log(`[DynamicActivityQuestionnaire] ✅ Timeout agendado para ${questionId} (${debounceMs}ms)`);
+  };
+
+  // Função auxiliar para executar o salvamento
+  const executeSave = async (questionId: string, value: any, justification?: string, uploadList?: UploadFile[]) => {
+    try {
+      console.log(`[DynamicActivityQuestionnaire] ⏰ Timeout atingido - iniciando salvamento de ${questionId}`);
+      console.log(`[DynamicActivityQuestionnaire] 📦 Dados a salvar:`, {
+        questionId,
+        hasValue: value !== undefined && value !== null,
+        valueType: typeof value,
+        hasJustification: !!justification,
+        uploadsCount: uploadList?.length || 0
+      });
+
+      // Salvar localmente primeiro
+      console.log(`[DynamicActivityQuestionnaire] 💾 Salvando localmente primeiro...`);
+      await saveDataLocally(questionId, value, justification, uploadList);
+      console.log(`[DynamicActivityQuestionnaire] ✅ Salvo localmente com sucesso`);
+
+      // Salvar no servidor se a função estiver disponível
+      if (onSaveAnswer) {
+        console.log(`[DynamicActivityQuestionnaire] 🌐 onSaveAnswer callback disponível - preparando envio ao servidor`);
+
+        const targetField = fields.find(f => f.key === questionId);
+        const fieldIndex = fields.findIndex(f => f.key === questionId);
+        const questionIdNumber = (targetField && typeof targetField.id === 'number') ? (targetField.id as number) : (fieldIndex + 1);
+
+        console.log(`[DynamicActivityQuestionnaire] 🔢 Question ID numérico calculado:`, {
+          questionIdNumber,
+          fromFieldId: targetField?.id,
+          fromIndex: fieldIndex,
+          fieldKey: targetField?.key
         });
 
-        // Salvar localmente primeiro
-        console.log(`[DynamicActivityQuestionnaire] 💾 Salvando localmente primeiro...`);
-        await saveDataLocally(questionId, value, justification, uploadList);
-        console.log(`[DynamicActivityQuestionnaire] ✅ Salvo localmente com sucesso`);
+        const answer = {
+          question_id: questionIdNumber,
+          value: value,
+          justification: justification,
+          uploads: uploadList || []
+        };
 
-        // Salvar no servidor se a função estiver disponível
-        if (onSaveAnswer) {
-          console.log(`[DynamicActivityQuestionnaire] 🌐 onSaveAnswer callback disponível - preparando envio ao servidor`);
-
-          const targetField = fields.find(f => f.key === questionId);
-          const fieldIndex = fields.findIndex(f => f.key === questionId);
-          const questionIdNumber = (targetField && typeof targetField.id === 'number') ? (targetField.id as number) : (fieldIndex + 1);
-
-          console.log(`[DynamicActivityQuestionnaire] 🔢 Question ID numérico calculado:`, {
-            questionIdNumber,
-            fromFieldId: targetField?.id,
-            fromIndex: fieldIndex,
-            fieldKey: targetField?.key
-          });
-
-          const answer = {
-            question_id: questionIdNumber,
-            value: value,
-            justification: justification,
-            uploads: uploadList || []
-          };
-
-          console.log(`[DynamicActivityQuestionnaire] 🚀 Chamando onSaveAnswer para enviar ao servidor...`);
-          await onSaveAnswer(questionId, answer);
-          console.log(`[DynamicActivityQuestionnaire] ✅ onSaveAnswer executado com sucesso`);
-        } else {
-          console.warn(`[DynamicActivityQuestionnaire] ⚠️ onSaveAnswer callback NÃO disponível - dados salvos apenas localmente`);
-        }
-
-        // Marcar como salvo
-        setSavingStatus(prev => ({ ...prev, [questionId]: 'saved' }));
-        console.log(`[DynamicActivityQuestionnaire] ✅ ${questionId} salvo com sucesso - status: SAVED`);
-
-        // Limpar status de salvo após 3 segundos
-        setTimeout(() => {
-          setSavingStatus(prev => ({ ...prev, [questionId]: undefined }));
-          console.log(`[DynamicActivityQuestionnaire] 🧹 Status de salvamento limpo para ${questionId}`);
-        }, 3000);
-
-      } catch (error: any) {
-        console.error(`[DynamicActivityQuestionnaire] ❌❌❌ ERRO ao salvar ${questionId} ❌❌❌`);
-        console.error(`[DynamicActivityQuestionnaire] 🔴 Tipo do erro:`, error?.constructor?.name || typeof error);
-        console.error(`[DynamicActivityQuestionnaire] 🔴 Mensagem:`, error?.message);
-        console.error(`[DynamicActivityQuestionnaire] 🔴 Stack:`, error?.stack);
-        console.error(`[DynamicActivityQuestionnaire] 🔴 Erro completo:`, error);
-
-        setSavingStatus(prev => ({ ...prev, [questionId]: 'error' }));
-        console.log(`[DynamicActivityQuestionnaire] ⚠️ Status atualizado para ERROR para ${questionId}`);
+        console.log(`[DynamicActivityQuestionnaire] 🚀 Chamando onSaveAnswer para enviar ao servidor...`);
+        await onSaveAnswer(questionId, answer);
+        console.log(`[DynamicActivityQuestionnaire] ✅ onSaveAnswer executado com sucesso`);
+      } else {
+        console.warn(`[DynamicActivityQuestionnaire] ⚠️ onSaveAnswer callback NÃO disponível - dados salvos apenas localmente`);
       }
-    }, 1000); // 1 segundo de debounce
 
-    console.log(`[DynamicActivityQuestionnaire] ✅ Timeout agendado para ${questionId} (1 segundo)`);
+      // Marcar como salvo
+      setSavingStatus(prev => ({ ...prev, [questionId]: 'saved' }));
+      console.log(`[DynamicActivityQuestionnaire] ✅ ${questionId} salvo com sucesso - status: SAVED`);
+
+      // Limpar status de salvo após 3 segundos
+      setTimeout(() => {
+        setSavingStatus(prev => ({ ...prev, [questionId]: undefined }));
+        console.log(`[DynamicActivityQuestionnaire] 🧹 Status de salvamento limpo para ${questionId}`);
+      }, 3000);
+
+    } catch (error: any) {
+      console.error(`[DynamicActivityQuestionnaire] ❌❌❌ ERRO ao salvar ${questionId} ❌❌❌`);
+      console.error(`[DynamicActivityQuestionnaire] 🔴 Tipo do erro:`, error?.constructor?.name || typeof error);
+      console.error(`[DynamicActivityQuestionnaire] 🔴 Mensagem:`, error?.message);
+      console.error(`[DynamicActivityQuestionnaire] 🔴 Stack:`, error?.stack);
+      console.error(`[DynamicActivityQuestionnaire] 🔴 Erro completo:`, error);
+
+      setSavingStatus(prev => ({ ...prev, [questionId]: 'error' }));
+      console.log(`[DynamicActivityQuestionnaire] ⚠️ Status atualizado para ERROR para ${questionId}`);
+    }
   };
 
   // Carregar dados salvos ao montar o componente
@@ -348,6 +362,16 @@ const DynamicActivityQuestionnaire: React.FC<DynamicActivityQuestionnaireProps> 
     }
   };
 
+  // Handler para onBlur - salvamento imediato
+  const handleBlur = (fieldKey: string) => {
+    const value = answers[fieldKey];
+    const justification = answers[`${fieldKey}_justification`];
+    const uploadsList = uploads[fieldKey] || [];
+    
+    // Salvar imediatamente no blur (sem debounce)
+    scheduleAutoSave(fieldKey, value, justification, uploadsList, 0);
+  };
+
   // Renderização de cada campo
   const renderField = (field: ActivityDynamicField) => {
     const value = answers[field.key] || '';
@@ -360,24 +384,39 @@ const DynamicActivityQuestionnaire: React.FC<DynamicActivityQuestionnaireProps> 
     if (readOnly) {
       // Renderização somente leitura
       return (
-        <View key={field.key} style={styles.fieldContainer}>
-          <View style={styles.fieldHeader}>
-            <Text style={styles.fieldLabel}>{field.label}</Text>
+        <View key={field.key} style={[styles.questionCard, { padding: r.spacing(2), marginBottom: r.spacing(1.5) }]}>
+          <View style={styles.questionHeader}>
+            <ResponsiveText variant="body" weight="600">{field.label}</ResponsiveText>
           </View>
+          {field.help_text && (
+            <ResponsiveText variant="caption" style={[styles.helpText, { marginTop: r.spacing(0.5), marginBottom: r.spacing(1) }]}>
+              {field.help_text}
+            </ResponsiveText>
+          )}
           {field.type === 'radio_with_justification' && value === field.justification_target && justification ? (
             <View>
-              <Text style={styles.readonlyValue}>{String(value || '')}</Text>
-              <Text style={styles.readonlyJustification}>Justificativa: {String(justification || '')}</Text>
+              <View style={[styles.readonlyValue, { padding: r.spacing(1.5), marginBottom: r.spacing(1) }]}>
+                <ResponsiveText variant="body">{String(value || '')}</ResponsiveText>
+              </View>
+              <ResponsiveText variant="caption" style={styles.readonlyJustification}>
+                Justificativa: {String(justification || '')}
+              </ResponsiveText>
             </View>
           ) : field.type === 'measure' ? (
-            <Text style={styles.readonlyValue}>
-              {value !== undefined && value !== null && value !== '' ? String(value) : '-'}{field.unit ? ` ${field.unit}` : ''}
-            </Text>
+            <View style={[styles.readonlyValue, { padding: r.spacing(1.5) }]}>
+              <ResponsiveText variant="body">
+                {value !== undefined && value !== null && value !== '' ? String(value) : '-'}{field.unit ? ` ${field.unit}` : ''}
+              </ResponsiveText>
+            </View>
           ) : (
-            <Text style={styles.readonlyValue}>{value !== undefined && value !== null && value !== '' ? String(value) : '-'}</Text>
+            <View style={[styles.readonlyValue, { padding: r.spacing(1.5) }]}>
+              <ResponsiveText variant="body">
+                {value !== undefined && value !== null && value !== '' ? String(value) : '-'}
+              </ResponsiveText>
+            </View>
           )}
           {field.has_upload && (
-            <View style={styles.uploadPreviewContainer}>
+            <View style={[styles.uploadPreviewContainer, { marginTop: r.spacing(1) }]}>
               {fieldUploads.length > 0 ? (
                 fieldUploads.map((file, idx) => {
                   const fullUri = resolveUri(file.uri);
@@ -385,7 +424,16 @@ const DynamicActivityQuestionnaire: React.FC<DynamicActivityQuestionnaireProps> 
                     <TouchableOpacity key={idx} onPress={() => console.log('[DynamicActivityQuestionnaire] Imagem clicada:', fullUri)}>
                       <Image
                         source={{ uri: fullUri as string, headers: imageHeaders }}
-                        style={styles.uploadPreview}
+                        style={[
+                          styles.uploadPreview,
+                          {
+                            width: r.scale(80),
+                            height: r.scale(80),
+                            borderRadius: r.scale(8),
+                            marginRight: r.spacing(1),
+                            marginBottom: r.spacing(1),
+                          }
+                        ]}
                         resizeMode="cover"
                         onError={(e) => console.log('[DynamicActivityQuestionnaire] Erro ao carregar imagem:', e.nativeEvent.error)}
                       />
@@ -393,7 +441,9 @@ const DynamicActivityQuestionnaire: React.FC<DynamicActivityQuestionnaireProps> 
                   );
                 })
               ) : (
-                <Text style={styles.uploadErrorText}>Foto obrigatória não adicionada</Text>
+                <ResponsiveText variant="caption" style={styles.uploadErrorText}>
+                  Foto obrigatória não adicionada
+                </ResponsiveText>
               )}
             </View>
           )}
@@ -402,44 +452,60 @@ const DynamicActivityQuestionnaire: React.FC<DynamicActivityQuestionnaireProps> 
     }
 
     return (
-      <View key={field.key} style={styles.fieldContainer}>
-        <View style={styles.fieldHeader}>
-          <Text style={styles.fieldLabel}>
-            {field.label}
-            {field.rules?.required && <Text style={styles.required}> *</Text>}
-            {field.has_upload && <Text style={styles.required}> 📷</Text>}
-          </Text>
+      <View key={field.key} style={[styles.questionCard, { padding: r.spacing(2), marginBottom: r.spacing(1.5) }]}>
+        <View style={styles.questionHeader}>
+          <View style={{ flex: 1 }}>
+            <ResponsiveText variant="body" weight="600" style={{ marginBottom: r.spacing(0.5) }}>
+              {field.label}
+              {field.rules?.required && <Text style={styles.requiredAsterisk}> *</Text>}
+              {field.has_upload && <Text style={styles.uploadIcon}> 📷</Text>}
+            </ResponsiveText>
+          </View>
           <View style={styles.statusContainer}>
             {currentSavingStatus === 'saving' && (
-              <View style={styles.savingIndicator}>
-                <Text style={styles.savingText}>💾 Salvando...</Text>
+              <View style={[styles.savingIndicator, { paddingVertical: r.spacing(0.5), paddingHorizontal: r.spacing(1) }]}>
+                <ResponsiveText variant="caption" weight="600" style={{ color: '#fff' }}>💾 Salvando...</ResponsiveText>
               </View>
             )}
             {currentSavingStatus === 'saved' && (
-              <View style={styles.savedIndicator}>
-                <Text style={styles.savedText}>✓ Salvo</Text>
+              <View style={[styles.savedIndicator, { paddingVertical: r.spacing(0.5), paddingHorizontal: r.spacing(1) }]}>
+                <ResponsiveText variant="caption" weight="600" style={{ color: '#fff' }}>✓ Salvo</ResponsiveText>
               </View>
             )}
             {currentSavingStatus === 'error' && (
-              <View style={styles.errorIndicator}>
-                <Text style={styles.errorIndicatorText}>❌ Erro</Text>
+              <View style={[styles.errorIndicator, { paddingVertical: r.spacing(0.5), paddingHorizontal: r.spacing(1) }]}>
+                <ResponsiveText variant="caption" weight="600" style={{ color: '#fff' }}>❌ Erro</ResponsiveText>
               </View>
             )}
             {isSaved && !currentSavingStatus && (
-              <View style={styles.savedIndicator}>
-                <Text style={styles.savedText}>✓ Salvo</Text>
+              <View style={[styles.savedIndicator, { paddingVertical: r.spacing(0.5), paddingHorizontal: r.spacing(1) }]}>
+                <ResponsiveText variant="caption" weight="600" style={{ color: '#fff' }}>✓ Salvo</ResponsiveText>
               </View>
             )}
           </View>
         </View>
-        {field.help_text && <Text style={styles.helpText}>{field.help_text}</Text>}
+        {field.help_text && (
+          <ResponsiveText variant="caption" style={[styles.helpText, { marginBottom: r.spacing(1), marginTop: r.spacing(0.5) }]}>
+            {field.help_text}
+          </ResponsiveText>
+        )}
         {/* Campo principal */}
         {(() => {
           switch (field.type) {
             case 'text':
               return (
                 <TextInput
-                  style={[styles.input, error && styles.inputError]}
+                  style={[
+                    styles.input,
+                    {
+                      minHeight: r.verticalScale(48),
+                      padding: r.spacing(1.5),
+                      fontSize: r.responsiveFontSize(16),
+                      borderRadius: r.scale(8),
+                      marginBottom: r.spacing(0.5),
+                    },
+                    error && styles.inputError
+                  ]}
                   placeholder={field.label}
                   value={value}
                   onChangeText={(text) => {
@@ -447,50 +513,88 @@ const DynamicActivityQuestionnaire: React.FC<DynamicActivityQuestionnaireProps> 
                     setErrors((prev) => ({ ...prev, [field.key]: validateField(field, text) }));
                     scheduleAutoSave(field.key, text, justification, fieldUploads);
                   }}
+                  onBlur={() => handleBlur(field.key)}
                 />
               );
             case 'measure':
               return (
-                <TextInput
-                  style={[styles.input, error && styles.inputError]}
-                  placeholder={field.label}
-                  value={value.toString()}
-                  keyboardType="numeric"
-                  onChangeText={(text) => {
-                    setAnswers((prev) => ({ ...prev, [field.key]: text }));
-                    setErrors((prev) => ({ ...prev, [field.key]: validateField(field, text) }));
-                    scheduleAutoSave(field.key, text, justification, fieldUploads);
-                  }}
-                />
+                <View>
+                  <TextInput
+                    style={[
+                      styles.input,
+                      {
+                        minHeight: r.verticalScale(48),
+                        padding: r.spacing(1.5),
+                        fontSize: r.responsiveFontSize(16),
+                        borderRadius: r.scale(8),
+                        marginBottom: r.spacing(0.5),
+                      },
+                      error && styles.inputError
+                    ]}
+                    placeholder={field.label}
+                    value={value.toString()}
+                    keyboardType="numeric"
+                    onChangeText={(text) => {
+                      setAnswers((prev) => ({ ...prev, [field.key]: text }));
+                      setErrors((prev) => ({ ...prev, [field.key]: validateField(field, text) }));
+                      scheduleAutoSave(field.key, text, justification, fieldUploads);
+                    }}
+                    onBlur={() => handleBlur(field.key)}
+                  />
+                  {field.unit && (
+                    <ResponsiveText variant="caption" style={{ marginTop: r.spacing(0.5), color: '#666' }}>
+                      Unidade: {field.unit}
+                    </ResponsiveText>
+                  )}
+                </View>
               );
             case 'select':
               return (
-                <CustomPicker
-                  selectedValue={value}
-                  onValueChange={(itemValue) => {
-                    setAnswers((prev) => ({ ...prev, [field.key]: itemValue }));
-                    setErrors((prev) => ({ ...prev, [field.key]: validateField(field, itemValue) }));
-                    scheduleAutoSave(field.key, itemValue, justification, fieldUploads);
-                  }}
-                  items={field.options?.map((option) => ({ label: option, value: option })) || []}
-                  placeholder={`Selecione ${field.label}`}
-                  searchable={true}
-                />
+                <View style={{ marginBottom: r.spacing(0.5) }}>
+                  <CustomPicker
+                    selectedValue={value}
+                    onValueChange={(itemValue) => {
+                      setAnswers((prev) => ({ ...prev, [field.key]: itemValue }));
+                      setErrors((prev) => ({ ...prev, [field.key]: validateField(field, itemValue) }));
+                      // Salvar imediatamente ao mudar select (sem debounce)
+                      scheduleAutoSave(field.key, itemValue, justification, fieldUploads, 0);
+                    }}
+                    items={field.options?.map((option) => ({ label: option, value: option })) || []}
+                    placeholder={`Selecione ${field.label}`}
+                    searchable={true}
+                  />
+                </View>
               );
             case 'radio':
               return (
-                <View style={styles.radioGroup}>
+                <View style={[styles.radioGroup, { marginBottom: r.spacing(0.5) }]}>
                   {field.options?.map((option, idx) => (
                     <TouchableOpacity
                       key={idx}
-                      style={[styles.radioOption, value === option && styles.radioOptionSelected]}
+                      style={[
+                        styles.radioOption,
+                        {
+                          paddingHorizontal: r.spacing(1.5),
+                          paddingVertical: r.spacing(0.75),
+                          borderRadius: r.scale(16),
+                          marginRight: r.spacing(1),
+                          marginBottom: r.spacing(0.5),
+                        },
+                        value === option && styles.radioOptionSelected
+                      ]}
                       onPress={() => {
                         setAnswers((prev) => ({ ...prev, [field.key]: option }));
                         setErrors((prev) => ({ ...prev, [field.key]: validateField(field, option) }));
-                        scheduleAutoSave(field.key, option, justification, fieldUploads);
+                        // Salvar imediatamente ao selecionar radio (sem debounce)
+                        scheduleAutoSave(field.key, option, justification, fieldUploads, 0);
                       }}
                     >
-                      <Text style={value === option ? styles.radioTextSelected : styles.radioText}>{option}</Text>
+                      <ResponsiveText 
+                        variant="body" 
+                        style={value === option ? styles.radioTextSelected : styles.radioText}
+                      >
+                        {option}
+                      </ResponsiveText>
                     </TouchableOpacity>
                   ))}
                 </View>
@@ -498,25 +602,52 @@ const DynamicActivityQuestionnaire: React.FC<DynamicActivityQuestionnaireProps> 
             case 'radio_with_justification':
               return (
                 <View>
-                  <View style={styles.radioGroup}>
+                  <View style={[styles.radioGroup, { marginBottom: r.spacing(1) }]}>
                     {field.options?.map((option, idx) => (
                       <TouchableOpacity
                         key={idx}
-                        style={[styles.radioOption, value === option && styles.radioOptionSelected]}
+                        style={[
+                          styles.radioOption,
+                          {
+                            paddingHorizontal: r.spacing(1.5),
+                            paddingVertical: r.spacing(0.75),
+                            borderRadius: r.scale(16),
+                            marginRight: r.spacing(1),
+                            marginBottom: r.spacing(0.5),
+                          },
+                          value === option && styles.radioOptionSelected
+                        ]}
                         onPress={() => {
                           setAnswers((prev) => ({ ...prev, [field.key]: option }));
                           setErrors((prev) => ({ ...prev, [field.key]: validateField(field, option, justification) }));
-                          scheduleAutoSave(field.key, option, justification, fieldUploads);
+                          // Salvar imediatamente ao selecionar radio (sem debounce)
+                          scheduleAutoSave(field.key, option, justification, fieldUploads, 0);
                         }}
                       >
-                        <Text style={value === option ? styles.radioTextSelected : styles.radioText}>{option}</Text>
+                        <ResponsiveText 
+                          variant="body" 
+                          style={value === option ? styles.radioTextSelected : styles.radioText}
+                        >
+                          {option}
+                        </ResponsiveText>
                       </TouchableOpacity>
                     ))}
                   </View>
                   {/* Justificativa condicional */}
                   {value === field.justification_target && (
                     <TextInput
-                      style={[styles.input, error && styles.inputError]}
+                      style={[
+                        styles.input,
+                        {
+                          minHeight: r.verticalScale(48),
+                          padding: r.spacing(1.5),
+                          fontSize: r.responsiveFontSize(16),
+                          borderRadius: r.scale(8),
+                          marginTop: r.spacing(1),
+                          marginBottom: r.spacing(0.5),
+                        },
+                        error && styles.inputError
+                      ]}
                       placeholder="Justificativa"
                       value={justification}
                       onChangeText={(text) => {
@@ -524,6 +655,7 @@ const DynamicActivityQuestionnaire: React.FC<DynamicActivityQuestionnaireProps> 
                         setErrors((prev) => ({ ...prev, [field.key]: validateField(field, value, text) }));
                         scheduleAutoSave(field.key, value, text, fieldUploads);
                       }}
+                      onBlur={() => handleBlur(field.key)}
                     />
                   )}
                 </View>
@@ -534,25 +666,34 @@ const DynamicActivityQuestionnaire: React.FC<DynamicActivityQuestionnaireProps> 
         })()}
         {/* Upload de arquivos */}
         {field.has_upload && (
-          <View style={styles.uploadContainer}>
+          <View style={[styles.uploadContainer, { marginTop: r.spacing(1) }]}>
             <TouchableOpacity
               style={[
                 styles.uploadButton,
+                {
+                  padding: r.spacing(1.5),
+                  borderRadius: r.scale(8),
+                  marginBottom: r.spacing(1),
+                },
                 fieldUploads.length === 0 && styles.uploadButtonRequired,
                 fieldUploads.length > 0 && styles.uploadButtonSuccess
               ]}
               onPress={() => handlePickImage(field.key)}
             >
-              <Text style={[
-                styles.uploadButtonText,
-                fieldUploads.length === 0 && styles.uploadButtonTextRequired,
-                fieldUploads.length > 0 && styles.uploadButtonTextSuccess
-              ]}>
+              <ResponsiveText 
+                variant="body" 
+                weight="600"
+                style={[
+                  styles.uploadButtonText,
+                  fieldUploads.length === 0 && styles.uploadButtonTextRequired,
+                  fieldUploads.length > 0 && styles.uploadButtonTextSuccess
+                ]}
+              >
                 {fieldUploads.length > 0
                   ? `✓ ${fieldUploads.length} foto${fieldUploads.length > 1 ? 's' : ''} enviada${fieldUploads.length > 1 ? 's' : ''}`
                   : 'Adicionar foto (obrigatório)'
                 }
-              </Text>
+              </ResponsiveText>
             </TouchableOpacity>
             <View style={styles.uploadPreviewContainer}>
               {fieldUploads.map((file, idx) => {
@@ -561,33 +702,46 @@ const DynamicActivityQuestionnaire: React.FC<DynamicActivityQuestionnaireProps> 
                   <Image
                     key={idx}
                     source={{ uri: fullUri as string, headers: imageHeaders }}
-                    style={styles.uploadPreview}
+                    style={[
+                      styles.uploadPreview,
+                      {
+                        width: r.scale(80),
+                        height: r.scale(80),
+                        borderRadius: r.scale(8),
+                        marginRight: r.spacing(1),
+                        marginBottom: r.spacing(1),
+                      }
+                    ]}
                   />
                 );
               })}
             </View>
             {/* Mensagem específica para upload obrigatório */}
             {fieldUploads.length === 0 && (
-              <Text style={styles.uploadErrorText}>
+              <ResponsiveText variant="caption" style={[styles.uploadErrorText, { marginTop: r.spacing(0.5) }]}>
                 ⚠️ Foto obrigatória não foi adicionada
-              </Text>
+              </ResponsiveText>
             )}
             {/* Mensagem de sucesso para upload */}
             {fieldUploads.length > 0 && (
-              <Text style={styles.uploadSuccessText}>
+              <ResponsiveText variant="caption" style={[styles.uploadSuccessText, { marginTop: r.spacing(0.5) }]}>
                 ✅ Fotos enviadas com sucesso
-              </Text>
+              </ResponsiveText>
             )}
           </View>
         )}
         {/* Mensagem de erro */}
-        {error && <Text style={styles.errorText}>{error}</Text>}
+        {error && (
+          <ResponsiveText variant="caption" style={[styles.errorText, { marginTop: r.spacing(0.5) }]}>
+            {error}
+          </ResponsiveText>
+        )}
       </View>
     );
   };
 
   return (
-    <ScrollView style={styles.container}>
+    <ScrollView style={[styles.container, { padding: r.spacing(2) }]}>
       {fields.map(renderField)}
     </ScrollView>
   );
@@ -596,68 +750,48 @@ const DynamicActivityQuestionnaire: React.FC<DynamicActivityQuestionnaireProps> 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 16,
   },
-  fieldContainer: {
-    marginBottom: 20,
+  questionCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  fieldHeader: {
+  questionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 4,
+    alignItems: 'flex-start',
   },
-  fieldLabel: {
-    fontSize: 15,
-    fontWeight: 'bold',
-    color: '#333',
-  },
-  required: {
+  requiredAsterisk: {
     color: '#dc3545',
+    fontWeight: 'bold',
+  },
+  uploadIcon: {
     marginLeft: 4,
   },
   helpText: {
-    fontSize: 12,
-    color: '#888',
-    marginBottom: 4,
+    color: '#666',
   },
   input: {
     borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
+    borderColor: '#e0e0e0',
     backgroundColor: '#fff',
     color: '#333',
-    marginBottom: 4,
   },
   inputError: {
     borderColor: '#dc3545',
-  },
-  pickerContainer: {
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    backgroundColor: '#fff',
-    marginBottom: 4,
-  },
-  picker: {
-    color: '#333',
-    backgroundColor: '#fff',
+    borderWidth: 2,
   },
   radioGroup: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    marginBottom: 4,
   },
   radioOption: {
     borderWidth: 1,
     borderColor: '#007BFF',
-    borderRadius: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    marginRight: 8,
-    marginBottom: 4,
   },
   radioOptionSelected: {
     backgroundColor: '#007BFF',
@@ -666,19 +800,16 @@ const styles = StyleSheet.create({
     color: '#007BFF',
   },
   radioTextSelected: {
-    color: '#007BFF',
-    fontWeight: 'bold',
+    color: '#fff',
+    fontWeight: '600',
   },
   uploadContainer: {
-    marginTop: 8,
-    marginBottom: 4,
+    marginTop: 0,
   },
   uploadButton: {
     backgroundColor: '#007BFF',
-    padding: 10,
-    borderRadius: 8,
     alignItems: 'center',
-    marginBottom: 4,
+    justifyContent: 'center',
   },
   uploadButtonRequired: {
     backgroundColor: '#dc3545',
@@ -688,100 +819,58 @@ const styles = StyleSheet.create({
   },
   uploadButtonText: {
     color: '#fff',
-    fontWeight: 'bold',
   },
   uploadButtonTextRequired: {
     color: '#fff',
-    fontWeight: 'bold',
   },
   uploadButtonTextSuccess: {
     color: '#fff',
-    fontWeight: 'bold',
   },
   uploadPreviewContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    marginTop: 4,
   },
   uploadPreview: {
-    width: 80,
-    height: 80,
-    borderRadius: 8,
-    marginRight: 8,
-    marginBottom: 8,
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: '#e0e0e0',
   },
   errorText: {
     color: '#dc3545',
-    fontSize: 13,
-    marginTop: 2,
   },
   uploadErrorText: {
     color: '#dc3545',
-    fontSize: 12,
-    marginTop: 4,
     fontStyle: 'italic',
   },
   uploadSuccessText: {
     color: '#28a745',
-    fontSize: 12,
-    marginTop: 4,
     fontStyle: 'italic',
   },
   statusContainer: {
     flexDirection: 'row',
     alignItems: 'center',
+    marginLeft: 8,
   },
   savingIndicator: {
     backgroundColor: '#007BFF',
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    borderRadius: 5,
-    marginLeft: 8,
-  },
-  savingText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: 'bold',
+    borderRadius: 4,
   },
   savedIndicator: {
     backgroundColor: '#28a745',
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    borderRadius: 5,
-    marginLeft: 8,
-  },
-  savedText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: 'bold',
+    borderRadius: 4,
   },
   errorIndicator: {
     backgroundColor: '#dc3545',
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    borderRadius: 5,
-    marginLeft: 8,
-  },
-  errorIndicatorText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: 'bold',
+    borderRadius: 4,
   },
   readonlyValue: {
-    fontSize: 16,
     color: '#333',
     backgroundColor: '#fff',
     borderWidth: 1,
-    borderColor: '#eee',
+    borderColor: '#e0e0e0',
     borderRadius: 8,
-    padding: 12,
   },
   readonlyJustification: {
-    fontSize: 13,
     color: '#666',
-    marginTop: 4,
   },
 });
 

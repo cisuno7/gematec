@@ -7,6 +7,8 @@ import {
     ScrollView,
     Alert,
     ActivityIndicator,
+    KeyboardAvoidingView,
+    Platform,
 } from "react-native";
 import { RouteProp } from "@react-navigation/native";
 import { RootStackParamList } from "../../Routers/AppRouter";
@@ -24,9 +26,11 @@ import OfflineService from '../../Services/OfflineService';
 import apiClient from "../../Context/ApiClient";
 import ClientService from "../../Services/ClientService";
 import ResponsiveContainer from '../../Components/ResponsiveContainer';
+import ResponsiveText from '../../Components/ResponsiveText';
 import { EquipmentStatus, getNextStatusForAction, canTransitionEquipmentStatus } from "../../constants/activityStatus";
 import { usePermissions } from "../../Context/PermissionsContext";
 import { useUser } from "../../Context/UserContext";
+import { useResponsive } from "../../hooks/useResponsive";
 
 interface ActivityQuestionnaireScreenProps {
     navigation: DrawerNavigationProp<RootStackParamList, "ActivityQuestionnaireScreen">;
@@ -146,6 +150,7 @@ const ActivityQuestionnaireScreen: React.FC<ActivityQuestionnaireScreenProps> = 
     // Hooks para permissões e usuário
     const { hasPermission } = usePermissions();
     const { username } = useUser();
+    const r = useResponsive();
 
     const activityService = new ActivityService();
 
@@ -164,6 +169,15 @@ const ActivityQuestionnaireScreen: React.FC<ActivityQuestionnaireScreenProps> = 
     const [noQuestions, setNoQuestions] = useState<boolean>(false);
     const [showBudgetModal, setShowBudgetModal] = useState(false);
     const firstQuestionAnsweredRef = useRef<boolean>(false); // Rastrear se primeira questão foi respondida
+
+    // Ordenar questões pelo campo order se disponível
+    const sortedQuestions = useMemo(() => {
+        return [...questions].sort((a, b) => {
+            const orderA = (a as any).order ?? 999;
+            const orderB = (b as any).order ?? 999;
+            return orderA - orderB;
+        });
+    }, [questions]);
 
     // Bloquear edição quando o orçamento foi aprovado OU quando está fechado/completado sem permissão
     const isQuestionnaireReadOnly = 
@@ -1079,22 +1093,90 @@ const ActivityQuestionnaireScreen: React.FC<ActivityQuestionnaireScreenProps> = 
     // ===================================================================
     if (loading) {
         return (
-            <View style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color="#007bff" />
-                <Text style={styles.loadingText}>{t('activityQuestionnaire.loading')}</Text>
-            </View>
+            <ResponsiveContainer scroll={false} withPadding={false}>
+                <View style={styles.container}>
+                    {/* Header */}
+                    <View style={[styles.header, { 
+                        paddingTop: r.verticalScale(50), 
+                        paddingBottom: r.spacing(2.5), 
+                        paddingHorizontal: r.spacing(2.5) 
+                    }]}>
+                        <TouchableOpacity
+                            style={[styles.backButton, { 
+                                width: r.scale(40), 
+                                height: r.scale(40), 
+                                borderRadius: r.scale(20),
+                                marginRight: r.spacing(2)
+                            }]}
+                            onPress={() => navigation.goBack()}
+                        >
+                            <Ionicons name="arrow-back" size={r.scale(24)} color="#fff" />
+                        </TouchableOpacity>
+                        <View style={styles.headerContent}>
+                            <ResponsiveText variant="title" weight="bold" style={styles.headerTitle}>
+                                {activityName}
+                            </ResponsiveText>
+                            {equipmentTag && (
+                                <ResponsiveText variant="caption" style={styles.headerSubtitle}>
+                                    {t('activityQuestionnaire.equipmentTag')}: {equipmentTag}
+                                </ResponsiveText>
+                            )}
+                        </View>
+                    </View>
+                    <View style={styles.loadingContainer}>
+                        <ActivityIndicator size="large" color="#007bff" />
+                        <ResponsiveText variant="body" style={styles.loadingText}>
+                            {t('activityQuestionnaire.loading')}
+                        </ResponsiveText>
+                    </View>
+                </View>
+            </ResponsiveContainer>
         );
     }
 
     if (error) {
         return (
-            <View style={styles.errorContainer}>
-                <MaterialIcons name="error-outline" size={64} color="#dc3545" />
-                <Text style={styles.errorText}>{error}</Text>
-                <TouchableOpacity style={styles.retryButton} onPress={fetchEquipmentData}>
-                    <Text style={styles.retryButtonText}>{t('activityQuestionnaire.retry')}</Text>
-                </TouchableOpacity>
-            </View>
+            <ResponsiveContainer scroll={false} withPadding={false}>
+                <View style={styles.container}>
+                    {/* Header */}
+                    <View style={[styles.header, { 
+                        paddingTop: r.verticalScale(50), 
+                        paddingBottom: r.spacing(2.5), 
+                        paddingHorizontal: r.spacing(2.5) 
+                    }]}>
+                        <TouchableOpacity
+                            style={[styles.backButton, { 
+                                width: r.scale(40), 
+                                height: r.scale(40), 
+                                borderRadius: r.scale(20),
+                                marginRight: r.spacing(2)
+                            }]}
+                            onPress={() => navigation.goBack()}
+                        >
+                            <Ionicons name="arrow-back" size={r.scale(24)} color="#fff" />
+                        </TouchableOpacity>
+                        <View style={styles.headerContent}>
+                            <ResponsiveText variant="title" weight="bold" style={styles.headerTitle}>
+                                {activityName}
+                            </ResponsiveText>
+                            {equipmentTag && (
+                                <ResponsiveText variant="caption" style={styles.headerSubtitle}>
+                                    {t('activityQuestionnaire.equipmentTag')}: {equipmentTag}
+                                </ResponsiveText>
+                            )}
+                        </View>
+                    </View>
+                    <View style={styles.errorContainer}>
+                        <MaterialIcons name="error-outline" size={r.scale(64)} color="#dc3545" />
+                        <ResponsiveText variant="body" style={styles.errorText}>{error}</ResponsiveText>
+                        <TouchableOpacity style={styles.retryButton} onPress={fetchEquipmentData}>
+                            <ResponsiveText variant="button" weight="600" style={styles.retryButtonText}>
+                                {t('activityQuestionnaire.retry')}
+                            </ResponsiveText>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </ResponsiveContainer>
         );
     }
 
@@ -1110,84 +1192,114 @@ const ActivityQuestionnaireScreen: React.FC<ActivityQuestionnaireScreenProps> = 
     });
 
     return (
-        <ResponsiveContainer scroll={false}>
+        <ResponsiveContainer scroll={false} withPadding={false}>
         <View style={styles.container}>
             {/* Header */}
-            <View style={styles.header}>
+            <View style={[styles.header, { 
+                paddingTop: r.verticalScale(50), 
+                paddingBottom: r.spacing(2.5), 
+                paddingHorizontal: r.spacing(2.5) 
+            }]}>
                 <TouchableOpacity
-                    style={styles.backButton}
+                    style={[styles.backButton, { 
+                        width: r.scale(40), 
+                        height: r.scale(40), 
+                        borderRadius: r.scale(20),
+                        marginRight: r.spacing(2)
+                    }]}
                     onPress={() => navigation.goBack()}
                 >
-                    <Ionicons name="arrow-back" size={24} color="#fff" />
+                    <Ionicons name="arrow-back" size={r.scale(24)} color="#fff" />
                 </TouchableOpacity>
                 <View style={styles.headerContent}>
-                    <Text style={styles.headerTitle}>{activityName}</Text>
+                    <ResponsiveText variant="title" weight="bold" style={styles.headerTitle}>{activityName}</ResponsiveText>
                     {equipmentTag && (
-                        <Text style={styles.headerSubtitle}>{t('activityQuestionnaire.equipmentTag')}: {equipmentTag}</Text>
+                        <ResponsiveText variant="caption" style={styles.headerSubtitle}>
+                            {t('activityQuestionnaire.equipmentTag')}: {equipmentTag}
+                        </ResponsiveText>
                     )}
                 </View>
             </View>
 
-            <ScrollView style={styles.content} contentContainerStyle={{ paddingBottom: 24 }}>
+            <KeyboardAvoidingView 
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                style={{ flex: 1 }}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 0}
+            >
+            <ScrollView 
+                style={styles.content} 
+                contentContainerStyle={{ paddingBottom: r.spacing(3) }}
+                keyboardShouldPersistTaps="handled"
+            >
                 {/* Informações do Equipamento */}
-                <View style={styles.equipmentInfoSection}>
-                    <Text style={styles.sectionTitle}>{t('activityQuestionnaire.equipmentInfo')}</Text>
+                <View style={[styles.equipmentInfoSection, { margin: r.spacing(2), padding: r.spacing(2) }]}>
+                    <ResponsiveText variant="subtitle" weight="600" style={[styles.sectionTitle, { marginBottom: r.spacing(2) }]}>
+                        {t('activityQuestionnaire.equipmentInfo')}
+                    </ResponsiveText>
                     {equipmentData && (
-                        <View style={styles.equipmentCard}>
+                        <View style={[styles.equipmentCard, { padding: r.spacing(1.5) }]}>
                             {equipmentData.tag && (
-                                <View style={styles.infoRow}>
-                                    <MaterialIcons name="build" size={16} color="#666" />
-                                    <Text style={styles.infoText}>{t('activityQuestionnaire.equipmentTag')}: {equipmentData.tag}</Text>
+                                <View style={[styles.infoRow, { marginBottom: r.spacing(1) }]}>
+                                    <MaterialIcons name="build" size={r.scale(16)} color="#666" />
+                                    <ResponsiveText variant="body" style={styles.infoText}>
+                                        {t('activityQuestionnaire.equipmentTag')}: {equipmentData.tag}
+                                    </ResponsiveText>
                                 </View>
                             )}
-                            <View style={styles.infoRow}>
-                                <MaterialIcons name="business" size={16} color="#666" />
-                                <Text style={styles.infoText}>
+                            <View style={[styles.infoRow, { marginBottom: r.spacing(1) }]}>
+                                <MaterialIcons name="business" size={r.scale(16)} color="#666" />
+                                <ResponsiveText variant="body" style={styles.infoText}>
                                     {t('activityQuestionnaire.manufacturer')}: {equipmentData.brand?.name || equipmentData.manufacturer?.name || "N/A"}
-                                </Text>
+                                </ResponsiveText>
                             </View>
-                            <View style={styles.infoRow}>
-                                <MaterialIcons name="category" size={16} color="#666" />
-                                <Text style={styles.infoText}>
+                            <View style={[styles.infoRow, { marginBottom: r.spacing(1) }]}>
+                                <MaterialIcons name="category" size={r.scale(16)} color="#666" />
+                                <ResponsiveText variant="body" style={styles.infoText}>
                                     {t('activityQuestionnaire.type')}: {equipmentData.equipment_type?.name || "N/A"}
-                                </Text>
+                                </ResponsiveText>
                             </View>
-                            <View style={styles.infoRow}>
-                                <MaterialIcons name="location-on" size={16} color="#666" />
-                                <Text style={styles.infoText}>
+                            <View style={[styles.infoRow, { marginBottom: r.spacing(1) }]}>
+                                <MaterialIcons name="location-on" size={r.scale(16)} color="#666" />
+                                <ResponsiveText variant="body" style={styles.infoText}>
                                     {t('activityQuestionnaire.sector')}: {equipmentData.sector?.complete_name || equipmentData.sector?.name || (equipmentData.sector_id ? `#${equipmentData.sector_id}` : "N/A")}
-                                </Text>
+                                </ResponsiveText>
                             </View>
                         </View>
                     )}
                 </View>
 
                 {/* Status da Atividade */}
-                <View style={styles.statusSection}>
-                    <Text style={styles.sectionTitle}>{t('activityQuestionnaire.activityStatus')}</Text>
-                    <View style={styles.statusCard}>
-                        <View style={styles.statusRow}>
+                <View style={[styles.statusSection, { margin: r.spacing(2), marginTop: 0, padding: r.spacing(2) }]}>
+                    <ResponsiveText variant="subtitle" weight="600" style={[styles.sectionTitle, { marginBottom: r.spacing(2) }]}>
+                        {t('activityQuestionnaire.activityStatus')}
+                    </ResponsiveText>
+                    <View style={[styles.statusCard, { padding: r.spacing(1.5) }]}>
+                        <View style={[styles.statusRow, { marginBottom: r.spacing(1) }]}>
                             <MaterialIcons
                                 name={activityStarted ? "play-circle" : "add-circle"}
-                                size={20}
+                                size={r.scale(20)}
                                 color={activityStarted ? "#007bff" : "#6c757d"}
                             />
-                            <Text style={styles.statusText}>
+                            <ResponsiveText variant="body" weight="600" style={styles.statusText}>
                                 {activityStarted ? t('activityQuestionnaire.activityStarted') : t('activityQuestionnaire.activityNotStarted')}
-                            </Text>
+                            </ResponsiveText>
                         </View>
                         {activityCompleted && (
                             <View style={styles.statusRow}>
-                                <MaterialIcons name="check-circle" size={20} color="#28a745" />
-                                <Text style={styles.statusText}>{t('activityQuestionnaire.activityCompleted')}</Text>
+                                <MaterialIcons name="check-circle" size={r.scale(20)} color="#28a745" />
+                                <ResponsiveText variant="body" weight="600" style={styles.statusText}>
+                                    {t('activityQuestionnaire.activityCompleted')}
+                                </ResponsiveText>
                             </View>
                         )}
                     </View>
                 </View>
 
                 {/* Questionário */}
-                <View style={styles.questionnaireSection}>
-                    <Text style={styles.sectionTitle}>{t('activityQuestionnaire.questionnaire')}</Text>
+                <View style={[styles.questionnaireSection, { margin: r.spacing(2), marginTop: 0, padding: r.spacing(2) }]}>
+                    <ResponsiveText variant="subtitle" weight="600" style={[styles.sectionTitle, { marginBottom: r.spacing(2) }]}>
+                        {t('activityQuestionnaire.questionnaire')}
+                    </ResponsiveText>
 
                     {/* Mensagem informativa quando o questionário estiver bloqueado */}
                     {isQuestionnaireReadOnly && (
@@ -1302,7 +1414,7 @@ const ActivityQuestionnaireScreen: React.FC<ActivityQuestionnaireScreenProps> = 
                                     console.log('[ActivityQuestionnaireScreen] ✅ Renderizando DynamicActivityQuestionnaire com props válidas');
                                     return (
                                         <DynamicActivityQuestionnaire
-                                            fields={questions}
+                                            fields={sortedQuestions}
                                             onChange={setAnswers}
                                             onSaveAnswer={saveIndividualAnswer}
                                             savedAnswers={savedAnswers || {}}
@@ -1407,8 +1519,19 @@ const ActivityQuestionnaireScreen: React.FC<ActivityQuestionnaireScreenProps> = 
                                         ) : (
                                             <>
                                                 {!canSendBudget && (
-                                                    <View style={styles.badgeContainer}>
-                                                        <Text style={styles.badgeText}>{pendingInfo.total}</Text>
+                                                    <View style={[
+                                                        styles.badgeContainer,
+                                                        {
+                                                            top: r.verticalScale(-8),
+                                                            right: r.scale(-8),
+                                                            borderRadius: r.scale(12),
+                                                            minWidth: r.scale(24),
+                                                            height: r.scale(24),
+                                                        }
+                                                    ]}>
+                                                        <ResponsiveText variant="caption" weight="bold" style={styles.badgeText}>
+                                                            {pendingInfo.total}
+                                                        </ResponsiveText>
                                                     </View>
                                                 )}
                                                 <MaterialIcons name="attach-money" size={20} color="#fff" />
@@ -1449,8 +1572,19 @@ const ActivityQuestionnaireScreen: React.FC<ActivityQuestionnaireScreenProps> = 
                                     ) : (
                                         <>
                                             {!isValid && (
-                                                <View style={styles.badgeContainer}>
-                                                    <Text style={styles.badgeText}>{pendingInfo.total}</Text>
+                                                <View style={[
+                                                    styles.badgeContainer,
+                                                    {
+                                                        top: r.verticalScale(-8),
+                                                        right: r.scale(-8),
+                                                        borderRadius: r.scale(12),
+                                                        minWidth: r.scale(24),
+                                                        height: r.scale(24),
+                                                    }
+                                                ]}>
+                                                    <ResponsiveText variant="caption" weight="bold" style={styles.badgeText}>
+                                                        {pendingInfo.total}
+                                                    </ResponsiveText>
                                                 </View>
                                             )}
                                             <MaterialIcons name="check" size={20} color="#fff" />
@@ -1533,7 +1667,7 @@ const ActivityQuestionnaireScreen: React.FC<ActivityQuestionnaireScreenProps> = 
                                     console.log('[ActivityQuestionnaireScreen] ✅ Renderizando DynamicActivityQuestionnaire (readOnly) com props válidas');
                                     return (
                                         <DynamicActivityQuestionnaire
-                                            fields={questions}
+                                            fields={sortedQuestions}
                                             onChange={setAnswers}
                                             savedAnswers={savedAnswers || {}}
                                             initialValues={initialValues}
@@ -1607,6 +1741,7 @@ const ActivityQuestionnaireScreen: React.FC<ActivityQuestionnaireScreenProps> = 
                     )}
                 </View>
             </ScrollView>
+            </KeyboardAvoidingView>
 
             {/* Modal de Enviar Orçamento */}
             <SendToBudgetModal
@@ -1668,32 +1803,22 @@ const styles = StyleSheet.create({
     },
     header: {
         backgroundColor: "#667eea",
-        paddingTop: 50,
-        paddingBottom: 20,
-        paddingHorizontal: 20,
         flexDirection: "row",
         alignItems: "center",
     },
     backButton: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
         backgroundColor: "rgba(255,255,255,0.2)",
         justifyContent: "center",
         alignItems: "center",
-        marginRight: 16,
     },
     headerContent: {
         flex: 1,
     },
     headerTitle: {
-        fontSize: 20,
-        fontWeight: "bold",
         color: "#fff",
         marginBottom: 4,
     },
     headerSubtitle: {
-        fontSize: 14,
         color: "rgba(255,255,255,0.8)",
     },
     content: {
@@ -1736,9 +1861,7 @@ const styles = StyleSheet.create({
     },
     equipmentInfoSection: {
         backgroundColor: "#fff",
-        margin: 16,
         borderRadius: 12,
-        padding: 16,
         shadowColor: "#000",
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.1,
@@ -1746,33 +1869,25 @@ const styles = StyleSheet.create({
         elevation: 4,
     },
     sectionTitle: {
-        fontSize: 18,
         fontWeight: "600",
         color: "#333",
-        marginBottom: 16,
     },
     equipmentCard: {
         backgroundColor: "#f8f9fa",
         borderRadius: 8,
-        padding: 12,
     },
     infoRow: {
         flexDirection: "row",
         alignItems: "center",
-        marginBottom: 8,
     },
     infoText: {
-        fontSize: 14,
         color: "#333",
         marginLeft: 8,
         flex: 1,
     },
     statusSection: {
         backgroundColor: "#fff",
-        margin: 16,
-        marginTop: 0,
         borderRadius: 12,
-        padding: 16,
         shadowColor: "#000",
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.1,
@@ -1782,25 +1897,19 @@ const styles = StyleSheet.create({
     statusCard: {
         backgroundColor: "#f8f9fa",
         borderRadius: 8,
-        padding: 12,
     },
     statusRow: {
         flexDirection: "row",
         alignItems: "center",
-        marginBottom: 8,
     },
     statusText: {
-        fontSize: 14,
         color: "#333",
         marginLeft: 8,
         fontWeight: "500",
     },
     questionnaireSection: {
         backgroundColor: "#fff",
-        margin: 16,
-        marginTop: 0,
         borderRadius: 12,
-        padding: 16,
         shadowColor: "#000",
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.1,
@@ -1873,12 +1982,7 @@ const styles = StyleSheet.create({
     },
     badgeContainer: {
         position: 'absolute',
-        top: -8,
-        right: -8,
         backgroundColor: '#dc3545',
-        borderRadius: 12,
-        minWidth: 24,
-        height: 24,
         justifyContent: 'center',
         alignItems: 'center',
         borderWidth: 2,
@@ -1886,7 +1990,6 @@ const styles = StyleSheet.create({
     },
     badgeText: {
         color: '#fff',
-        fontSize: 12,
         fontWeight: 'bold',
     },
 });

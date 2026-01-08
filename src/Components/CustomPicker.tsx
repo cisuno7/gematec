@@ -56,13 +56,16 @@ const CustomPicker: React.FC<CustomPickerProps> = ({
     const buttonHeight = Math.max(50, scaledFontSize * 3.5);
     const itemHeight = Math.max(56, scaledItemFontSize * 3.5);
 
+    // VALIDAÇÃO: Garantir que items seja sempre um array válido
+    const validItems = Array.isArray(items) && items.length > 0 ? items : [];
+
     // Filtrar itens baseado na busca
-    const filteredItems = items.filter(item =>
+    const filteredItems = validItems.filter(item =>
         item.label.toLowerCase().includes(searchQuery.toLowerCase())
     );
 
     // Encontrar o item selecionado
-    const selectedItem = items.find(item => item.value === selectedValue);
+    const selectedItem = validItems.find(item => item.value === selectedValue);
     const displayText = selectedItem ? selectedItem.label : placeholder;
     const isPlaceholder = !selectedItem;
 
@@ -120,9 +123,11 @@ const CustomPicker: React.FC<CustomPickerProps> = ({
         );
     };
 
+    // GARANTIR RENDERIZAÇÃO: Sempre renderizar o botão quando enabled === true
+    // Não importa se tem selectedValue ou quantos items existem
     return (
         <>
-            {/* Botão que abre o dropdown */}
+            {/* Botão que abre o dropdown - SEMPRE renderiza quando enabled */}
             <TouchableOpacity
                 style={[
                     styles.button,
@@ -133,9 +138,9 @@ const CustomPicker: React.FC<CustomPickerProps> = ({
                     !enabled && styles.buttonDisabled,
                     style,
                 ]}
-                onPress={() => enabled && setIsVisible(true)}
+                onPress={() => enabled && validItems.length > 0 && setIsVisible(true)}
                 activeOpacity={0.7}
-                disabled={!enabled}
+                disabled={!enabled || validItems.length === 0}
             >
                 <Text
                     style={[
@@ -202,7 +207,7 @@ const CustomPicker: React.FC<CustomPickerProps> = ({
                         </View>
 
                         {/* Campo de busca (opcional) */}
-                        {searchable && items.length > 5 && (
+                        {searchable && validItems.length > 5 && (
                             <View style={styles.searchContainer}>
                                 <MaterialIcons name="search" size={20} color="#999" />
                                 <TextInput

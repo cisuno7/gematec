@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     View,
     Text,
@@ -21,28 +21,42 @@ import EquipamentService from '../../Services/EquipamentService';
 import ActivityService from '../../Services/ActivityService';
 import BrandService from '../../Services/BrandService';
 import EquipmentTypeService from '../../Services/EquipmentTypeService';
+import ClientService from '../../Services/ClientService';
 import { Equipment } from '../../Models/Equipament';
 import CustomPicker from '../../Components/CustomPicker';
 import DynamicEquipmentFields from '../../Components/DynamicEquipmentFields';
 import { RootStackParamList } from '../../Routers/AppRouter';
 import ResponsiveContainer from '../../Components/ResponsiveContainer';
 import { useResponsive } from '../../hooks/useResponsive';
+import apiClient from '../../Context/ApiClient';
+import { useNewActivityFlow } from '../../Context/NewActivityFlowContext';
 
 type AddMultipleEquipmentsRoute = RouteProp<RootStackParamList, 'AddMultipleEquipmentsScreen'>;
 
 const EMPTY_FIELDS: { [key: string]: any } = {};
+const EQUIPMENTS_PER_PAGE = 20;
 
 const AddMultipleEquipmentsScreen: React.FC = () => {
     const navigation = useNavigation<any>();
     const route = useRoute<AddMultipleEquipmentsRoute>();
     const { height: windowHeight } = useResponsive();
+    const { state: flowState, resetFlow } = useNewActivityFlow();
 
     const activityIdFromRoute = route.params?.activityId as number | undefined;
-    const activityTypeIdFromRoute = route.params?.activityTypeId as number;
-    const clientId = route.params?.clientId as number;
-    const sectorId = route.params?.sectorId as number | undefined;
-    const activityName = route.params?.activityName as string | undefined;
-    const clientName = route.params?.clientName as string | undefined;
+    const activityTypeIdFromRoute = route.params?.activityTypeId as number | undefined;
+    const clientIdFromRoute = route.params?.clientId as number | undefined;
+    const sectorIdFromRoute = route.params?.sectorId as number | undefined;
+    const activityNameFromRoute = route.params?.activityName as string | undefined;
+    const clientNameFromRoute = route.params?.clientName as string | undefined;
+    const fromNewActivityFlow = route.params?.fromNewActivityFlow === true;
+
+    const effectiveActivityTypeId = (flowState?.activityType?.id ?? activityTypeIdFromRoute) as number | undefined;
+    const effectiveBudgetPolicy = flowState?.activityType?.budgetPolicy;
+    const effectiveClientId = (flowState?.existingClient?.clientId ?? clientIdFromRoute) as number | undefined;
+    const effectiveClientName = (flowState?.existingClient?.clientName ?? clientNameFromRoute) as string | undefined;
+    const effectiveSectorId = (flowState?.existingClient?.sectorId ?? sectorIdFromRoute) as number | undefined;
+
+    const isNewClientFlow = fromNewActivityFlow && flowState?.clientMode === 'new';
 
     const [activityId, setActivityId] = useState<number | undefined>(activityIdFromRoute);
 
@@ -50,22 +64,22 @@ const AddMultipleEquipmentsScreen: React.FC = () => {
     const creatingActivityPromiseRef = React.useRef<Promise<number> | null>(null);
     const isSubmittingRef = React.useRef(false);
 
-    async function createActivityIfNeeded(): Promise<number> {
+    async function createActivityIfNeeded(params: { clientId: number; activityTypeId: number; activityName?: string }): Promise<number> {
         if (activityId) return activityId;
         if (creatingActivityPromiseRef.current) return creatingActivityPromiseRef.current;
 
         const today = new Date();
         const timestamp = new Date().getTime();
         const uniqueSuffix = timestamp.toString().slice(-6);
-        const generatedName = activityName || `Atividade ${clientName || ''} ${today.toLocaleDateString('pt-BR')} #${uniqueSuffix}`.trim();
+        const generatedName = params.activityName || `Atividade ${effectiveClientName || ''} ${today.toLocaleDateString('pt-BR')} #${uniqueSuffix}`.trim();
 
         const p = (async () => {
             const token = await AsyncStorage.getItem('access_token');
             if (!token) throw new Error('Token não encontrado.');
             const payload = {
                 name: generatedName,
-                activity_type_id: activityTypeIdFromRoute,
-                client_id: clientId,
+                activity_type_id: params.activityTypeId,
+                client_id: params.clientId,
                 observation: ''
             };
             console.log('[AddMultipleEquipmentsScreen] (helper) Criando atividade com payload:', payload);
@@ -82,11 +96,14 @@ const AddMultipleEquipmentsScreen: React.FC = () => {
         }
     }
 
-    const [equipments, setEquipments] = useState<Equipment[]>([]);
+    const [equipments, setEquipments] = useState<Equipment[]>([]); // inclui pendentes (id<0) + carregados do backend
     const [selectedEquipmentsIds, setSelectedEquipmentsIds] = useState<number[]>([]);
     const [search, setSearch] = useState('');
     const [loading, setLoading] = useState(false);
     const [refreshing, setRefreshing] = useState(false);
+    const [loadingMore, setLoadingMore] = useState(false);
+    const [page, setPage] = useState(1);
+    const [totalCount, setTotalCount] = useState(0);
     const [adding, setAdding] = useState(false);
     const [keyboardPadding, setKeyboardPadding] = useState(0);
 
@@ -106,38 +123,68 @@ const AddMultipleEquipmentsScreen: React.FC = () => {
         additional_fields: { [key: string]: any };
     }>>([]);
 
-    const loadEquipments = useCallback(async (isRefreshing: boolean = false) => {
-        if (isRefreshing) {
-            setRefreshing(true);
-        } else {
-            setLoading(true);
-        }
+    const searchDebounceRef = useRef<any>(null);
+
+    const loadEquipments = useCallback(async (opts?: { refreshing?: boolean; page?: number; append?: boolean; search?: string }) => {
+        const refreshingNow = !!opts?.refreshing;
+        const append = !!opts?.append;
+        const targetPage = opts?.page ?? 1;
+        const targetSearch = (opts?.search ?? search).trim();
+
+        if (refreshingNow) setRefreshing(true);
+        else if (append) setLoadingMore(true);
+        else setLoading(true);
 
         try {
             const token = await AsyncStorage.getItem('access_token');
             if (!token) throw new Error('Token não encontrado');
 
-            if (!clientId) {
-                setEquipments([]);
-            } else {
-                const filters: any = {
-                    page: 1,
-                    per_page: 100,
-                    is_active: true,
-                    client_id: clientId
-                };
-
-                const response = await EquipamentService.fetchEquipments(String(token), filters as any);
-                const list = response.results || [];
-                setEquipments(list as any);
+            // Novo cliente: não há equipamentos existentes para buscar
+            if (isNewClientFlow) {
+                setPage(1);
+                setTotalCount(0);
+                setEquipments(prev => prev.filter(eq => eq.id < 0)); // manter apenas pendentes
+                return;
             }
+
+            // Cliente existente: sempre filtrar via backend por client_id + sector_id
+            if (!effectiveClientId || !effectiveSectorId) {
+                setPage(1);
+                setTotalCount(0);
+                setEquipments(prev => prev.filter(eq => eq.id < 0));
+                return;
+            }
+
+            const filters: any = {
+                page: targetPage,
+                per_page: EQUIPMENTS_PER_PAGE,
+                status: 'active',
+                client_id: effectiveClientId,
+                sector_id: effectiveSectorId,
+                ...(targetSearch ? { search: targetSearch } : {}),
+            };
+
+            const response = await EquipamentService.fetchEquipments(String(token), filters as any);
+            const list = (response.results || []) as any[];
+            const count = Number(response.count ?? list.length) || 0;
+
+            setTotalCount(count);
+            setPage(targetPage);
+            setEquipments(prev => {
+                const pending = prev.filter(eq => eq.id < 0);
+                const currentServer = prev.filter(eq => eq.id >= 0);
+                const nextServer = append ? [...currentServer, ...list] : list;
+                return [...pending, ...nextServer] as any;
+            });
         } catch (error: any) {
-            setEquipments([]);
+            // manter pendentes, limpar lista do backend
+            setEquipments(prev => prev.filter(eq => eq.id < 0));
         } finally {
             setLoading(false);
             setRefreshing(false);
+            setLoadingMore(false);
         }
-    }, [clientId]);
+    }, [search, effectiveClientId, effectiveSectorId, isNewClientFlow]);
 
     const loadMeta = useCallback(async () => {
         setLoadingMeta(true);
@@ -156,18 +203,18 @@ const AddMultipleEquipmentsScreen: React.FC = () => {
         }
     }, []);
 
-    const filteredEquipments = useMemo(() => {
-        if (!search.trim()) return equipments;
-        const searchLower = search.toLowerCase();
-        return equipments.filter(eq =>
-            eq.tag?.toLowerCase().includes(searchLower) ||
-            eq.client?.name?.toLowerCase().includes(searchLower) ||
-            eq.sector?.complete_name?.toLowerCase().includes(searchLower)
-        );
+    // Busca server-side: filtramos localmente apenas os pendentes (para não sumirem na tela)
+    const displayEquipments = useMemo(() => {
+        const q = search.trim().toLowerCase();
+        if (!q) return equipments;
+        return equipments.filter(eq => {
+            if (eq.id >= 0) return true; // já vem filtrado do backend
+            return (eq.tag || '').toLowerCase().includes(q);
+        });
     }, [equipments, search]);
 
     useEffect(() => {
-        loadEquipments();
+        // Reset visual ao entrar na tela / trocar contexto de atividade
         setSelectedEquipmentsIds([]);
         setSearch('');
         setShowCreate(false);
@@ -176,8 +223,25 @@ const AddMultipleEquipmentsScreen: React.FC = () => {
         setNewEquipmentTypeId('');
         setNewDynamicFields(EMPTY_FIELDS);
         setPendingNewEquipments([]);
+        setEquipments([]);
+        setPage(1);
+        setTotalCount(0);
         loadMeta();
-    }, [loadEquipments, loadMeta]);
+        // carregar primeira página (se aplicável)
+        loadEquipments({ page: 1, append: false, search: '' });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [effectiveClientId, effectiveSectorId, activityIdFromRoute, activityTypeIdFromRoute]);
+
+    useEffect(() => {
+        // debounce para busca server-side
+        if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+        searchDebounceRef.current = setTimeout(() => {
+            loadEquipments({ page: 1, append: false, search });
+        }, 350);
+        return () => {
+            if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+        };
+    }, [search, loadEquipments]);
 
     // Teclado: padding para conteúdo e elevação do footer
     useEffect(() => {
@@ -209,7 +273,7 @@ const AddMultipleEquipmentsScreen: React.FC = () => {
     };
 
     const selectAll = () => {
-        const filteredIds = filteredEquipments.map(eq => eq.id);
+        const filteredIds = displayEquipments.map(eq => eq.id);
         const setSel = new Set(selectedEquipmentsIds);
         const allSelected = filteredIds.every(id => setSel.has(id));
         if (allSelected) {
@@ -219,21 +283,14 @@ const AddMultipleEquipmentsScreen: React.FC = () => {
         }
     };
 
-    const getCreatedEquipmentId = (created: any): number | null => {
-        if (!created) return null;
-        const directId = (created as any)?.id;
-        const nestedId = (created as any)?.data?.id;
-        const resultsFirstId = Array.isArray((created as any)?.results) ? (created as any).results[0]?.id : undefined;
-        const idCandidate = Number(directId ?? nestedId ?? resultsFirstId);
-        return Number.isFinite(idCandidate) ? idCandidate : null;
-    };
+    const canLoadMore = useMemo(() => {
+        // não conta pendentes; paginação é baseada no backend
+        if (loadingMore || loading || refreshing) return false;
+        if (!totalCount) return false;
+        return page * EQUIPMENTS_PER_PAGE < totalCount;
+    }, [loadingMore, loading, refreshing, page, totalCount]);
 
     const handleConfirm = async () => {
-        if (clientId && pendingNewEquipments.length > 0) {
-            // Para clientes novos, não exigir seleção de setor
-            // (o backend poderá criar/associar setor automaticamente)
-        }
-
         if (selectedEquipmentsIds.length === 0) {
             Alert.alert('Atenção', 'Selecione pelo menos um equipamento');
             return;
@@ -247,6 +304,9 @@ const AddMultipleEquipmentsScreen: React.FC = () => {
             const token = await AsyncStorage.getItem('access_token');
             if (!token) throw new Error('Token não encontrado.');
 
+            const activityTypeId = effectiveActivityTypeId;
+            if (!activityTypeId) throw new Error('Tipo de atividade inválido.');
+
             const selectedSet = new Set(selectedEquipmentsIds);
             const isPendingId = (id: number) => id < 0;
             const existingIds = selectedEquipmentsIds.filter(id => !isPendingId(id));
@@ -254,22 +314,110 @@ const AddMultipleEquipmentsScreen: React.FC = () => {
 
             const activityService = new ActivityService();
 
-            // 1) Garantir criação da atividade e obter o ID local
-            const effectiveActivityId = await createActivityIfNeeded();
+            // 1) Determinar cliente e setor efetivos
+            let finalClientId: number | undefined = effectiveClientId;
+            let finalClientName: string | undefined = effectiveClientName;
+            let finalSectorId: number | undefined = effectiveSectorId;
+
+            const cleanPhoneNumber = (p: string) => (p || '').replace(/\D/g, '');
+
+            const resolveSectorIdForNewClient = async (clientIdNum: number, sectorName: string, subsectorName?: string): Promise<number> => {
+                const normalize = (s: string) => (s || '').trim().toLowerCase();
+                const wantedSector = normalize(sectorName);
+                const wantedSub = normalize(subsectorName || '');
+
+                const createSector = async (name: string, parentId?: number) => {
+                    const payload: any = {
+                        name: name.trim(),
+                        parent_id: parentId ?? null,
+                        ignores_auto_activity_mapping: false,
+                    };
+                    const resp = await apiClient.post(`/clients/${clientIdNum}/sectors`, payload, {
+                        headers: { Authorization: `Bearer ${String(token)}` }
+                    });
+                    return resp.data;
+                };
+
+                const listAllSectors = async () => {
+                    const r = await ClientService.getClientSectors(clientIdNum.toString(), String(token));
+                    return (r.results || r || []) as any[];
+                };
+
+                let all = await listAllSectors();
+                let parent = all.find((s: any) => normalize(s.name) === wantedSector) || all.find((s: any) => normalize(s.complete_name || '') === wantedSector);
+                if (!parent) {
+                    parent = await createSector(sectorName);
+                    all = await listAllSectors();
+                }
+                if (!wantedSub) return parent.id;
+
+                const childrenResp = await ClientService.getClientSectors(clientIdNum.toString(), String(token), undefined, parent.id);
+                const children: any[] = childrenResp.results || childrenResp || [];
+                let child = children.find((s: any) => normalize(s.name) === wantedSub) || children.find((s: any) => normalize(s.complete_name || '') === wantedSub);
+                if (!child) {
+                    child = await createSector(subsectorName || '', parent.id);
+                }
+                return child.id;
+            };
+
+            // 1.1) Novo cliente: criar cliente agora (ordem obrigatória)
+            if (isNewClientFlow) {
+                const draft = flowState?.newClientDraft;
+                if (!draft) throw new Error('Dados do cliente não encontrados. Volte e preencha novamente.');
+
+                const clientPayload: any = {
+                    name: draft.name.trim(),
+                    email: draft.email.trim(),
+                    document: (draft.document || '').trim(),
+                    phone: cleanPhoneNumber((draft.phone || '').trim()),
+                    company_name: "",
+                    company_state_registration: "",
+                    company_opening_at: null,
+                    is_active: true,
+                    additional_fields: {
+                        sector_name: draft.sectorName.trim(),
+                        subsector_name: (draft.subsectorName || '').trim(),
+                        contact_name: draft.contactName.trim(),
+                    }
+                };
+
+                const createdClient = await ClientService.createClient(clientPayload, String(token));
+                if (!createdClient?.id) throw new Error('Falha ao criar cliente.');
+                finalClientId = Number(createdClient.id);
+                finalClientName = String(createdClient.name || draft.name);
+
+                // Garantir sector_id (obrigatório no nosso fluxo)
+                finalSectorId = await resolveSectorIdForNewClient(finalClientId, draft.sectorName, draft.subsectorName);
+            }
+
+            // 1.2) Cliente existente: validar client/sector obrigatórios
+            if (!finalClientId) throw new Error('Cliente inválido.');
+            if (!finalSectorId) throw new Error('Setor inválido.');
+
+            // 2) Criar atividade (se ainda não existir)
+            const today = new Date();
+            const timestamp = new Date().getTime();
+            const uniqueSuffix = timestamp.toString().slice(-6);
+            const generatedName = activityNameFromRoute
+                || `Atividade ${finalClientName || ''} ${today.toLocaleDateString('pt-BR')} #${uniqueSuffix}`.trim();
+
+            const effectiveActivityId = await createActivityIfNeeded({
+                clientId: finalClientId,
+                activityTypeId: activityTypeId,
+                activityName: generatedName,
+            });
             console.log('[AddMultipleEquipmentsScreen] effectiveActivityId obtido =', effectiveActivityId);
 
-            // 1.1) Validar existência da atividade no backend antes do vínculo
+            // 2.1) Validar existência da atividade no backend antes do vínculo (mantém robustez do fluxo atual)
             try {
-                console.log('[AddMultipleEquipmentsScreen] Validando atividade antes do vínculo (GET /activities/:id) ...');
                 await ActivityService.fetchActivityDetails(effectiveActivityId, { token: String(token) });
-                console.log('[AddMultipleEquipmentsScreen] Validação OK para activityId =', effectiveActivityId);
             } catch (e: any) {
                 console.warn('[AddMultipleEquipmentsScreen] Validação da atividade falhou:', e?.message);
                 throw new Error(`Falha ao validar a atividade (ID ${effectiveActivityId}). Tente novamente em instantes.`);
             }
 
-            // 2) Normalizar additional_fields e construir payload de múltiplos equipamentos (conforme fluxo-multiplos.md)
-            const sectorNum = Number.isFinite(parseInt(String(sectorId), 10)) ? parseInt(String(sectorId), 10) : undefined;
+            // 3) Criar/vincular equipamentos (sempre com sector_id)
+            const sectorNum = Number(finalSectorId);
 
             const normalizeFields = (fields: any) => {
                 const out: any = {};
@@ -288,8 +436,8 @@ const AddMultipleEquipmentsScreen: React.FC = () => {
                 const equipmentsPayload = pendingSelected.map(p => {
                     const t = (p.tag || '').trim();
                     return {
-                        client_id: clientId,
-                        ...(sectorNum ? { sector_id: sectorNum } : {}),
+                        client_id: finalClientId,
+                        sector_id: sectorNum,
                         brand_id: Number(p.brand_id),
                         equipment_type_id: Number(p.equipment_type_id),
                         ...(t ? { tag: t } : {}),
@@ -330,10 +478,15 @@ const AddMultipleEquipmentsScreen: React.FC = () => {
                     onPress: () => {
                         navigation.navigate('ActivityEquipmentListScreen', {
                             activityId: effectiveActivityId,
-                            activityName: activityName || 'Atividade',
-                            clientId: clientId || undefined,
-                            clientName: clientName || undefined,
+                            activityName: generatedName || 'Atividade',
+                            clientId: finalClientId || undefined,
+                            clientName: finalClientName || undefined,
+                            budgetPolicy: effectiveBudgetPolicy,
+                            fromNewActivityFlow: fromNewActivityFlow || undefined,
                         });
+                        if (fromNewActivityFlow) {
+                            try { resetFlow(); } catch { }
+                        }
                     }
                 }]
             );
@@ -365,9 +518,9 @@ const AddMultipleEquipmentsScreen: React.FC = () => {
                 sector_id: null,
                 equipment_type_id: typeNum,
                 brand_id: brandNum,
-                client_id: clientId || null,
+                client_id: effectiveClientId || null,
                 sector: { id: 0, name: '', complete_name: '' },
-                client: { id: clientId || 0, name: clientId ? 'Cliente atual' : 'Novo cliente' },
+                client: { id: effectiveClientId || 0, name: effectiveClientId ? 'Cliente atual' : 'Novo cliente' },
                 brand: { id: brandNum, name: brandName },
                 equipment_type: { id: typeNum, name: typeName },
                 coil_type: { id: 0, name: '' },
@@ -435,7 +588,7 @@ const AddMultipleEquipmentsScreen: React.FC = () => {
             <MaterialIcons name="search" size={20} color="#999" style={styles.searchIcon} />
             <TextInput
                 style={styles.searchInput}
-                placeholder="Buscar por tag, cliente ou setor..."
+                placeholder="Buscar por tag..."
                 value={search}
                 onChangeText={setSearch}
                 placeholderTextColor="#999"
@@ -596,10 +749,14 @@ const AddMultipleEquipmentsScreen: React.FC = () => {
         <View style={{ height: 160 + keyboardPadding }} />
     ), [keyboardPadding]);
 
+    const headerTitle = useMemo(() => {
+        return fromNewActivityFlow ? 'Criar Atividade' : 'Adicionar Equipamentos';
+    }, [fromNewActivityFlow]);
+
     return (
         <ResponsiveContainer withPadding={false} style={styles.screenContainer}>
             <View style={styles.header}>
-                <Text style={styles.title}>Adicionar Equipamentos</Text>
+                <Text style={styles.title}>{headerTitle}</Text>
                 <TouchableOpacity onPress={() => navigation.goBack()} style={styles.closeButton}>
                     <MaterialIcons name="close" size={24} color="#666" />
                 </TouchableOpacity>
@@ -613,37 +770,60 @@ const AddMultipleEquipmentsScreen: React.FC = () => {
             <FlatList
                 style={styles.listContainer}
                 contentContainerStyle={styles.scrollContent}
-                data={filteredEquipments}
+                data={displayEquipments}
                 keyExtractor={(item) => item.id.toString()}
                 renderItem={renderEquipment}
                 initialNumToRender={10}
                 removeClippedSubviews={false}
-                ListHeaderComponent={filteredEquipments.length > 0 ? (
+                ListHeaderComponent={displayEquipments.length > 0 ? (
                     <View style={styles.listHeader}>
                         <TouchableOpacity
                             style={styles.selectAllButton}
                             onPress={selectAll}
                         >
-                            <View style={[styles.checkbox, selectedEquipmentsIds.length === filteredEquipments.length && styles.checkboxSelected]}>
-                                {selectedEquipmentsIds.length === filteredEquipments.length && (
+                            <View style={[
+                                styles.checkbox,
+                                displayEquipments.every(eq => selectedEquipmentsIds.includes(eq.id)) && styles.checkboxSelected
+                            ]}>
+                                {displayEquipments.every(eq => selectedEquipmentsIds.includes(eq.id)) && (
                                     <MaterialIcons name="check" size={18} color="#fff" />
                                 )}
                             </View>
                             <Text style={styles.selectAllText}>
-                                {selectedEquipmentsIds.length === filteredEquipments.length ? 'Desmarcar todos' : 'Selecionar todos'}
+                                {displayEquipments.every(eq => selectedEquipmentsIds.includes(eq.id)) ? 'Desmarcar todos' : 'Selecionar todos'}
                             </Text>
                         </TouchableOpacity>
                     </View>
                 ) : undefined}
-                ListFooterComponent={listFooterSpacer}
+                ListFooterComponent={() => (
+                    <View>
+                        {canLoadMore ? (
+                            <TouchableOpacity
+                                style={[styles.selectAllButton, { paddingHorizontal: 16, paddingVertical: 12 }]}
+                                onPress={() => loadEquipments({ page: page + 1, append: true, search })}
+                                disabled={loadingMore}
+                            >
+                                {loadingMore ? (
+                                    <ActivityIndicator size="small" color="#667eea" />
+                                ) : (
+                                    <>
+                                        <MaterialIcons name="expand-more" size={22} color="#667eea" />
+                                        <Text style={[styles.selectAllText, { marginLeft: 8 }]}>Carregar mais</Text>
+                                    </>
+                                )}
+                            </TouchableOpacity>
+                        ) : null}
+                        {listFooterSpacer}
+                    </View>
+                )}
                 ListEmptyComponent={() => (
-                    !loading && filteredEquipments.length === 0 ? (
+                    !loading && displayEquipments.length === 0 ? (
                         <View style={styles.emptyContainer}>
                             <MaterialIcons name="devices" size={64} color="#ccc" />
                             <Text style={styles.emptyText}>
-                                {search ? 'Nenhum equipamento encontrado' : 'Nenhum equipamento disponível'}
+                                {search ? 'Nenhum equipamento encontrado' : (isNewClientFlow ? 'Adicione equipamentos novos para continuar' : 'Nenhum equipamento disponível')}
                             </Text>
-                            {!search && clientId && (
+                            {!search && effectiveClientId && !isNewClientFlow && (
                                 <Text style={styles.emptySubtext}>
                                     Cadastre equipamentos para poder adicioná-los
                                 </Text>
@@ -662,10 +842,16 @@ const AddMultipleEquipmentsScreen: React.FC = () => {
                 refreshControl={
                     <RefreshControl
                         refreshing={refreshing}
-                        onRefresh={() => loadEquipments(true)}
+                        onRefresh={() => loadEquipments({ refreshing: true, page: 1, append: false, search })}
                         colors={['#667eea']}
                     />
                 }
+                onEndReachedThreshold={0.4}
+                onEndReached={() => {
+                    if (canLoadMore) {
+                        loadEquipments({ page: page + 1, append: true, search });
+                    }
+                }}
             />
 
             <View style={[styles.footer, { bottom: keyboardPadding }]}>
@@ -704,7 +890,7 @@ const AddMultipleEquipmentsScreen: React.FC = () => {
                         ) : (
                             <>
                                 <MaterialIcons name="add" size={18} color="#fff" style={{ marginRight: 8 }} />
-                                <Text style={styles.addButtonText}>Adicionar</Text>
+                                <Text style={styles.addButtonText}>{fromNewActivityFlow ? 'Criar Atividade' : 'Adicionar'}</Text>
                             </>
                         )}
                     </TouchableOpacity>

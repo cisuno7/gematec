@@ -28,7 +28,9 @@ import ActivityHistoryScreen from "../Screens/Activity/ActivityHistoryScreen";
 import ActivityListScreen from "../Screens/Activity/ActivityListScreen";
 import ActivityEquipmentListScreen from "../Screens/Activity/ActivityEquipmentListScreen";
 import ActivityQuestionnaireScreen from "../Screens/Activity/ActivityQuestionnaireScreen";
-import NewActivityModal from "../Screens/Activity/NewActivityModal";
+import NewActivityScreen from "../Screens/Activity/NewActivityScreen";
+import NewClientScreen from "../Screens/Activity/NewClientScreen";
+import ExistingClientScreen from "../Screens/Activity/ExistingClientScreen";
 import AddMultipleEquipmentsScreen from "../Screens/Equipaments/AddMultipleEquipmentsScreen";
 import WorkListScreen from "../Screens/Work/WorkListScreen";
 import WorkDetailScreen from "../Screens/Work/WorkDetailScreen";
@@ -42,6 +44,7 @@ import PreferencesScreen from '../Screens/PreferencesScreen'; // Importe a Prefe
 import { useUser } from '../Context/UserContext';
 import { useLanguage } from '../Context/LanguageContext';
 import { ActivityIndicator, View } from 'react-native';
+import { NewActivityFlowProvider } from '../Context/NewActivityFlowContext';
 
 export type RootStackParamList = {
   CondenserTypesScreen: undefined;
@@ -76,9 +79,11 @@ export type RootStackParamList = {
   ServiceOrderScreen: undefined;
   ActivityListScreen: undefined | { activityTypeSlug?: string; status?: string[]; clientId?: number };
   ActivityHistoryScreen: { activityId: number };
-  ActivityEquipmentListScreen: { activityId: number; activityName: string; clientId?: number; clientName?: string };
+  ActivityEquipmentListScreen: { activityId: number; activityName: string; clientId?: number; clientName?: string; budgetPolicy?: string; fromNewActivityFlow?: boolean };
   ActivityQuestionnaireScreen: { activityId: number; activityEquipmentId: number; equipmentId: number; equipmentTag?: string; activityName: string; budgetPolicy?: string; fromNewActivityFlow?: boolean };
   NewActivityModal: { preselectedActivityTypeSlug?: string } | undefined;
+  NewClientScreen: undefined;
+  ExistingClientScreen: undefined;
   WorkListScreen: { activityId: number; activityName?: string };
   WorkDetailScreen: { activityId: number; workId: number };
   WorkCreateScreen: { activityId: number };
@@ -88,7 +93,7 @@ export type RootStackParamList = {
   ClientSectorsScreen: { clientId: number };
   SectorDetailScreen: { clientId: number; sectorId: number };
   PreferencesScreen: undefined;
-  AddMultipleEquipmentsScreen: { activityId?: number; activityTypeId: number; activityName?: string; clientId: number; clientName?: string; sectorId?: number };
+  AddMultipleEquipmentsScreen: { activityId?: number; activityTypeId: number; activityName?: string; clientId?: number; clientName?: string; sectorId?: number; fromNewActivityFlow?: boolean };
 };
 
 const Stack = createStackNavigator<RootStackParamList>();
@@ -110,40 +115,45 @@ const AppRouter: React.FC = () => {
     );
   }
   return (
-    <Stack.Navigator initialRouteName={isAuthenticated ? "AuthenticatedFlow" : "LoginScreen"}>
-      <Stack.Screen name="AuthenticatedFlow" component={DrawerNavigator} options={{ headerShown: false }} />
-      <Stack.Screen name="LoginScreen" component={LoginScreen} options={{ headerTitle: 'Login' }} />
-      <Stack.Screen name="PersonalDataScreen" component={PersonalDataScreen} options={{ headerTitle: t('menu.personalData') }} />
-      <Stack.Screen name="ClientsAvulsosScreen" component={ClientsAvulsosScreen} options={{ headerTitle: t('menu.clientsWithoutContract') }} />
-      <Stack.Screen name="ClientsComContratoScreen" component={ClientsComContratoScreen} options={{ headerTitle: t('menu.clientsWithContract') }} />
-      <Stack.Screen name="ClientDetailScreen" component={ClientDetailScreen} options={{ headerTitle: 'Detalhes do Cliente' }} />
-      <Stack.Screen name="EquipamentScreen" component={EquipamentScreen} options={{ headerTitle: t('menu.filterEquipment') }} />
-      <Stack.Screen name="EquipmentDetailsScreen" component={EquipmentDetailsScreen} options={{ headerTitle: 'Detalhes do Equipamento' }} />
-      <Stack.Screen name="EquipmentListScreen" component={EquipmentListScreen} options={{ headerTitle: t('menu.equipments') }} />
-      <Stack.Screen name="GeneralEquipmentListScreen" component={GeneralEquipmentListScreen} options={{ headerTitle: "Listagem Geral de Equipamentos" }} />
-      <Stack.Screen name="CreateEquipmentScreen" component={CreateEquipmentScreen} options={{ headerTitle: t('menu.createEquipment') }} />
-      <Stack.Screen name="EquipmentQRCodeScreen" component={EquipmentQRCodeScreen} options={{ headerTitle: t('menu.equipmentQrCode') }} />
-      <Stack.Screen name="EditEquipmentScreen" component={EditEquipmentScreen} options={{ headerTitle: 'Editar Equipamento' }} />
-      <Stack.Screen name="ActivityListScreen" component={ActivityListScreen} options={{ headerTitle: t('menu.activities') }} />
-      <Stack.Screen name="ActivityHistoryScreen" component={ActivityHistoryScreen} options={{ headerTitle: 'Histórico da Atividade' }} />
-      <Stack.Screen name="ActivityEquipmentListScreen" component={ActivityEquipmentListScreen} options={{ headerShown: false }} />
-      <Stack.Screen name="ActivityQuestionnaireScreen" component={ActivityQuestionnaireScreen} options={{ headerShown: false }} />
-      <Stack.Screen name="NewActivityModal" component={NewActivityModal} options={{ headerShown: false }} />
-      <Stack.Screen name="WorkListScreen" component={WorkListScreen} options={{ headerTitle: 'Registros de Trabalho' }} />
-      <Stack.Screen name="WorkDetailScreen" component={WorkDetailScreen} options={{ headerTitle: 'Detalhes do Registro' }} />
-      <Stack.Screen name="WorkCreateScreen" component={WorkCreateScreen} options={{ headerTitle: 'Criar Registro de Trabalho' }} />
-      <Stack.Screen name="WorkEditScreen" component={WorkEditScreen} options={{ headerTitle: 'Editar Registro de Trabalho' }} />
-      <Stack.Screen name="WorkApproveScreen" component={WorkApproveScreen} options={{ headerTitle: 'Aprovar Registro' }} />
-      <Stack.Screen name="ManualsScreen" component={ManualsScreen} options={{ headerTitle: t('menu.manuals') }} />
-      <Stack.Screen name="SubSectorScreen" component={SubSectorScreen} options={{ headerTitle: 'Sub-setores' }} />
-      <Stack.Screen name="ClientSectorsScreen" component={ClientSectorsScreen} options={{ headerTitle: 'Setores do Cliente' }} />
-      <Stack.Screen name="RoadmapScreen" component={RoadmapScreen} options={{ headerTitle: 'Roteiro' }} />
-      <Stack.Screen name="RoadmapDetailsScreen" component={RoadmapActivityDetailsScreen} options={{ headerTitle: 'Detalhes da Atividade' }} />
+    <NewActivityFlowProvider>
+      <Stack.Navigator initialRouteName={isAuthenticated ? "AuthenticatedFlow" : "LoginScreen"}>
+        <Stack.Screen name="AuthenticatedFlow" component={DrawerNavigator} options={{ headerShown: false }} />
+        <Stack.Screen name="LoginScreen" component={LoginScreen} options={{ headerTitle: 'Login' }} />
+        <Stack.Screen name="PersonalDataScreen" component={PersonalDataScreen} options={{ headerTitle: t('menu.personalData') }} />
+        <Stack.Screen name="ClientsAvulsosScreen" component={ClientsAvulsosScreen} options={{ headerTitle: t('menu.clientsWithoutContract') }} />
+        <Stack.Screen name="ClientsComContratoScreen" component={ClientsComContratoScreen} options={{ headerTitle: t('menu.clientsWithContract') }} />
+        <Stack.Screen name="ClientDetailScreen" component={ClientDetailScreen} options={{ headerTitle: 'Detalhes do Cliente' }} />
+        <Stack.Screen name="EquipamentScreen" component={EquipamentScreen} options={{ headerTitle: t('menu.filterEquipment') }} />
+        <Stack.Screen name="EquipmentDetailsScreen" component={EquipmentDetailsScreen} options={{ headerTitle: 'Detalhes do Equipamento' }} />
+        <Stack.Screen name="EquipmentListScreen" component={EquipmentListScreen} options={{ headerTitle: t('menu.equipments') }} />
+        <Stack.Screen name="GeneralEquipmentListScreen" component={GeneralEquipmentListScreen} options={{ headerTitle: "Listagem Geral de Equipamentos" }} />
+        <Stack.Screen name="CreateEquipmentScreen" component={CreateEquipmentScreen} options={{ headerTitle: t('menu.createEquipment') }} />
+        <Stack.Screen name="EquipmentQRCodeScreen" component={EquipmentQRCodeScreen} options={{ headerTitle: t('menu.equipmentQrCode') }} />
+        <Stack.Screen name="EditEquipmentScreen" component={EditEquipmentScreen} options={{ headerTitle: 'Editar Equipamento' }} />
+        <Stack.Screen name="ActivityListScreen" component={ActivityListScreen} options={{ headerTitle: t('menu.activities') }} />
+        <Stack.Screen name="ActivityHistoryScreen" component={ActivityHistoryScreen} options={{ headerTitle: 'Histórico da Atividade' }} />
+        <Stack.Screen name="ActivityEquipmentListScreen" component={ActivityEquipmentListScreen} options={{ headerShown: false }} />
+        <Stack.Screen name="ActivityQuestionnaireScreen" component={ActivityQuestionnaireScreen} options={{ headerShown: false }} />
+        {/* Compat: mantemos o nome da rota, mas trocamos o componente para a nova tela */}
+        <Stack.Screen name="NewActivityModal" component={NewActivityScreen} options={{ headerShown: false }} />
+        <Stack.Screen name="NewClientScreen" component={NewClientScreen} options={{ headerShown: false }} />
+        <Stack.Screen name="ExistingClientScreen" component={ExistingClientScreen} options={{ headerShown: false }} />
+        <Stack.Screen name="WorkListScreen" component={WorkListScreen} options={{ headerTitle: 'Registros de Trabalho' }} />
+        <Stack.Screen name="WorkDetailScreen" component={WorkDetailScreen} options={{ headerTitle: 'Detalhes do Registro' }} />
+        <Stack.Screen name="WorkCreateScreen" component={WorkCreateScreen} options={{ headerTitle: 'Criar Registro de Trabalho' }} />
+        <Stack.Screen name="WorkEditScreen" component={WorkEditScreen} options={{ headerTitle: 'Editar Registro de Trabalho' }} />
+        <Stack.Screen name="WorkApproveScreen" component={WorkApproveScreen} options={{ headerTitle: 'Aprovar Registro' }} />
+        <Stack.Screen name="ManualsScreen" component={ManualsScreen} options={{ headerTitle: t('menu.manuals') }} />
+        <Stack.Screen name="SubSectorScreen" component={SubSectorScreen} options={{ headerTitle: 'Sub-setores' }} />
+        <Stack.Screen name="ClientSectorsScreen" component={ClientSectorsScreen} options={{ headerTitle: 'Setores do Cliente' }} />
+        <Stack.Screen name="RoadmapScreen" component={RoadmapScreen} options={{ headerTitle: 'Roteiro' }} />
+        <Stack.Screen name="RoadmapDetailsScreen" component={RoadmapActivityDetailsScreen} options={{ headerTitle: 'Detalhes da Atividade' }} />
 
-      <Stack.Screen name="SectorDetailScreen" component={SectorDetailScreen} options={{ headerTitle: 'Detalhes do Setor' }} />
-      <Stack.Screen name="PreferencesScreen" component={PreferencesScreen} options={{ headerTitle: t('menu.preferences') }} />
-      <Stack.Screen name="AddMultipleEquipmentsScreen" component={AddMultipleEquipmentsScreen} options={{ headerShown: false }} />
-    </Stack.Navigator>
+        <Stack.Screen name="SectorDetailScreen" component={SectorDetailScreen} options={{ headerTitle: 'Detalhes do Setor' }} />
+        <Stack.Screen name="PreferencesScreen" component={PreferencesScreen} options={{ headerTitle: t('menu.preferences') }} />
+        <Stack.Screen name="AddMultipleEquipmentsScreen" component={AddMultipleEquipmentsScreen} options={{ headerShown: false }} />
+      </Stack.Navigator>
+    </NewActivityFlowProvider>
   );
 };
 const styles = StyleSheet.create({
