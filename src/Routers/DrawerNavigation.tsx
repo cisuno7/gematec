@@ -332,6 +332,25 @@ const CustomDrawerContent = (props: any & { extraData: {} }) => {
         <CustomDrawerHeader />
 
         <View style={styles.menuSection}>
+          {/* Item Fixo: Início (sempre visível no topo) */}
+          <TouchableOpacity
+            style={styles.menuItem}
+            onPress={() => props.navigation.navigate("HomeScreen" as any, {})}
+            activeOpacity={0.7}
+          >
+            <View style={styles.menuItemContent}>
+              <View style={styles.menuItemLeft}>
+                <View style={styles.iconContainer}>
+                  <Ionicons name="home" size={20} color="#007BFF" />
+                </View>
+                <Text style={styles.menuText}>Início</Text>
+              </View>
+            </View>
+          </TouchableOpacity>
+
+          {/* Separador visual */}
+          <View style={styles.menuSeparator} />
+
           {/* Item Fixo: Meus Dados (sempre visível; edição controlada na tela) */}
           <TouchableOpacity
             style={styles.menuItem}
