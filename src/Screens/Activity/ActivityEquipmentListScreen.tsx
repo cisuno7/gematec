@@ -53,7 +53,7 @@ const ActivityEquipmentListScreen: React.FC<ActivityEquipmentListScreenProps> = 
         { label: "Orçamento Reprovado", value: EquipmentStatus.BUDGET_DISAPPROVAL, icon: "close-circle" },
         { label: "Concluído", value: EquipmentStatus.COMPLETED, icon: "checkmark-done-circle" },
         { label: "Aguardando Registro", value: EquipmentStatus.WAITING_WORK_APPROVAL, icon: "time-outline" },
-        { label: "Fechado", value: EquipmentStatus.CLOSED, icon: "check-circle" },
+        { label: "Fechado", value: EquipmentStatus.CLOSED, icon: "checkmark-circle" },
     ];
     const { activityId, activityName, clientId, clientName, budgetPolicy, fromNewActivityFlow } = route.params as any;
     const [equipments, setEquipments] = useState<any[]>([]);
@@ -78,11 +78,31 @@ const ActivityEquipmentListScreen: React.FC<ActivityEquipmentListScreenProps> = 
     const [activityDetails, setActivityDetails] = useState<any>(null);
 
     useEffect(() => {
+        console.log('[ActivityEquipmentListScreen] 🎯 Componente montado');
+        console.log('[ActivityEquipmentListScreen] 📋 Parâmetros da rota:', route.params);
+        console.log('[ActivityEquipmentListScreen] 🎫 activityId extraído:', activityId, 'tipo:', typeof activityId);
+
+        // ✅ Validação inicial: verificar se activityId foi passado
+        if (!activityId) {
+            console.error('[ActivityEquipmentListScreen] ❌ activityId não fornecido nos parâmetros da rota');
+            console.error('[ActivityEquipmentListScreen] Parâmetros recebidos:', route.params);
+            Alert.alert('Erro', 'ID da atividade não encontrado. Retornando à tela anterior.');
+            navigation.goBack();
+            return;
+        }
+
+        if (typeof activityId !== 'number' && isNaN(Number(activityId))) {
+            console.error('[ActivityEquipmentListScreen] ❌ activityId não é um número válido:', activityId);
+            Alert.alert('Erro', 'ID da atividade inválido. Retornando à tela anterior.');
+            navigation.goBack();
+            return;
+        }
+
         // ✅ Adicionar busca dos detalhes da atividade
         fetchActivityDetails();
         fetchEquipments();
         fetchSectors();
-    }, [selectedStatus,  selectedSector, selectedSubsector, showOnlyStartedByMe]);
+    }, [selectedStatus,  selectedSector, selectedSubsector, showOnlyStartedByMe, activityId]);
 
     useEffect(() => {
         console.log('[ActivityEquipmentListScreen] Estado equipments mudou:', equipments.length, 'equipamentos');
@@ -90,25 +110,34 @@ const ActivityEquipmentListScreen: React.FC<ActivityEquipmentListScreenProps> = 
 
     const fetchEquipments = async () => {
         try {
+            console.log('[ActivityEquipmentListScreen] 🔄 Iniciando busca de equipamentos');
             setLoading(true);
             setError(null);
             const token = await AsyncStorage.getItem("access_token");
             if (!token) throw new Error("Token não encontrado");
+
+            console.log('[ActivityEquipmentListScreen] ✅ Token encontrado');
+            console.log('[ActivityEquipmentListScreen] 🎫 ActivityId sendo usado:', activityId, 'tipo:', typeof activityId);
+
    // ➕ DETERMINAR SE DEVE FILTRAR POR USUÁRIO ATUAL:
         const openedById = showOnlyStartedByMe && userId !== null ? userId : undefined;
-            console.log('[ActivityEquipmentListScreen] Buscando equipamentos da atividade:', activityId);
+            console.log('[ActivityEquipmentListScreen] 👤 Filtro openedById:', openedById);
+            console.log('[ActivityEquipmentListScreen] 🔍 Buscando equipamentos da atividade:', activityId);
 
             // ➕ PASSAR O PARÂMETRO PARA A API:
-        const response = await ActivityService.fetchAllActivityEquipments(activityId, { 
+        console.log('[ActivityEquipmentListScreen] 📡 Fazendo requisição para API...');
+        const response = await ActivityService.fetchAllActivityEquipments(activityId, {
             token,
             opened_by_id: openedById
         });
-            console.log('[ActivityEquipmentListScreen] Resposta completa:', JSON.stringify(response, null, 2));
-            console.log('[ActivityEquipmentListScreen] Tipo da resposta:', typeof response);
-            console.log('[ActivityEquipmentListScreen] É array?', Array.isArray(response));
-            console.log('[ActivityEquipmentListScreen] Tem results?', response?.results);
-            console.log('[ActivityEquipmentListScreen] Tem data?', response?.data);
-            console.log('[ActivityEquipmentListScreen] Chaves da resposta:', Object.keys(response || {}));
+
+        console.log('[ActivityEquipmentListScreen] 📨 Resposta recebida da API');
+        console.log('[ActivityEquipmentListScreen] 📋 Resposta completa:', JSON.stringify(response, null, 2));
+        console.log('[ActivityEquipmentListScreen] 🔍 Tipo da resposta:', typeof response);
+        console.log('[ActivityEquipmentListScreen] 📊 É array?', Array.isArray(response));
+        console.log('[ActivityEquipmentListScreen] 📂 Tem results?', response?.results);
+        console.log('[ActivityEquipmentListScreen] 💾 Tem data?', response?.data);
+        console.log('[ActivityEquipmentListScreen] 🗝️ Chaves da resposta:', Object.keys(response || {}));
 
             // Verificar se a resposta tem a estrutura esperada
             let filteredEquipments = [];

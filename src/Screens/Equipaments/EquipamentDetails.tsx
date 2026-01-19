@@ -170,8 +170,14 @@ const EquipmentDetailsScreen: React.FC<EquipmentDetailsScreenProps> = ({ route, 
 
       }, token);
 
+      console.log('[EquipamentDetails] ✅ Atividade criada com sucesso:', activity);
+      console.log('[EquipamentDetails] 🎫 Activity ID:', activity?.id);
+      console.log('[EquipamentDetails] 📋 Activity completa:', JSON.stringify(activity, null, 2));
 
-      console.log('[EquipamentDetails] Atividade criada:', activity);
+      // ✅ Validação crítica: verificar se activity foi criada corretamente
+      if (!activity || !activity.id) {
+        throw new Error('Atividade criada mas sem ID válido retornado');
+      }
       console.log('[EquipamentDetails] budget_policy da atividade:', activity?.budget_policy);
 
       // 2) Vincular equipamento existente à atividade
@@ -180,33 +186,79 @@ const EquipmentDetailsScreen: React.FC<EquipmentDetailsScreenProps> = ({ route, 
       console.log('[EquipamentDetails] Equipment ID a ser vinculado:', parsedEquipmentId);
       console.log('[EquipamentDetails] Activity ID:', activity.id);
 
-      await activityService.addEquipmentToActivity(activity.id, { equipments_ids: [parsedEquipmentId] }, token);
-      console.log('[EquipamentDetails] Equipamento vinculado com sucesso');
+      // ✅ Vincular equipamento à atividade (conforme Postman - retorna array com IDs)
+      const addEquipmentResponse = await activityService.addEquipmentToActivity(activity.id, { equipments_ids: [parsedEquipmentId] }, token);
+      console.log('[EquipamentDetails] ✅ Equipamento vinculado com sucesso');
+      console.log('[EquipamentDetails] Resposta do POST addEquipment:', addEquipmentResponse);
 
-      // 3) Confirmar ID do vínculo e navegar ao questionário
-      const equipmentsPayload = await ActivityService.fetchActivityEquipments(activity.id, { token });
-      const equipmentsList = Array.isArray(equipmentsPayload) ? equipmentsPayload : (equipmentsPayload?.results || []);
-      const linked = equipmentsList.find((ev: any) => ev?.equipment?.id === parsedEquipmentId || ev?.equipment_id === parsedEquipmentId);
-      const activityEquipmentId = linked?.id;
-
-      if (!activityEquipmentId) {
-        Alert.alert('Atenção', 'Atividade criada, mas não foi possível confirmar o vínculo do equipamento. Tente abrir o questionário a partir do histórico.');
-      } else {
-        // ✅ Buscar budgetPolicy da atividade criada (conforme plano)
-        const budgetPolicy = activity?.budget_policy || 'on_request';
-        console.log('[EquipamentDetails] ✅ budgetPolicy para navegação:', budgetPolicy);
-
-        setShowCreateActivity(false);
-        navigation.navigate('ActivityQuestionnaireScreen', {
-          activityId: activity.id,
-          activityEquipmentId,
-          equipmentId: parsedEquipmentId,
-          equipmentTag: equipment?.tag || undefined, // Tag é opcional
-          activityName: autoName,
-          budgetPolicy: budgetPolicy, // ✅ ADICIONADO conforme plano
-          fromNewActivityFlow: true,
+      // ✅ Verificar se o vínculo foi criado com sucesso
+      // A resposta do POST é um array de objetos com 'id' (conforme Postman)
+      let vinculadoComSucesso = false;
+      
+      if (Array.isArray(addEquipmentResponse) && addEquipmentResponse.length > 0) {
+        // Verificar se o equipamento foi vinculado
+        const linked = addEquipmentResponse.find((ev: any) => {
+          const eqId = ev?.equipment?.id || ev?.equipment_id;
+          return eqId === parsedEquipmentId;
         });
+        vinculadoComSucesso = !!linked;
+        console.log('[EquipamentDetails] ✅ Equipamento encontrado na resposta do POST:', vinculadoComSucesso);
       }
+
+      // Fallback: Verificar via GET se necessário (compatibilidade)
+      if (!vinculadoComSucesso) {
+        console.log('[EquipamentDetails] Fallback: Verificando vínculo via GET...');
+        try {
+          const equipmentsPayload = await ActivityService.fetchActivityEquipments(activity.id, { token });
+          const equipmentsList = Array.isArray(equipmentsPayload) ? equipmentsPayload : (equipmentsPayload?.results || []);
+          const linked = equipmentsList.find((ev: any) => {
+            const eqId = ev?.equipment?.id || ev?.equipment_id;
+            return eqId === parsedEquipmentId;
+          });
+          vinculadoComSucesso = !!linked;
+          console.log('[EquipamentDetails] Vínculo verificado via GET:', vinculadoComSucesso);
+        } catch (error) {
+          console.warn('[EquipamentDetails] Erro ao verificar vínculo via GET:', error);
+        }
+      }
+
+      if (!vinculadoComSucesso) {
+        console.warn('[EquipamentDetails] ⚠️ Não foi possível confirmar o vínculo do equipamento, mas prosseguindo...');
+        // Não bloquear o fluxo - o usuário poderá verificar na lista de equipamentos
+      }
+
+      // ✅ Buscar budgetPolicy da atividade criada (conforme plano)
+      const budgetPolicy = activity?.budget_policy || 'on_request';
+      console.log('[EquipamentDetails] ✅ budgetPolicy para navegação:', budgetPolicy);
+
+      // ✅ NOVO FLUXO: Navegar para ActivityEquipmentListScreen primeiro
+      // O usuário verá a lista de equipamentos vinculados e poderá escolher qual iniciar
+      console.log('[EquipamentDetails] 🎯 Navegando para ActivityEquipmentListScreen');
+      console.log('[EquipamentDetails] 📋 Parâmetros sendo enviados:', {
+        activityId: activity.id,
+        activityName: autoName,
+        clientId: equipment?.client?.id,
+        clientName: equipment?.client?.name,
+        budgetPolicy: budgetPolicy,
+        fromNewActivityFlow: true,
+      });
+
+      // ✅ CORREÇÃO CRÍTICA: Navegar PRIMEIRO para ActivityEquipmentListScreen, depois fechar modal
+      // Isso evita conflito de timing que pode causar tela branca
+      // O usuário verá a lista de equipamentos e poderá clicar em "Iniciar Atividade" para ir ao questionário
+      navigation.navigate('ActivityEquipmentListScreen', {
+        activityId: activity.id,
+        activityName: autoName,
+        clientId: equipment?.client?.id,
+        clientName: equipment?.client?.name || undefined,
+        budgetPolicy: budgetPolicy,
+        fromNewActivityFlow: true,
+      });
+      
+      // Fechar modal após navegação (com pequeno delay para garantir que navegação iniciou)
+      setTimeout(() => {
+        setShowCreateActivity(false);
+      }, 100);
     } catch (err: any) {
       console.error('[EquipamentDetails] Erro ao criar atividade:', err);
 
@@ -307,7 +359,7 @@ const EquipmentDetailsScreen: React.FC<EquipmentDetailsScreenProps> = ({ route, 
             <InfoRow
               label="Status"
               value={equipment.is_active !== false ? "Ativo" : "Inativo"}
-              icon={equipment.is_active !== false ? "check-circle" : "cancel"}
+              icon={equipment.is_active !== false ? "checkmark-circle" : "close-circle"}
             />
           </InfoCard>
 
@@ -464,7 +516,7 @@ const EquipmentDetailsScreen: React.FC<EquipmentDetailsScreenProps> = ({ route, 
                       if (field.type === 'boolean') {
                         const boolVal = Boolean(actualValue);
                         displayValue = boolVal ? "Sim" : "Não";
-                        icon = boolVal ? "check-circle" : "cancel";
+                        icon = boolVal ? "checkmark-circle" : "close-circle";
                       } else if (field.type === 'number') {
                         displayValue = actualValue !== null && actualValue !== undefined ? String(actualValue) : "N/A";
                         icon = "calculate";
@@ -504,7 +556,7 @@ const EquipmentDetailsScreen: React.FC<EquipmentDetailsScreenProps> = ({ route, 
                 <InfoRow label="Tecnologia" value={equipment.technology || "N/A"} icon="flash" />
                 <InfoRow label="Tipo de Evaporadora" value={equipment.evaporator_type?.name || "N/A"} icon="thermometer" />
                 <InfoRow label="Tipo de Serpentina" value={equipment.coil_type?.name || "N/A"} icon="sync" />
-                <InfoRow label="Tipo de Coifa" value={equipment.condenser_type?.name || "N/A"} icon="air" />
+                <InfoRow label="Tipo de Coifa" value={equipment.condenser_type?.name || "N/A"} icon="airplane" />
                 <InfoRow label="Capacidade" value={equipment.capacity || "N/A"} icon="speedometer" />
                 <InfoRow label="Voltagem" value={equipment.voltage || "N/A"} icon="flash" />
                 <InfoRow label="Corrente Elétrica" value={equipment.electric_current || "N/A"} icon="pulse" />

@@ -46,8 +46,19 @@ const DynamicActivityQuestionnaire: React.FC<DynamicActivityQuestionnaireProps> 
   activityEquipmentId,
   readOnly = false,
 }) => {
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/6613393d-1811-4ee8-8ac4-8aace6947144',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'src/Components/DynamicActivityQuestionnaire.tsx:49',message:'DynamicActivityQuestionnaire props summary',data:{fieldsLength:fields?.length,hasInvalidField:!!fields?.find(f=>!f||!f.key||!f.type),nonArrayOptionsCount:(fields||[]).filter(f=>['select','radio','radio_with_justification'].includes(f.type) && f.options && !Array.isArray(f.options)).length,readOnly},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H4'})}).catch(()=>{});
+  // #endregion
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/6613393d-1811-4ee8-8ac4-8aace6947144',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'src/Components/DynamicActivityQuestionnaire.tsx:37',message:'DynamicActivityQuestionnaire render iniciado',data:{fieldsLength:fields?.length,hasOnChange:!!onChange,hasOnSaveAnswer:!!onSaveAnswer,readOnly},timestamp:Date.now(),sessionId:'debug-session'})}).catch(()=>{});
+  // #endregion
+
   const { t } = useLanguage();
   const r = useResponsive();
+
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/6613393d-1811-4ee8-8ac4-8aace6947144',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'src/Components/DynamicActivityQuestionnaire.tsx:49',message:'Hooks DynamicActivityQuestionnaire executados',data:{t:!!t,r:!!r},timestamp:Date.now(),sessionId:'debug-session'})}).catch(()=>{});
+  // #endregion
   const [answers, setAnswers] = useState<{ [key: string]: any }>(initialValues);
   const [uploads, setUploads] = useState<{ [key: string]: UploadFile[] }>(initialUploads || {});
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
@@ -740,10 +751,14 @@ const DynamicActivityQuestionnaire: React.FC<DynamicActivityQuestionnaireProps> 
     );
   };
 
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/6613393d-1811-4ee8-8ac4-8aace6947144',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'src/Components/DynamicActivityQuestionnaire.tsx:751',message:'DynamicActivityQuestionnaire retornando ScrollView',data:{fieldsLength:fields.length,renderField:!!renderField},timestamp:Date.now(),sessionId:'debug-session'})}).catch(()=>{});
+  // #endregion
+
   return (
-    <ScrollView style={[styles.container, { padding: r.spacing(2) }]}>
+    <View style={[styles.container, { padding: r.spacing(2) }]}>
       {fields.map(renderField)}
-    </ScrollView>
+    </View>
   );
 };
 

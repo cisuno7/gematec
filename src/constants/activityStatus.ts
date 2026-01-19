@@ -92,7 +92,7 @@ export const EQUIPMENT_STATUS_ICONS: Record<string, string> = {
   [EquipmentStatus.BUDGET_DISAPPROVAL]: "close-circle",
   [EquipmentStatus.COMPLETED]: "checkmark-done-circle",
   [EquipmentStatus.WAITING_WORK_APPROVAL]: "time-outline",
-  [EquipmentStatus.CLOSED]: "check-circle",
+  [EquipmentStatus.CLOSED]: "checkmark-circle",
 };
 
 // Mapeamento de ícones para status de atividade

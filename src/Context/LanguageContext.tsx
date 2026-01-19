@@ -781,8 +781,12 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         const loadSavedLanguage = async () => {
             try {
                 const savedLanguage = await AsyncStorage.getItem('user_language');
-                if (savedLanguage && translations[savedLanguage]) {
-                    setCurrentLanguage(savedLanguage);
+                if (savedLanguage) {
+                    // Mapear "pt" para "pt-BR" (normalizar idioma)
+                    const normalizedLanguage = savedLanguage === 'pt' ? 'pt-BR' : savedLanguage;
+                    if (translations[normalizedLanguage]) {
+                        setCurrentLanguage(normalizedLanguage);
+                    }
                 }
             } catch (error) {
                 console.error('Error loading saved language:', error);
@@ -793,8 +797,10 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     const setLanguage = async (language: string) => {
         try {
-            await AsyncStorage.setItem('user_language', language);
-            setCurrentLanguage(language);
+            // Normalizar "pt" para "pt-BR" antes de salvar
+            const normalizedLanguage = language === 'pt' ? 'pt-BR' : language;
+            await AsyncStorage.setItem('user_language', normalizedLanguage);
+            setCurrentLanguage(normalizedLanguage);
         } catch (error) {
             console.error('Error saving language:', error);
         }
@@ -808,18 +814,27 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const loadUserPreferences = async (accessToken: string) => {
         try {
             const preferences = await PreferencesService.getPreferences(accessToken);
-            if (preferences.language && translations[preferences.language]) {
-                await setLanguage(preferences.language);
-                console.log(`[LanguageContext] Preferências carregadas: ${preferences.language}`);
-            } else {
-                console.warn(`[LanguageContext] Idioma não suportado: ${preferences.language}, usando padrão pt-BR`);
+            if (preferences.language) {
+                // Mapear "pt" para "pt-BR" (o backend pode retornar "pt" mas temos traduções em "pt-BR")
+                const normalizedLanguage = preferences.language === 'pt' ? 'pt-BR' : preferences.language;
+                
+                if (translations[normalizedLanguage]) {
+                    await setLanguage(normalizedLanguage);
+                    console.log(`[LanguageContext] Preferências carregadas: ${normalizedLanguage} (original: ${preferences.language})`);
+                } else {
+                    console.warn(`[LanguageContext] Idioma não suportado: ${preferences.language}, usando padrão pt-BR`);
+                }
             }
         } catch (error) {
             console.error('[LanguageContext] Erro ao carregar preferências do usuário:', error);
             // Se não conseguir carregar do backend, mantém o idioma local ou padrão
             const savedLanguage = await AsyncStorage.getItem('user_language');
-            if (savedLanguage && translations[savedLanguage]) {
-                setCurrentLanguage(savedLanguage);
+            if (savedLanguage) {
+                // Normalizar idioma salvo também
+                const normalizedSavedLanguage = savedLanguage === 'pt' ? 'pt-BR' : savedLanguage;
+                if (translations[normalizedSavedLanguage]) {
+                    setCurrentLanguage(normalizedSavedLanguage);
+                }
             }
         }
     };

@@ -5,7 +5,6 @@ import { ActivityAnswer } from "../Models/ActivityAnswer";
 import { UploadFile } from "../Models/UploadFile";
 import NetInfo from '@react-native-community/netinfo';
 import OfflineService from './OfflineService';
-import ApiClient from "../Context/ApiClient";
 
 type ActivitiesListResponse = {
     links?: { next?: string | null; previous?: string | null };

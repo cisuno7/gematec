@@ -7,6 +7,7 @@ import {
   StatusBar,
   Animated,
   ActivityIndicator,
+  Image,
 } from "react-native";
 import ResponsiveContainer from "../Components/ResponsiveContainer";
 import ResponsiveText from "../Components/ResponsiveText";
@@ -262,23 +263,11 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
     <ResponsiveContainer style={styles.container} withPadding={false}>
       <StatusBar backgroundColor="#2C3E50" barStyle="light-content" />
 
-      {/* Header */}
-      <View style={styles.header}>
-        <View style={styles.headerContent}>
-          <View style={styles.userInfo}>
-            <View style={styles.userText}>
-              <ResponsiveText variant="body" style={{ color: '#BDC3C7', fontWeight: '500' }}>
-                {t('common.welcome')}
-              </ResponsiveText>
-              <ResponsiveText variant="subtitle" weight="bold" style={{ color: '#FFFFFF' }}>
-                {username || t('common.user')}
-              </ResponsiveText>
-            </View>
-          </View>
-        </View>
-      </View>
-
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        style={styles.scrollView} 
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
         <Animated.View
           style={[
             styles.content,
@@ -366,14 +355,33 @@ const styles = StyleSheet.create({
   },
   header: {
     backgroundColor: '#2C3E50',
-    paddingTop: 20,
-    paddingBottom: 20,
+    paddingTop: 10,
+    paddingBottom: 10,
     paddingHorizontal: 20,
+    marginBottom: 0,
   },
   headerContent: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
     alignItems: 'center',
+    position: 'relative',
+  },
+  logoContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  logo: {
+    height: 50,
+    width: '100%',
+    maxWidth: 200,
+  },
+  notificationButton: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    padding: 8,
+    zIndex: 1,
   },
   userInfo: {
     flexDirection: 'row',
@@ -382,10 +390,6 @@ const styles = StyleSheet.create({
   },
   userText: {
     marginLeft: 12,
-  },
-  notificationButton: {
-    position: 'relative',
-    padding: 8,
   },
   notificationBadge: {
     position: 'absolute',
@@ -405,6 +409,11 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     flex: 1,
+    backgroundColor: '#F8F9FA',
+    marginTop: 0,
+  },
+  scrollContent: {
+    backgroundColor: '#F8F9FA',
   },
   content: {
     padding: 20,

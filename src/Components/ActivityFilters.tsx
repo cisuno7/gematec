@@ -32,7 +32,7 @@ const STATUS_OPTIONS = [
   { label: "Aguardando Orçamento", value: ActivityStatus.WAITING_BUDGET_APPROVAL, icon: "hourglass-outline" },
   { label: "Orçamento Aprovado", value: ActivityStatus.BUDGET_APPROVAL, icon: "checkmark-circle" },
   { label: "Orçamento Reprovado", value: ActivityStatus.BUDGET_DISAPPROVAL, icon: "close-circle" },
-  { label: "Fechado", value: EquipmentStatus.CLOSED, icon: "check-circle" },
+  { label: "Fechado", value: EquipmentStatus.CLOSED, icon: "checkmark-circle" },
 ];
 
 const ActivityFilters: React.FC<ActivityFiltersProps> = ({ 

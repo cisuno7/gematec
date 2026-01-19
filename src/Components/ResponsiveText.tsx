@@ -41,13 +41,38 @@ const ResponsiveText: React.FC<ResponsiveTextProps> = ({
   style,
   ...rest
 }) => {
-  const theme = useTheme();
-  const r = useResponsive();
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/6613393d-1811-4ee8-8ac4-8aace6947144',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'src/Components/ResponsiveText.tsx:44',message:'ResponsiveText render iniciado',data:{variant,weight,color,children:typeof children},timestamp:Date.now(),sessionId:'debug-session'})}).catch(()=>{});
+  // #endregion
+
+  let theme;
+  let r;
+  try {
+    theme = useTheme();
+  } catch (error) {
+    console.error('[ResponsiveText] Erro ao obter theme:', error);
+    theme = { colors: { textPrimary: '#000' } } as any;
+  }
+  
+  try {
+    r = useResponsive();
+  } catch (error) {
+    console.error('[ResponsiveText] Erro ao obter responsive:', error);
+    r = { responsiveFontSize: (size: number) => size } as any;
+  }
+
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/6613393d-1811-4ee8-8ac4-8aace6947144',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'src/Components/ResponsiveText.tsx:46',message:'Hooks executados',data:{theme:!!theme,r:!!r,themeColors:theme?.colors},timestamp:Date.now(),sessionId:'debug-session'})}).catch(()=>{});
+  // #endregion
 
   // Responsividade por tela (largura/altura), não por acessibilidade.
   // Acessibilidade continua ativa e é controlada via `maxFontSizeMultiplier`.
-  const fontSize = r.responsiveFontSize(baseSizes[variant]);
+  const fontSize = r?.responsiveFontSize ? r.responsiveFontSize(baseSizes[variant]) : baseSizes[variant];
   const cap = maxFontSizeMultiplier ?? defaultMaxFontMultiplier[variant];
+
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/6613393d-1811-4ee8-8ac4-8aace6947144',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'src/Components/ResponsiveText.tsx:52',message:'Calculando valores',data:{fontSize,cap,baseSize:baseSizes[variant],themeColor:theme.colors.textPrimary},timestamp:Date.now(),sessionId:'debug-session'})}).catch(()=>{});
+  // #endregion
 
   return (
     <Text
@@ -65,9 +90,8 @@ const ResponsiveText: React.FC<ResponsiveTextProps> = ({
 };
 
 const styles = StyleSheet.create({
-  text: { includeFontPadding: false, textAlignVertical: 'center' },
+  text: { includeFontPadding: false, textAlignVertical: 'center', lineHeight: 20 },
 });
-
 export default ResponsiveText;
 
 

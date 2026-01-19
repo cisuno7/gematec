@@ -476,6 +476,16 @@ const AddMultipleEquipmentsScreen: React.FC = () => {
                 [{
                     text: 'OK',
                     onPress: () => {
+                        console.log('[AddMultipleEquipmentsScreen] 🎯 Navegando para ActivityEquipmentListScreen');
+                        console.log('[AddMultipleEquipmentsScreen] 📋 Parâmetros sendo enviados:', {
+                            activityId: effectiveActivityId,
+                            activityName: generatedName || 'Atividade',
+                            clientId: finalClientId || undefined,
+                            clientName: finalClientName || undefined,
+                            budgetPolicy: effectiveBudgetPolicy,
+                            fromNewActivityFlow: fromNewActivityFlow || undefined,
+                        });
+
                         navigation.navigate('ActivityEquipmentListScreen', {
                             activityId: effectiveActivityId,
                             activityName: generatedName || 'Atividade',

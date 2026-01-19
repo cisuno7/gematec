@@ -13,7 +13,8 @@ import {
   Alert,
   ActivityIndicator,
   Animated,
-  StatusBar
+  StatusBar,
+  Image,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { FontAwesome } from "@expo/vector-icons";
@@ -423,7 +424,41 @@ const DrawerNavigator: React.FC = () => {
       <Drawer.Screen
         name="HomeScreen"
         component={HomeScreen}
-        options={{ title: t('menu.home'), headerTitle: () => <CustomDrawerHeader /> }}
+        options={() => ({
+          title: '',
+          headerTitle: () => (
+            <Image
+              source={require("../../assets/logo_header.jpeg")}
+              style={{
+                width: r.scale(150),
+                height: r.scale(38),
+              }}
+              resizeMode="contain"
+            />
+          ),
+          headerTitleAlign: 'center',
+          headerRight: () => (
+            <TouchableOpacity
+              style={styles.homeHeaderRight}
+              onPress={() => {
+                // TODO: Implementar navegação para notificações
+                console.log("Notificações pressionado");
+              }}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="notifications-outline" size={r.scale(26)} color="#FFFFFF" />
+            </TouchableOpacity>
+          ),
+          headerRightContainerStyle: {
+            paddingRight: 12,
+          },
+          headerStyle: {
+            backgroundColor: "#2C3E50",
+            elevation: 0,
+            shadowOpacity: 0,
+            height: r.verticalScale(110),
+          },
+        })}
       />
       <Drawer.Screen
         name="ManualsScreen"
@@ -486,6 +521,11 @@ const styles = StyleSheet.create({
     right: 0,
     height: 4,
     backgroundColor: '#007BFF',
+  },
+  homeHeaderRight: {
+    paddingRight: 12,
+    paddingLeft: 12,
+    paddingVertical: 10,
   },
   menuSection: {
     paddingTop: 20,

@@ -85,7 +85,7 @@ export default class Client implements IClient {
     this.addresses = data.addresses || null;
     // Novos campos
     this.fantasy_name = data.company_name;
-    this.state_registration = data.company.state_registration;
+    this.state_registration = data.company?.state_registration || data.company_state_registration || null;
     this.opening_date = data.company_opening_at;
     this.total_sectors = data.total_sectors;
     this.total_equipments = data.total_equipments;

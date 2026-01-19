@@ -10,7 +10,13 @@ type Props = ImageProps & {
 };
 
 const ResponsiveImage: React.FC<Props> = ({ widthPct = 0.8, maxWidth = 480, aspectRatio, style, ...rest }) => {
-  const r = useResponsive();
+  let r;
+  try {
+    r = useResponsive();
+  } catch (error) {
+    console.error('[ResponsiveImage] Erro ao obter responsive:', error);
+    r = { width: 414 } as any;
+  }
   const screenWidth = r?.width ?? 414;
   const computed = useMemo(() => {
     const width = Math.min(screenWidth * widthPct, maxWidth);
