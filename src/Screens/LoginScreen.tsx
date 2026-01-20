@@ -16,6 +16,7 @@ import AppTextInput from "../Components/AppTextInput";
 import { useResponsive } from "../hooks/useResponsive";
 import { NavigationProp, RouteProp } from "@react-navigation/native";
 import AuthService from '../Services/AuthService';
+import { ensureFcmToken, fetchDevices, registerDevice } from "../Services/notifications";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import LoginRequest from '../Models/LoginRequest';
 import { jwtDecode } from "jwt-decode";
@@ -137,6 +138,19 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ route, navigation }) => {
       // Salvar tokens e conta imediatamente (antes de navegar)
       await login(response.access, response.refresh, account || '', isChecked);
       console.log('Login bem-sucedido. Tokens, conta e preferência de "manter logado" salvos via UserContext.');
+
+      // Registrar dispositivo (FCM) antes do fluxo pós-login
+      try {
+        const fcmToken = await ensureFcmToken();
+        if (fcmToken) {
+          await registerDevice(fcmToken);
+          await fetchDevices();
+        } else {
+          console.warn("[LoginScreen] FCM token indisponível. Dispositivo não registrado.");
+        }
+      } catch (deviceError) {
+        console.warn("[LoginScreen] Falha ao registrar dispositivo:", deviceError);
+      }
 
       // Decodificar o access token para obter dados do usuário
       try {

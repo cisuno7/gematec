@@ -443,7 +443,7 @@ const DrawerNavigator: React.FC = () => {
       <Drawer.Screen
         name="HomeScreen"
         component={HomeScreen}
-        options={() => ({
+        options={({ navigation }) => ({
           title: '',
           headerTitle: () => (
             <Image
@@ -460,8 +460,7 @@ const DrawerNavigator: React.FC = () => {
             <TouchableOpacity
               style={styles.homeHeaderRight}
               onPress={() => {
-                // TODO: Implementar navegação para notificações
-                console.log("Notificações pressionado");
+                navigation.navigate("NotificationsScreen" as any, {});
               }}
               activeOpacity={0.7}
             >

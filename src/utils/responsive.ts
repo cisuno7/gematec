@@ -3,14 +3,14 @@ import { Dimensions, PixelRatio, ScaledSize, useWindowDimensions } from 'react-n
 /**
  * Responsividade global do app (Expo SDK 54 / RN 0.81).
  *
- * Guideline de design: iPhone 11 (414 x 896).
+ * Guideline de design: iPhone 8/SE (375 x 667) - padrão da indústria.
  *
  * Importante:
  * - NÃO usamos `Dimensions.get()` como constante de módulo (isso "congela" valores e falha em rotação).
  * - Preferir sempre passar `width/height` (ou consumir via `useResponsive()`), para reagir a portrait/landscape.
  */
-const GUIDELINE_BASE_WIDTH = 414;
-const GUIDELINE_BASE_HEIGHT = 896;
+const GUIDELINE_BASE_WIDTH = 375;
+const GUIDELINE_BASE_HEIGHT = 667;
 
 type Dims = { width: number; height: number };
 
@@ -41,12 +41,12 @@ function getWindowDimsFallback(): Dims {
     const w = windowDims?.width;
     const h = windowDims?.height;
     return {
-      width: (typeof w === 'number' && w > 0) ? w : 414,
-      height: (typeof h === 'number' && h > 0) ? h : 896
+      width: (typeof w === 'number' && w > 0) ? w : 375,
+      height: (typeof h === 'number' && h > 0) ? h : 667
     };
   } catch {
     // Fallback seguro se Dimensions.get() falhar durante inicialização
-    return { width: 414, height: 896 };
+    return { width: 375, height: 667 };
   }
 }
 
@@ -83,10 +83,10 @@ export function moderateScale(size: number, width?: number, factor: number = 0.5
 }
 
 /**
- * Fonte responsiva por tamanho de tela (não confundir com acessibilidade do sistema).
+ * Fonte responsiva por tamanho de tela com suporte a fontScale do sistema (acessibilidade).
  * - Em geral, usamos `moderateScale` com um fator menor (ex.: 0.25~0.35) para tipografia.
- * - O scaling de acessibilidade do sistema continua habilitado e pode ser controlado por componente
- *   via `maxFontSizeMultiplier` (recomendado).
+ * - Aplica `fontScale` do sistema para respeitar preferências de acessibilidade do usuário.
+ * - O scaling adicional pode ser controlado por componente via `maxFontSizeMultiplier` (recomendado).
  */
 export function responsiveFontSize(
   fontSize: number,
@@ -98,12 +98,18 @@ export function responsiveFontSize(
   const w = width ?? fallback.width;
   const h = height ?? fallback.height;
   const factor = options.factor ?? 0.3;
-  const next = moderateScale(fontSize, w, factor);
+  
+  // Escala baseada no tamanho da tela
+  const scaledByScreen = moderateScale(fontSize, w, factor);
+  
+  // Aplica fontScale do sistema (acessibilidade) - respeita preferências do usuário
+  const fontScale = PixelRatio.getFontScale();
+  const scaledWithAccessibility = scaledByScreen * fontScale;
 
-  // Defaults pragmáticos: evitam fonte gigante em tablets, sem “achatar” demais no celular.
+  // Defaults pragmáticos: evitam fonte gigante em tablets, sem "achatar" demais no celular.
   const min = options.min ?? Math.max(10, fontSize * 0.9);
   const max = options.max ?? fontSize * (isTablet(w, h) ? 1.35 : 1.2);
-  return PixelRatio.roundToNearestPixel(clamp(next, min, max));
+  return PixelRatio.roundToNearestPixel(clamp(scaledWithAccessibility, min, max));
 }
 
 /**

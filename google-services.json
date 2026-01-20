@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "504457368908",
+    "project_id": "gemptec-ofcar",
+    "storage_bucket": "gemptec-ofcar.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:504457368908:android:17fa69c07c26883c67abe9",
+        "android_client_info": {
+          "package_name": "com.gabriel_jordan.gemptec"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyChi1FCMx9lICPvNJuBlyMYe6ZbevMblIM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -65,13 +65,24 @@ const ResponsiveText: React.FC<ResponsiveTextProps> = ({
   fetch('http://127.0.0.1:7242/ingest/6613393d-1811-4ee8-8ac4-8aace6947144',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'src/Components/ResponsiveText.tsx:46',message:'Hooks executados',data:{theme:!!theme,r:!!r,themeColors:theme?.colors},timestamp:Date.now(),sessionId:'debug-session'})}).catch(()=>{});
   // #endregion
 
-  // Responsividade por tela (largura/altura), não por acessibilidade.
-  // Acessibilidade continua ativa e é controlada via `maxFontSizeMultiplier`.
+  // Responsividade por tela (largura/altura) + acessibilidade (fontScale do sistema).
+  // O fontScale já é aplicado em responsiveFontSize, e maxFontSizeMultiplier limita o scaling adicional.
   const fontSize = r?.responsiveFontSize ? r.responsiveFontSize(baseSizes[variant]) : baseSizes[variant];
   const cap = maxFontSizeMultiplier ?? defaultMaxFontMultiplier[variant];
 
+  // Line height dinâmico baseado no fontSize (melhor legibilidade)
+  // Ratios comuns: 1.4-1.6 para body, 1.2-1.4 para títulos, 1.5-1.7 para captions
+  const lineHeightMultipliers: Record<Variant, number> = {
+    title: 1.3,
+    subtitle: 1.35,
+    body: 1.5,
+    caption: 1.6,
+    button: 1.4,
+  };
+  const lineHeight = Math.round(fontSize * lineHeightMultipliers[variant]);
+
   // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/6613393d-1811-4ee8-8ac4-8aace6947144',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'src/Components/ResponsiveText.tsx:52',message:'Calculando valores',data:{fontSize,cap,baseSize:baseSizes[variant],themeColor:theme.colors.textPrimary},timestamp:Date.now(),sessionId:'debug-session'})}).catch(()=>{});
+  fetch('http://127.0.0.1:7242/ingest/6613393d-1811-4ee8-8ac4-8aace6947144',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'src/Components/ResponsiveText.tsx:52',message:'Calculando valores',data:{fontSize,cap,baseSize:baseSizes[variant],themeColor:theme.colors.textPrimary,lineHeight},timestamp:Date.now(),sessionId:'debug-session'})}).catch(()=>{});
   // #endregion
 
   return (
@@ -80,7 +91,7 @@ const ResponsiveText: React.FC<ResponsiveTextProps> = ({
       maxFontSizeMultiplier={cap}
       style={[
         styles.text,
-        { fontSize, color: color ?? theme.colors.textPrimary, fontWeight: weight },
+        { fontSize, lineHeight, color: color ?? theme.colors.textPrimary, fontWeight: weight },
         style as any,
       ]}
     >
@@ -90,7 +101,7 @@ const ResponsiveText: React.FC<ResponsiveTextProps> = ({
 };
 
 const styles = StyleSheet.create({
-  text: { includeFontPadding: false, textAlignVertical: 'center', lineHeight: 20 },
+  text: { includeFontPadding: false, textAlignVertical: 'center' },
 });
 export default ResponsiveText;
 

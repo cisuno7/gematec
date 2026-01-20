@@ -20,9 +20,9 @@ import {
  * Versão simplificada e robusta para evitar erros durante inicialização do runtime.
  */
 export function useResponsive() {
-  // Valores padrão seguros
-  const DEFAULT_WIDTH = 414;
-  const DEFAULT_HEIGHT = 896;
+  // Valores padrão seguros (iPhone 8/SE - padrão da indústria)
+  const DEFAULT_WIDTH = 375;
+  const DEFAULT_HEIGHT = 667;
 
   // Estado para armazenar as dimensões atuais
   const [dimensions, setDimensions] = useState(() => {

@@ -41,6 +41,7 @@ import WorkApproveScreen from "../Screens/Work/WorkApproveScreen";
 import ManualsScreen from "../Screens/ManualsScreen";
 import SubSectorScreen from '../Screens/Clients/SubSectorScreen';
 import PreferencesScreen from '../Screens/PreferencesScreen'; // Importe a PreferencesScreen
+import NotificationsScreen from "../Screens/shared/NotificationsScreen";
 import { useUser } from '../Context/UserContext';
 import { useLanguage } from '../Context/LanguageContext';
 import { ActivityIndicator, View } from 'react-native';
@@ -94,6 +95,7 @@ export type RootStackParamList = {
   SectorDetailScreen: { clientId: number; sectorId: number };
   PreferencesScreen: undefined;
   AddMultipleEquipmentsScreen: { activityId?: number; activityTypeId: number; activityName?: string; clientId?: number; clientName?: string; sectorId?: number; fromNewActivityFlow?: boolean };
+  NotificationsScreen: undefined;
 };
 
 const Stack = createStackNavigator<RootStackParamList>();
@@ -152,6 +154,7 @@ const AppRouter: React.FC = () => {
         <Stack.Screen name="SectorDetailScreen" component={SectorDetailScreen} options={{ headerTitle: 'Detalhes do Setor' }} />
         <Stack.Screen name="PreferencesScreen" component={PreferencesScreen} options={{ headerTitle: t('menu.preferences') }} />
         <Stack.Screen name="AddMultipleEquipmentsScreen" component={AddMultipleEquipmentsScreen} options={{ headerShown: false }} />
+        <Stack.Screen name="NotificationsScreen" component={NotificationsScreen} options={{ headerTitle: "Notificações" }} />
       </Stack.Navigator>
     </NewActivityFlowProvider>
   );

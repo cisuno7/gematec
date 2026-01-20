@@ -21,11 +21,13 @@
         "backgroundColor": "#ffffff"
       },
       "icon": "./assets/icon.png",
+      "googleServicesFile": "./google-services.json",
       "permissions": [
         "android.permission.CAMERA",
-        "android.permission.RECORD_AUDIO"
+        "android.permission.RECORD_AUDIO",
+        "android.permission.POST_NOTIFICATIONS"
       ],
-      "package": "com.cisuno7.gemptec",
+      "package": "com.gabriel_jordan.gemptec",
       "versionCode": 27,
       "softwareKeyboardLayoutMode": "pan"
     },
@@ -33,6 +35,8 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
+      "@react-native-firebase/app",
+      "@react-native-firebase/messaging",
       [
         "expo-build-properties",
         {

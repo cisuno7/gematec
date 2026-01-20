@@ -204,9 +204,16 @@ apiClient.interceptors.request.use(
         const accessToken = await AsyncStorage.getItem("access_token");
         const accountName = await AsyncStorage.getItem("account");
 
-        if (accessToken) {
+        // Não adicionar token no header para refresh token
+        const isRefreshTokenRequest = config.url?.includes('/token/refresh');
+        
+        if (accessToken && !isRefreshTokenRequest) {
             config.headers = config.headers || {};
             config.headers.Authorization = `Bearer ${accessToken}`;
+        }
+        
+        // Sempre configurar baseURL dinamicamente
+        if (accountName) {
             config.baseURL = await setDynamicApiUrl(accountName as any);
         }
 
@@ -652,10 +659,10 @@ const refreshAccessToken = async () => {
         console.log("[refreshAccessToken] Account:", accountName);
         console.log("[refreshAccessToken] URL base completa:", dynamicBaseUrl);
 
-        // Usar endpoint conforme Postman.md: /token/refresh (apiConfig já adiciona /api)
-        console.log("[refreshAccessToken] Tentando com /token/refresh conforme Postman.md");
-        const response = await axios.post(
-            `${dynamicBaseUrl}/token/refresh`,
+        // Usar apiClient para refresh token (interceptor não adiciona token no header para /token/refresh)
+        console.log("[refreshAccessToken] Tentando com /token/refresh usando apiClient");
+        const response = await apiClient.post(
+            "/token/refresh",
             { refresh: refreshToken },
             {
                 headers: {
